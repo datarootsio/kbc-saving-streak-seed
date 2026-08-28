@@ -1,0 +1,10 @@
+# Build output
+backend/target/
+frontend/node_modules/
+frontend/dist/
+
+# The SQLite database is local state, recreated on first start
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
