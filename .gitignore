@@ -9,6 +9,9 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 
-# Run logs from scripts/implement-tickets.sh. Regenerated every run, and leaving them
-# untracked would trip the script's own clean-working-tree gate on the next run.
+# Run logs from scripts/implement-tickets.sh and the /implement-tickets skill. Regenerated
+# every run, and leaving them untracked would trip the clean-working-tree gate next run.
 .scratch/*/logs/
+
+# One git worktree per ticket, made and removed by the /implement-tickets skill.
+.worktrees/

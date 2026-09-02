@@ -6,9 +6,10 @@
 #   to-review/   an implementer says it is finished; nobody has checked
 #   done/        a reviewer has read the code and watched the feature work
 #
-# Every session is a fresh Claude Code session with a cold context. The implementer
+# Every session is a fresh session of one CLI agent, with a cold context. The implementer
 # and the reviewer are deliberately different sessions: a session that just wrote the
-# code is the worst possible judge of whether the code works.
+# code is the worst possible judge of whether the code works. Which agent runs them is
+# --harness: Claude Code by default, or pi.
 #
 # Each ticket gets its own branch, ticket/NN-slug, and keeps it: nothing is merged. Every
 # rework attempt stays on that one branch, so it holds the whole story of one ticket.
@@ -35,8 +36,10 @@ BACKEND_URL="http://localhost:8080"
 FRONTEND_URL="http://localhost:5173"
 
 BRANCH_PREFIX="${BRANCH_PREFIX:-ticket}"
+HARNESS="${HARNESS:-claude}"
 PERMISSION_MODE="acceptEdits"
 MODEL=""
+EFFORT=""
 MAX_ATTEMPTS=3
 MERGE_ON_ACCEPT=0
 DRY_RUN=0
@@ -59,7 +62,7 @@ usage() {
     cat <<'USAGE'
 Usage: scripts/implement-tickets.sh [options]
 
-Moves each ticket through three folders, one fresh Claude Code session at a time:
+Moves each ticket through three folders, one fresh agent session at a time:
 
   issues/  --(implementer)-->  to-review/  --(reviewer)-->  done/
                                     |
@@ -69,7 +72,8 @@ A reviewer that is not convinced writes what is missing into the ticket and send
 back. The next attempt is a new implementer session that reads that feedback. A ticket
 gets --max-attempts tries before the script gives up on it.
 
-The reviewer runs /code-review and also drives the running application for itself:
+The reviewer reads the branch's diff (with /code-review where the harness has it) and
+also drives the running application for itself:
 Playwright against the web page for tickets that touch the UI, HTTP against the API for
 the ones that do not. The script boots the app against a throwaway database before each
 review and shuts it down afterwards.
@@ -101,7 +105,11 @@ Options:
   --max-attempts N     Implement/review cycles before giving up on a ticket (default 3)
   --merge              Merge each accepted branch back into the base branch
   --branch-prefix P    Branch name prefix (default "ticket")
-  --model NAME         Model for every session (e.g. opus, sonnet)
+  --harness NAME       CLI agent every session runs on: claude, claude-dataroots or pi
+                       (default "claude"; see below)
+  --model NAME         Model for every session (e.g. opus, sonnet; for pi a
+                       provider-qualified pattern, openrouter/z-ai/glm-5.3-flash)
+  --effort LEVEL       Reasoning effort for every session (e.g. low, medium, high)
   --yolo               Use --permission-mode bypassPermissions (see the warning below)
   --resume             Also pick up tickets already sitting in to-review/, and start
                        them at the review step instead of re-running the implementer
@@ -126,7 +134,29 @@ Logs:
   under review runs with its own package, the web layer and Hibernate's SQL at DEBUG.
   The directory is gitignored.
 
+Harnesses:
+  Every session runs on one CLI agent, chosen with --harness:
+
+    claude            the claude binary on PATH, with your usual config
+    claude-dataroots  the same binary against CLAUDE_CONFIG_DIR=~/.claude-dataroots,
+                      which is what the shell alias of the same name does
+    pi                the pi CLI. It needs Node 24, so the newest v24 under
+                      ~/.nvm/versions/node goes on PATH before anything resolves `pi`,
+                      and sessions run with -a so this repo's own CLAUDE.md and
+                      project-local config are trusted the way Claude Code reads them.
+
+  --model and --effort are passed to whichever one is chosen; pi spells effort
+  --thinking. The prompts only use slash commands (/mattpocock-skills:implement,
+  /code-review) on the Claude harnesses, because pi has no such thing; it is asked for
+  the same work in plain words instead.
+
+  Both write the same two logs per session, because scripts/format-transcript.py renders
+  either agent's JSON stream.
+
 Permissions:
+  This applies to the Claude harnesses. pi has no permission modes: -p runs its tools
+  unattended, so --yolo neither adds nor removes anything for it.
+
   The default (acceptEdits) auto-approves file edits but still asks before running
   commands. In non-interactive mode there is nobody to ask, so a session that needs to
   run the build, drive a browser or commit will be refused and the ticket will fail.
@@ -144,7 +174,9 @@ while [[ $# -gt 0 ]]; do
         --max-attempts) MAX_ATTEMPTS="$2"; shift 2 ;;
         --merge) MERGE_ON_ACCEPT=1; shift ;;
         --branch-prefix) BRANCH_PREFIX="$2"; shift 2 ;;
+        --harness) HARNESS="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --effort) EFFORT="$2"; shift 2 ;;
         --yolo) PERMISSION_MODE="bypassPermissions"; shift ;;
         --resume) RESUME=1; shift ;;
         --keep-going) KEEP_GOING=1; shift ;;
@@ -157,7 +189,43 @@ done
 
 cd "$(git rev-parse --show-toplevel)"
 
-command -v claude >/dev/null || { echo "claude is not on PATH" >&2; exit 1; }
+# pi is an npm package that needs Node 24. The `pi` on PATH is whichever node was
+# current when it was installed, which here is an old one that fails at startup, so pin
+# Node 24 before anything -- this check included -- resolves the name.
+use_node_24() {
+    local candidate
+    candidate="$(ls -d "$HOME"/.nvm/versions/node/v24* 2>/dev/null | sort -V | tail -1 || true)"
+    if [[ -z "$candidate" ]]; then
+        echo "the pi harness needs Node 24; none found under ~/.nvm/versions/node" >&2
+        exit 1
+    fi
+    export PATH="$candidate/bin:$PATH"
+    echo "harness pi: using node $(node -v) from nvm"
+}
+
+CLAUDE_DATAROOTS_CONFIG="$HOME/.claude-dataroots"
+HARNESS_BIN="$HARNESS"
+case "$HARNESS" in
+    claude) ;;
+    claude-dataroots)
+        HARNESS_BIN="claude"
+        if [[ ! -d "$CLAUDE_DATAROOTS_CONFIG" ]]; then
+            echo "no config directory at $CLAUDE_DATAROOTS_CONFIG" >&2
+            exit 1
+        fi
+        ;;
+    pi) use_node_24 ;;
+    *) echo "unknown harness: $HARNESS (want claude, claude-dataroots or pi)" >&2; exit 2 ;;
+esac
+command -v "$HARNESS_BIN" >/dev/null || { echo "$HARNESS_BIN is not on PATH" >&2; exit 1; }
+
+# The prompts hand Claude Code slash commands to the session. Another harness reads such
+# a line as literal text, so ask it for the same work in plain words instead.
+SLASH_COMMANDS=1
+if [[ "$HARNESS" == "pi" ]]; then
+    SLASH_COMMANDS=0
+fi
+
 [[ -d "$ISSUES_DIR" ]] || { echo "no issues directory at $ISSUES_DIR" >&2; exit 1; }
 
 BASE_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -307,16 +375,40 @@ land_branch() {
 # the .log is that rendered readable. `--verbose` alone would log only the final
 # message, which never answers the question you actually have about a bad session,
 # namely what it ran and what it got back.
-claude_session() {
+agent_session() {
     local log="$1"
     local jsonl="${log%.log}.jsonl"
-    local args=(-p --permission-mode "$PERMISSION_MODE" --verbose
-                --output-format stream-json)
-    if [[ -n "$MODEL" ]]; then
-        args+=(--model "$MODEL")
-    fi
+    local cmd=()
+    case "$HARNESS" in
+        claude|claude-dataroots)
+            cmd=(claude -p --permission-mode "$PERMISSION_MODE" --verbose
+                 --output-format stream-json)
+            if [[ -n "$MODEL" ]]; then
+                cmd+=(--model "$MODEL")
+            fi
+            if [[ -n "$EFFORT" ]]; then
+                cmd+=(--effort "$EFFORT")
+            fi
+            # The alias of this name is exactly this variable; a script cannot use it.
+            if [[ "$HARNESS" == "claude-dataroots" ]]; then
+                cmd=(env "CLAUDE_CONFIG_DIR=$CLAUDE_DATAROOTS_CONFIG" "${cmd[@]}")
+            fi
+            ;;
+        pi)
+            # -p runs pi's tools unattended, so there is no permission mode to pass.
+            # -a trusts this repo's own CLAUDE.md and project-local config, which is
+            # what the Claude harnesses read without being asked.
+            cmd=(pi -p -a --mode json)
+            if [[ -n "$MODEL" ]]; then
+                cmd+=(--model "$MODEL")
+            fi
+            if [[ -n "$EFFORT" ]]; then
+                cmd+=(--thinking "$EFFORT")
+            fi
+            ;;
+    esac
     # No --continue and no --resume: every session starts with a cold context.
-    claude "${args[@]}" 2>&1 \
+    "${cmd[@]}" 2>&1 \
         | tee "$jsonl" \
         | python3 "$SCRIPT_DIR/format-transcript.py" \
         | tee "$log"
@@ -324,8 +416,12 @@ claude_session() {
 
 implementer_prompt() {
     local ticket="$1" attempt="$2" branch="$3" log_prefix="$4"
+    local opening="Implement the ticket $ticket."
+    if [[ $SLASH_COMMANDS -eq 1 ]]; then
+        opening="/mattpocock-skills:implement $ticket"
+    fi
     cat <<PROMPT
-/mattpocock-skills:implement $ticket
+$opening
 
 You are implementing exactly one ticket: $ticket. Read it in full before anything else.
 This is attempt $attempt.
@@ -409,6 +505,10 @@ PROMPT
 reviewer_prompt() {
     local ticket="$1" attempt="$2" playwright="$3" branch="$4" base="$5"
     local app_prefix="$6" checks_log="$7"
+    local read_the_diff="Run /code-review over $base..$branch."
+    if [[ $SLASH_COMMANDS -eq 0 ]]; then
+        read_the_diff="Read \`git diff $base..$branch\` in full, hunk by hunk."
+    fi
     cat <<PROMPT
 You are reviewing somebody else's work. You did not write this code and you should not
 trust it. The ticket is $ticket, on attempt $attempt. Read it in full, then read
@@ -420,7 +520,7 @@ top of $base is what you are reviewing, and nothing else.
 Do two independent things, in this order.
 
 1. Review the code.
-   Run /code-review over $base..$branch. Judge it against the ticket's acceptance
+   $read_the_diff Judge it against the ticket's acceptance
    criteria and against the surrounding code's conventions, not against your own taste.
 
 2. Watch the feature actually work.
@@ -537,8 +637,14 @@ if [[ $MERGE_ON_ACCEPT -eq 1 ]]; then
 else
     echo "On accept:    branch kept, nothing merged; the next ticket branches from it"
 fi
-echo "Permissions:  $PERMISSION_MODE"
+echo "Harness:      $HARNESS"
+if [[ "$HARNESS" == "pi" ]]; then
+    echo "Permissions:  none; pi -p runs its tools unattended"
+else
+    echo "Permissions:  $PERMISSION_MODE"
+fi
 echo "Model:        ${MODEL:-<default>}"
+echo "Effort:       ${EFFORT:-<default>}"
 echo "Max attempts: $MAX_ATTEMPTS per ticket"
 echo "Playwright:   $PLAYWRIGHT_NOTE"
 echo "Tickets:"
@@ -605,7 +711,7 @@ for ticket in "${selected[@]}"; do
         else
             echo "=== $name: implementing (attempt $attempt/$MAX_ATTEMPTS)"
             implementer_prompt "$ISSUES_DIR/$file" "$attempt" "$branch" "$LOG_DIR/$name" \
-                | claude_session "$LOG_DIR/$name.implement.$attempt.log" || true
+                | agent_session "$LOG_DIR/$name.implement.$attempt.log" || true
 
             if [[ ! -f "$REVIEW_DIR/$file" ]]; then
                 echo "    implementer did not move the ticket to to-review" >&2
@@ -644,7 +750,7 @@ $(tail -60 "$LOG_DIR/$name.checks.$attempt.log")
         fi
         reviewer_prompt "$REVIEW_DIR/$file" "$attempt" "$PLAYWRIGHT_NOTE" "$branch" \
             "$ticket_base" "$LOG_DIR/$name.app.$attempt" "$LOG_DIR/$name.checks.$attempt.log" \
-            | claude_session "$LOG_DIR/$name.review.$attempt.log" || true
+            | agent_session "$LOG_DIR/$name.review.$attempt.log" || true
         stop_app
 
         if [[ -f "$DONE_DIR/$file" ]]; then
