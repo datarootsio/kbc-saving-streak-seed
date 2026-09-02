@@ -18,6 +18,9 @@
 #
 # The script never takes a session's word for anything. It checks which folder the
 # ticket file actually ended up in, and runs the build itself.
+#
+# A run interrupted between the two sessions leaves a ticket stranded in to-review/.
+# --resume picks those up and starts them at the review step.
 
 set -euo pipefail
 
@@ -41,6 +44,7 @@ KEEP_GOING=0
 ASSUME_YES=0
 FROM=""
 ONLY=""
+RESUME=0
 
 BASE_BRANCH=""
 PARENT_REF=""
@@ -70,6 +74,14 @@ Playwright against the web page for tickets that touch the UI, HTTP against the 
 the ones that do not. The script boots the app against a throwaway database before each
 review and shuts it down afterwards.
 
+Resuming an interrupted run:
+  A run that dies between the implementer and the reviewer leaves the ticket in
+  to-review/ with nobody having looked at it. Without --resume the ticket is invisible
+  to a later run, because tickets are picked up from issues/. With --resume a ticket
+  found in to-review/ is selected too, and its first attempt skips the implementer and
+  goes straight to the checks and the review, so finished work is not implemented twice.
+  If that review sends the ticket back, the next attempt is a normal implementer session.
+
 Branches:
   Each ticket is implemented on its own branch, ticket/NN-slug, and keeps it. Every
   attempt at a ticket, including rework after a reviewer sends it back, stays on that one
@@ -91,6 +103,8 @@ Options:
   --branch-prefix P    Branch name prefix (default "ticket")
   --model NAME         Model for every session (e.g. opus, sonnet)
   --yolo               Use --permission-mode bypassPermissions (see the warning below)
+  --resume             Also pick up tickets already sitting in to-review/, and start
+                       them at the review step instead of re-running the implementer
   --keep-going         Carry on after a ticket fails instead of stopping
   -y, --yes            Skip the confirmation prompt
   -n, --dry-run        Print what would run and exit
@@ -132,6 +146,7 @@ while [[ $# -gt 0 ]]; do
         --branch-prefix) BRANCH_PREFIX="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
         --yolo) PERMISSION_MODE="bypassPermissions"; shift ;;
+        --resume) RESUME=1; shift ;;
         --keep-going) KEEP_GOING=1; shift ;;
         -y|--yes) ASSUME_YES=1; shift ;;
         -n|--dry-run) DRY_RUN=1; shift ;;
@@ -478,8 +493,16 @@ send_back() {
     mv "$ticket_path" "$ISSUES_DIR/"
 }
 
+# Ordered by ticket number, not by path, so a resumed ticket sorts among the rest
+# rather than after them. A ticket cannot be in both folders, but dedupe anyway: the
+# first path found for a name wins, and issues/ is listed first.
 tickets() {
-    find "$ISSUES_DIR" -maxdepth 1 -name '[0-9][0-9]-*.md' | sort
+    {
+        find "$ISSUES_DIR" -maxdepth 1 -name '[0-9][0-9]-*.md'
+        if [[ $RESUME -eq 1 && -d "$REVIEW_DIR" ]]; then
+            find "$REVIEW_DIR" -maxdepth 1 -name '[0-9][0-9]-*.md'
+        fi
+    } | awk -F/ '!seen[$NF]++ { print $NF "\t" $0 }' | sort | cut -f2-
 }
 
 selected=()
@@ -573,16 +596,22 @@ for ticket in "${selected[@]}"; do
     settled=""
     while [[ $attempt -le $MAX_ATTEMPTS ]]; do
         echo
-        echo "=== $name: implementing (attempt $attempt/$MAX_ATTEMPTS)"
-        implementer_prompt "$ISSUES_DIR/$file" "$attempt" "$branch" "$LOG_DIR/$name" \
-            | claude_session "$LOG_DIR/$name.implement.$attempt.log" || true
+        # The folder on the ticket's own branch decides, not the folder the ticket was
+        # selected from: the base branch may still show it in issues/.
+        if [[ $RESUME -eq 1 && -f "$REVIEW_DIR/$file" ]]; then
+            echo "=== $name: already in to-review; resuming at review (attempt $attempt/$MAX_ATTEMPTS)"
+        else
+            echo "=== $name: implementing (attempt $attempt/$MAX_ATTEMPTS)"
+            implementer_prompt "$ISSUES_DIR/$file" "$attempt" "$branch" "$LOG_DIR/$name" \
+                | claude_session "$LOG_DIR/$name.implement.$attempt.log" || true
 
-        if [[ ! -f "$REVIEW_DIR/$file" ]]; then
-            echo "    implementer did not move the ticket to to-review" >&2
-            settled="stalled in issues"
-            break
+            if [[ ! -f "$REVIEW_DIR/$file" ]]; then
+                echo "    implementer did not move the ticket to to-review" >&2
+                settled="stalled in issues"
+                break
+            fi
+            echo "    -> to-review"
         fi
-        echo "    -> to-review"
 
         # Cheap objective gate before spending a review session on a red build.
         if ! run_checks "$name attempt $attempt" "$LOG_DIR/$name.checks.$attempt.log"; then
