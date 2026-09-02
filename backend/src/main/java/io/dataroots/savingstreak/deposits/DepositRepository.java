@@ -18,6 +18,9 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
      */
     List<Deposit> findBySavingsAccountIdOrderByDepositedAtDescIdDesc(long savingsAccountId);
 
+    /** Oldest first, with the identifier settling ties at the millisecond the application records. */
+    List<Deposit> findBySavingsAccountIdOrderByDepositedAtAscIdAsc(long savingsAccountId);
+
     /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many
      * that was.

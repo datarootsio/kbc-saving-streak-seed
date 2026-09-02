@@ -78,6 +78,14 @@ class Deposit {
         return remainingAmount;
     }
 
+    /** Records money leaving this deposit, never allowing more to leave than remains. */
+    void reduceBy(BigDecimal amount) {
+        if (remainingAmount.compareTo(amount) < 0) {
+            throw new IllegalArgumentException("cannot reduce a deposit by more than remains");
+        }
+        remainingAmount = remainingAmount.subtract(amount);
+    }
+
     Instant getDepositedAt() {
         return depositedAt;
     }

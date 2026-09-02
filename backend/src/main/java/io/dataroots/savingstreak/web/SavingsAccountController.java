@@ -5,9 +5,12 @@ import java.util.List;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.deposits.DepositsService;
+import io.dataroots.savingstreak.deposits.WithdrawalsService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,15 +32,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/savings-accounts")
 class SavingsAccountController {
 
+    private static final Logger log = LoggerFactory.getLogger(SavingsAccountController.class);
+
     private final AccountsService accounts;
     private final DepositsService deposits;
+    private final WithdrawalsService withdrawals;
     private final PointsService points;
     private final RewardsService rewards;
 
-    SavingsAccountController(AccountsService accounts, DepositsService deposits, PointsService points,
+    SavingsAccountController(AccountsService accounts, DepositsService deposits, WithdrawalsService withdrawals,
+                             PointsService points,
                              RewardsService rewards) {
         this.accounts = accounts;
         this.deposits = deposits;
+        this.withdrawals = withdrawals;
         this.points = points;
         this.rewards = rewards;
     }
@@ -75,6 +83,27 @@ class SavingsAccountController {
         }
         return DepositResponse.of(deposits.deposit(
                 savingsAccountId, request.fromCurrentAccountId(), amountIn(request)));
+    }
+
+    @PostMapping("/{savingsAccountId}/withdrawals")
+    @ResponseStatus(HttpStatus.CREATED)
+    WithdrawalResponse withdraw(@PathVariable long savingsAccountId, @RequestBody WithdrawalRequest request) {
+        if (request == null || request.amount() == null || request.toCurrentAccountId() == null) {
+            log.warn("withdrawal rejected savingsAccountId={} reason=missing amount or destination current account",
+                    savingsAccountId);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A withdrawal needs an amount and the current account it returns to.");
+        }
+        return WithdrawalResponse.of(withdrawals.withdraw(
+                savingsAccountId, request.toCurrentAccountId(), withdrawalAmountIn(savingsAccountId, request.amount())));
+    }
+
+    @GetMapping("/{savingsAccountId}/withdrawals")
+    List<WithdrawalResponse> withdrawalsFrom(@PathVariable long savingsAccountId) {
+        if (!accounts.savingsAccountExists(savingsAccountId)) {
+            throw noSuchSavingsAccount(savingsAccountId);
+        }
+        return withdrawals.withdrawalsFrom(savingsAccountId).stream().map(WithdrawalResponse::of).toList();
     }
 
     @GetMapping("/{savingsAccountId}/redemptions")
@@ -118,10 +147,25 @@ class SavingsAccountController {
      * whoever sent it, because a person who typed a comma has to see the comma to see the mistake.
      */
     private BigDecimal amountIn(DepositRequest request) {
+        return amountIn(request.amount());
+    }
+
+    private BigDecimal amountIn(String amount) {
         try {
-            return new BigDecimal(request.amount().trim());
+            return new BigDecimal(amount.trim());
         } catch (NumberFormatException notANumber) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "\"" + request.amount()
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "\"" + amount
+                    + "\" is not an amount of money. Write it in digits with a full stop, like 25.00.");
+        }
+    }
+
+    private BigDecimal withdrawalAmountIn(long savingsAccountId, String amount) {
+        try {
+            return new BigDecimal(amount.trim());
+        } catch (NumberFormatException notANumber) {
+            log.warn("withdrawal rejected savingsAccountId={} amount={} reason=not an amount of money",
+                    savingsAccountId, amount);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "\"" + amount
                     + "\" is not an amount of money. Write it in digits with a full stop, like 25.00.");
         }
     }

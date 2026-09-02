@@ -12,9 +12,11 @@ import {
   fetchClaimed,
   fetchCustomers,
   fetchDeposits,
+  fetchWithdrawals,
   fetchRewards,
   fetchSavingsAccount,
   makeDeposit,
+  makeWithdrawal,
   signIn,
   SignInFailed,
   type ClaimedReward,
@@ -22,6 +24,7 @@ import {
   type Customer,
   type CustomerAccounts,
   type RecordedDeposit,
+  type RecordedWithdrawal,
   type Reward,
   type SavingsAccount,
   type SavingsAccountBalances,
@@ -555,6 +558,7 @@ function Catalogue({
 type SavingsAccountView = {
   balances: SavingsAccountBalances
   deposits: RecordedDeposit[]
+  withdrawals: RecordedWithdrawal[]
   claimed: ClaimedReward[]
 }
 
@@ -564,6 +568,7 @@ type SavingsAccountView = {
  */
 type Celebration =
   | { kind: 'deposit'; deposit: RecordedDeposit }
+  | { kind: 'withdrawal'; withdrawal: RecordedWithdrawal }
   | { kind: 'claim'; claim: ClaimedReward }
 
 /**
@@ -604,11 +609,12 @@ function SavingsAccountPage({
     Promise.all([
       fetchSavingsAccount(savingsAccountId, signal),
       fetchDeposits(savingsAccountId, signal),
+      fetchWithdrawals(savingsAccountId, signal),
       fetchClaimed(savingsAccountId, signal),
     ])
-      .then(([balances, deposits, claimed]) => {
+      .then(([balances, deposits, withdrawals, claimed]) => {
         if (signal?.aborted !== true) {
-          setAccount({ balances, deposits, claimed })
+          setAccount({ balances, deposits, withdrawals, claimed })
           setAccountError(null)
         }
       })
@@ -685,7 +691,7 @@ function SavingsAccountPage({
 
       {/* Outside the check above on purpose: a read that failed is no reason to stop someone
           depositing, and the deposit is what will read the account again. */}
-      <div className="deposit-area">
+      <div className="transfer-area">
         {celebrated?.kind === 'deposit' && <Earned deposit={celebrated.deposit} />}
         <DepositForm
           currentAccounts={currentAccounts}
@@ -694,6 +700,15 @@ function SavingsAccountPage({
             setCelebrated({ kind: 'deposit', deposit: made })
             loadAccount()
             // The money came out of a current account, and that figure is on the overview.
+            onChanged()
+          }}
+        />
+        <WithdrawalForm
+          currentAccounts={currentAccounts}
+          savingsAccountId={savingsAccountId}
+          onWithdrawn={(made) => {
+            setCelebrated({ kind: 'withdrawal', withdrawal: made })
+            loadAccount()
             onChanged()
           }}
         />
@@ -720,6 +735,10 @@ function SavingsAccountPage({
             deposits={account.deposits}
             landedId={celebrated?.kind === 'deposit' ? celebrated.deposit.id : null}
           />
+          <Withdrawals
+            withdrawals={account.withdrawals}
+            landedId={celebrated?.kind === 'withdrawal' ? celebrated.withdrawal.id : null}
+          />
           <Claimed
             claimed={account.claimed}
             landedId={celebrated?.kind === 'claim' ? celebrated.claim.id : null}
@@ -730,9 +749,9 @@ function SavingsAccountPage({
   )
 }
 
-/** A deposit is the only thing that moves money. Claiming a reward never touches the euros. */
+/** Deposits and withdrawals move money. Claiming a reward never touches euros. */
 function moneyMoved(celebrated: Celebration | null): boolean {
-  return celebrated?.kind === 'deposit'
+  return celebrated?.kind === 'deposit' || celebrated?.kind === 'withdrawal'
 }
 
 /**
@@ -743,7 +762,48 @@ function pointsMoved(celebrated: Celebration | null): boolean {
   if (celebrated === null) {
     return false
   }
-  return celebrated.kind === 'claim' || celebrated.deposit.pointsEarned > 0
+  return celebrated.kind === 'claim' || (celebrated.kind === 'deposit' && celebrated.deposit.pointsEarned > 0)
+}
+
+/** Withdrawals are read back independently because deposits are immutable historical facts. */
+function Withdrawals({
+  withdrawals,
+  landedId,
+}: {
+  withdrawals: RecordedWithdrawal[]
+  landedId: number | null
+}) {
+  return (
+    <div className="history">
+      <h3>Withdrawals</h3>
+      {withdrawals.length === 0 ? (
+        <p className="nothing">Nothing has been withdrawn from this account yet.</p>
+      ) : (
+        <table className="deposits">
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Returned to</th>
+            </tr>
+          </thead>
+          <tbody>
+            {withdrawals.map((made, place) => (
+              <tr
+                key={made.id}
+                className={made.id === landedId ? 'landed' : undefined}
+                style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+              >
+                <td className="when">{dateAndTime.format(new Date(made.withdrawnAt))}</td>
+                <td className="amount">{euros.format(made.amount)}</td>
+                <td>Current account {made.toCurrentAccountId}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -1078,6 +1138,79 @@ function DepositForm({
         )}
       </button>
       {depositError !== null && <Refusal reason={depositError} />}
+    </form>
+  )
+}
+
+/** Moves money the other way, beside the deposit form that moves it into savings. */
+function WithdrawalForm({
+  savingsAccountId,
+  currentAccounts,
+  onWithdrawn,
+}: {
+  savingsAccountId: number
+  currentAccounts: CurrentAccount[]
+  onWithdrawn: (made: RecordedWithdrawal) => void
+}) {
+  const [amount, setAmount] = useState('')
+  const [toCurrentAccountId, setToCurrentAccountId] = useState<number | null>(currentAccounts[0]?.id ?? null)
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [withdrawalError, setWithdrawalError] = useState<string | null>(null)
+
+  if (toCurrentAccountId === null) {
+    return <p className="nothing">A withdrawal needs a current account to return money to.</p>
+  }
+
+  function withdraw(event: FormEvent) {
+    event.preventDefault()
+    if (toCurrentAccountId === null) {
+      return
+    }
+    setWithdrawing(true)
+    setWithdrawalError(null)
+    makeWithdrawal(savingsAccountId, amount, toCurrentAccountId)
+      .then((made) => {
+        setAmount('')
+        onWithdrawn(made)
+      })
+      .catch((problem: Error) => setWithdrawalError(problem.message))
+      .finally(() => setWithdrawing(false))
+  }
+
+  return (
+    <form className="deposit withdrawal" onSubmit={withdraw}>
+      <div className="field">
+        <label htmlFor="withdrawalAmount">Withdraw</label>
+        <div className="amount-box">
+          <input
+            id="withdrawalAmount"
+            name="withdrawalAmount"
+            inputMode="decimal"
+            placeholder="25.00"
+            autoComplete="off"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </div>
+      </div>
+      <div className="field from">
+        <label htmlFor="toCurrentAccount">Return to</label>
+        <select
+          id="toCurrentAccount"
+          value={toCurrentAccountId}
+          onChange={(event) => setToCurrentAccountId(Number(event.target.value))}
+        >
+          {currentAccounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.iban}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button type="submit" disabled={withdrawing}>
+        {withdrawing ? <><span className="spinner" />Withdrawing…</> : 'Withdraw'}
+      </button>
+      {withdrawalError !== null && <Refusal reason={withdrawalError} />}
     </form>
   )
 }

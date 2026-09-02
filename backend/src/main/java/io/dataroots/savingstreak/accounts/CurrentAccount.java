@@ -74,4 +74,9 @@ public class CurrentAccount {
         balance = balance.subtract(amount);
         return true;
     }
+
+    /** Adds money that arrived from the holder's savings account. */
+    void deposit(BigDecimal amount) {
+        balance = balance.add(amount);
+    }
 }

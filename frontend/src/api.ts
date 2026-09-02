@@ -122,6 +122,14 @@ export type RecordedDeposit = {
   depositedAt: string
 }
 
+/** Money returned from savings to a current account, newest first when read as history. */
+export type RecordedWithdrawal = {
+  id: number
+  amount: number
+  toCurrentAccountId: number
+  withdrawnAt: string
+}
+
 export async function fetchSavingsAccount(
   savingsAccountId: number,
   signal?: AbortSignal,
@@ -144,6 +152,17 @@ export async function fetchDeposits(
   const response = await fetch(`/api/savings-accounts/${savingsAccountId}/deposits`, { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load this account’s deposits'))
+  }
+  return response.json()
+}
+
+export async function fetchWithdrawals(
+  savingsAccountId: number,
+  signal?: AbortSignal,
+): Promise<RecordedWithdrawal[]> {
+  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/withdrawals`, { signal })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not load this account’s withdrawals'))
   }
   return response.json()
 }
@@ -231,6 +250,23 @@ export async function makeDeposit(
   })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'The deposit was not accepted'))
+  }
+  return response.json()
+}
+
+/** Returns money from savings without translating or rounding the amount the person typed. */
+export async function makeWithdrawal(
+  savingsAccountId: number,
+  amount: string,
+  toCurrentAccountId: number,
+): Promise<RecordedWithdrawal> {
+  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/withdrawals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, toCurrentAccountId }),
+  })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'The withdrawal was not accepted'))
   }
   return response.json()
 }

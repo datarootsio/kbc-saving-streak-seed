@@ -135,6 +135,19 @@ public class AccountsService {
                 .orElse(false);
     }
 
+    /**
+     * Puts money into a current account after another module has established that it belongs to the
+     * customer making the transfer. The pairing check and the movement rule belong to that module;
+     * Accounts only keeps this account's stored balance truthful.
+     */
+    @Transactional
+    public void depositInto(long currentAccountId, BigDecimal amount) {
+        CurrentAccount account = currentAccounts.findById(currentAccountId)
+                .orElseThrow(() -> new IllegalArgumentException("no current account " + currentAccountId));
+        account.deposit(amount);
+        currentAccounts.save(account);
+    }
+
     /** What is in a current account, or nothing at all if there is no such account. */
     @Transactional(readOnly = true)
     public Optional<BigDecimal> balanceOfCurrentAccount(long currentAccountId) {

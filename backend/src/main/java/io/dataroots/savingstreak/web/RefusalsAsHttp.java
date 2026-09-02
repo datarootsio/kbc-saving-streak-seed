@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.web;
 
 import io.dataroots.savingstreak.clock.ClockRefused;
 import io.dataroots.savingstreak.deposits.DepositRefused;
+import io.dataroots.savingstreak.deposits.WithdrawalRefused;
 import io.dataroots.savingstreak.jobs.JobFailed;
 import io.dataroots.savingstreak.jobs.JobRefused;
 import io.dataroots.savingstreak.rewards.RewardRefused;
@@ -35,6 +36,16 @@ class RefusalsAsHttp {
             // Not a conflict: the account is in no unexpected state, there is simply less in it
             // than the customer asked to move, and the sentence that comes back says how much.
             case NOT_ENOUGH_MONEY -> HttpStatus.BAD_REQUEST;
+        };
+        return ResponseEntity.status(status)
+                .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));
+    }
+
+    @ExceptionHandler(WithdrawalRefused.class)
+    ResponseEntity<ProblemDetail> withdrawalRefused(WithdrawalRefused refusal) {
+        HttpStatus status = switch (refusal.kind()) {
+            case NO_SUCH_ACCOUNT -> HttpStatus.NOT_FOUND;
+            case AGAINST_THE_RULES, NOT_ENOUGH_MONEY -> HttpStatus.BAD_REQUEST;
         };
         return ResponseEntity.status(status)
                 .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));
