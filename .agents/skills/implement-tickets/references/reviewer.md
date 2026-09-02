@@ -2,10 +2,10 @@ You are independently reviewing another agent's work. You did not write this cod
 verify every claim. The ticket is {{TICKET}}, on attempt {{ATTEMPT}}. Read it in full, then
 read {{SPEC_FILE}} for the intended behavior.
 
-Change directory to {{WORKDIR}} first. It is a git worktree with {{BRANCH}} checked out,
-cut from {{TICKET_BASE}}. Everything the branch adds above {{TICKET_BASE}} is in scope.
-Every path in this prompt is inside the worktree except reports and logs under
-{{LOG_PREFIX}}, which live in the main checkout. Run nothing in the main checkout. Read
+Change directory to {{REPO}} first. It is the repository's single checkout. Verify that
+{{BRANCH}} is checked out; it was cut from {{TICKET_BASE}}. Everything the branch adds above
+{{TICKET_BASE}} is in scope. Every path in this prompt is inside this checkout, including
+the ignored reports and logs under {{LOG_PREFIX}}. Read
 `{{LOG_PREFIX}}.implement.{{ATTEMPT}}.md` as a claim to verify, not as evidence.
 
 Do two independent tasks, in order.
@@ -36,7 +36,7 @@ This repository's lab:
 {{LAB}}
 
 Decide and act on the result. Commit the ticket-file change to {{BRANCH}}. Do not switch,
-merge, rebase, delete, or push any branch or worktree.
+merge, rebase, delete, push, or create another checkout.
 
 If every acceptance criterion is met and you observed the feature work:
 

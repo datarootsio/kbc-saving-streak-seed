@@ -3,7 +3,7 @@
 # The lab for this repository, written to the contract in the implement-tickets skill
 # (lab-contract.md). Spring Boot backend on 8080, Vite frontend on 5173.
 #
-#   prepare              what a fresh worktree lacks: frontend/node_modules
+#   prepare              ensure frontend/node_modules exists on the current branch
 #   checks <log>         mvnw test + npm run typecheck, all output to <log>
 #   app-start <prefix>   boot both on a throwaway SQLite database, logs at <prefix>.*.log
 #   app-stop             stop whatever listens on 8080 and 5173
@@ -13,8 +13,8 @@ set -euo pipefail
 BACKEND_URL="http://localhost:8080"
 FRONTEND_URL="http://localhost:5173"
 
-# The checkout this copy lives in, not the caller's: the orchestrator runs a worktree's
-# copy from the main checkout, and the worktree is where the work must happen.
+# The checkout this copy lives in, not the caller's: the orchestrator runs the copy on the
+# current ticket branch, and that checkout is where the work must happen.
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(git -C "$(dirname "$SELF")" rev-parse --show-toplevel)"
 
@@ -35,8 +35,8 @@ pick_node() {
     fi
 }
 
-# A worktree is a fresh checkout: no node_modules. Maven fetches its own dependencies
-# into ~/.m2 on first use, so the backend needs nothing here.
+# A branch checkout may not have node_modules yet. Maven fetches its own dependencies into
+# ~/.m2 on first use, so the backend needs nothing here.
 cmd_prepare() {
     pick_node
     if [[ -d frontend/node_modules ]]; then

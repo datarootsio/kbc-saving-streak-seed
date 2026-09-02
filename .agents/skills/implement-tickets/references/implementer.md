@@ -18,12 +18,11 @@ Context:
 
 Where you work:
 
-- Change directory to {{WORKDIR}} first. It is a git worktree with {{BRANCH}} checked out,
-  cut from {{TICKET_BASE}}. Every path in this prompt is inside it except reports under
-  {{LOG_PREFIX}}, which live in the main checkout so they survive worktree removal. Run
-  nothing in the main checkout.
+- Change directory to {{REPO}} first. It is the repository's single checkout. Verify that
+  {{BRANCH}} is checked out; it was cut from {{TICKET_BASE}}. Every path in this prompt is
+  inside this checkout, including the ignored reports under {{LOG_PREFIX}}.
 - Commit your work on {{BRANCH}}. Do not switch, rebase, merge, delete, or push any branch or
-  worktree. The orchestrator handles branch and worktree lifecycle after independent review.
+  create another checkout. The orchestrator handles branch lifecycle after independent review.
 
 This repository's lab, which the reviewer will enforce:
 

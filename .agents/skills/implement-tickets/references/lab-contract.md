@@ -26,8 +26,8 @@ Read these sources in order and take each answer from the first authoritative so
 
 ## `lab.sh`
 
-The orchestrator runs the copy inside each worktree. Make the script act on its own checkout,
-not the caller's:
+The orchestrator runs the copy on each checked-out ticket branch. Make the script act on the
+repository checkout containing that copy, not the caller's directory:
 
 ```bash
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -73,8 +73,8 @@ inserted into an already detailed prompt, using these headings in order:
 
 ## Smoke Test
 
-Commit `lab.sh` and `lab.md` on `BASE` so every ticket branch inherits them. Create a
-throwaway worktree from `BASE` at `WORKTREES/lab-smoke`, then run:
+Commit `lab.sh` and `lab.md` on `BASE` so every ticket branch inherits them. With `BASE`
+checked out and clean, run:
 
 1. `lab.sh prepare`
 2. `lab.sh checks <logs>/lab.smoke.log`
@@ -82,5 +82,6 @@ throwaway worktree from `BASE` at `WORKTREES/lab-smoke`, then run:
 4. Verify the health endpoint while the app is running.
 5. `lab.sh app-stop`
 
-If base checks are red, stop: the gate would otherwise blame every ticket for a pre-existing
-failure. Remove the smoke-test worktree after a successful run.
+Always run `app-stop`, including after a failed start. Verify that the checkout is still
+clean afterward. If base checks are red, stop: the gate would otherwise blame every ticket
+for a pre-existing failure.
