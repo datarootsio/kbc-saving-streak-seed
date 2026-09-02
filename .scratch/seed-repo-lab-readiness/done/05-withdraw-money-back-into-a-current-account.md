@@ -10,7 +10,7 @@ and withdrawing the money does not undo them. The account's withdrawals can be r
 
 **Blocked by:** 01 (Read the current time from an injected clock), 02 (Deposits carry what remains of them).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] Withdrawing reduces the savings account's money balance and raises the named current account's balance by the same amount
 - [x] A withdrawal records the savings account it left, the current account it returned to, the amount, and the moment, taken from the injected clock
@@ -21,3 +21,9 @@ and withdrawing the money does not undo them. The account's withdrawals can be r
 - [x] The entire money balance can be withdrawn in a single request, leaving the account at zero
 - [x] Asking for more than the account holds is refused with a reason naming the amount and the balance, and leaves both balances and every deposit exactly where they were
 - [x] The account's withdrawals can be read back newest first, each carrying its amount, destination and moment
+
+## Verified
+
+Reviewed the complete diff from `ticket/04-run-a-scheduled-job-on-demand` and its four commits.
+`cd backend && ./mvnw test` passed (104 tests); `cd frontend && npm run typecheck` passed under Node 24.16.0.
+On a throwaway database, Playwright used the labelled withdrawal form beside deposit, rendered a zero-amount refusal, then deposited EUR 20.00 and withdrew EUR 12.50; the styled history displayed the destination and amount. HTTP checks covered unknown savings/current accounts, a different customer's account, non-money, zero, negative, fractional-cent, missing-field and insufficient-funds refusals, full withdrawal to zero, FIFO allocations across two deposits, newest-first history, and unchanged other savings account. The backend log contained DEBUG/INFO records for accepted withdrawals and WARN lines with reasons for every refusal; browser output had no page exceptions (its one 400 console entry was the intentionally exercised zero-amount refusal).
