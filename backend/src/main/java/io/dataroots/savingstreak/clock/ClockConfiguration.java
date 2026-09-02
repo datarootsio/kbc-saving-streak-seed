@@ -2,6 +2,8 @@ package io.dataroots.savingstreak.clock;
 
 import java.time.Clock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,6 +21,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 class ClockConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(ClockConfiguration.class);
+
     /**
      * The system's clock, which is the right answer everywhere the application actually runs.
      *
@@ -28,6 +32,11 @@ class ClockConfiguration {
      */
     @Bean
     Clock applicationClock() {
-        return Clock.systemUTC();
+        Clock clock = Clock.systemUTC();
+        // Which clock the application came up on and what it reads at startup. A later slice hands
+        // out a movable one, and the first question anybody reading a wound-forward log asks is
+        // which of the two is in there.
+        log.info("application clock configured clock={} reads={}", clock, clock.instant());
+        return clock;
     }
 }

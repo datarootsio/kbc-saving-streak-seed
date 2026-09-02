@@ -7,6 +7,8 @@ import java.util.List;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.points.PointsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,8 @@ import static io.dataroots.savingstreak.rewards.RewardRefused.Kind.NO_SUCH_ACCOU
  */
 @Service
 public class RewardsService {
+
+    private static final Logger log = LoggerFactory.getLogger(RewardsService.class);
 
     private final RedemptionRepository redemptions;
     private final AccountsService accounts;
@@ -71,8 +75,16 @@ public class RewardsService {
         // One moment for the spend and the voucher, read from the application's clock and truncated
         // the way a deposit's is, so that the moment reported back is the same moment the claim is
         // later listed under — and so that a clock wound forward moves claims along with deposits.
-        Instant claimedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        return redemptions.save(Redemption.issue(savingsAccountId, reward, cost, claimedAt)).asClaimed();
+        Instant clockReads = clock.instant();
+        Instant claimedAt = clockReads.truncatedTo(ChronoUnit.MILLIS);
+        log.debug("claim takes its moment from the application clock savingsAccountId={} "
+                + "clockReads={} recordedMoment={}", savingsAccountId, clockReads, claimedAt);
+
+        ClaimedReward claimed =
+                redemptions.save(Redemption.issue(savingsAccountId, reward, cost, claimedAt)).asClaimed();
+        log.info("claim issued redemptionId={} savingsAccountId={} reward={} pointsSpent={} claimedAt={}",
+                claimed.id(), savingsAccountId, reward.name(), cost, claimed.claimedAt());
+        return claimed;
     }
 
     /**

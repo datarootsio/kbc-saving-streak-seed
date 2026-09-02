@@ -10,6 +10,8 @@ import java.util.Map;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.points.PointsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,8 @@ import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NO_SUCH_ACC
  */
 @Service
 public class DepositsService {
+
+    private static final Logger log = LoggerFactory.getLogger(DepositsService.class);
 
     /** Euros are quoted to the cent, so an amount carrying more places than this is not one. */
     private static final int DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY = 2;
@@ -70,9 +74,20 @@ public class DepositsService {
         // To the millisecond, so that the moment reported back to whoever made the deposit is the
         // same moment the deposit is later listed under. A finer reading would only be a moment the
         // application could not hold on to, and one deposit would appear to have happened twice.
-        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        Instant clockReads = clock.instant();
+        Instant now = clockReads.truncatedTo(ChronoUnit.MILLIS);
+        // Both readings, so that whoever reads this log can see that the moment came off the
+        // application's clock and what the truncation did to it, rather than taking the recorded
+        // moment on trust.
+        log.debug("deposit takes its moment from the application clock savingsAccountId={} "
+                + "clockReads={} recordedMoment={}", savingsAccountId, clockReads, now);
+
         Deposit deposit = deposits.save(new Deposit(savingsAccountId, fromCurrentAccountId, amount, now));
         long pointsEarned = points.creditBasePointsFor(savingsAccountId, deposit.getId(), amount, now);
+        log.info("deposit accepted depositId={} savingsAccountId={} fromCurrentAccountId={} "
+                        + "amount={} pointsEarned={} depositedAt={}",
+                deposit.getId(), savingsAccountId, fromCurrentAccountId, asMoney(amount),
+                pointsEarned, deposit.getDepositedAt());
         return new RecordedDeposit(deposit.getId(), deposit.getAmount(), pointsEarned, deposit.getDepositedAt());
     }
 
