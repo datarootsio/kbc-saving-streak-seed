@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.web;
 
+import io.dataroots.savingstreak.clock.ClockRefused;
 import io.dataroots.savingstreak.deposits.DepositRefused;
 import io.dataroots.savingstreak.rewards.RewardRefused;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,21 @@ class RefusalsAsHttp {
         };
         return ResponseEntity.status(status)
                 .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));
+    }
+
+    /**
+     * A move of the clock the application will not make. Always a bad request: the clock is in no
+     * unexpected state, somebody asked it to go somewhere it does not go, and the sentence that comes
+     * back says why not.
+     *
+     * <p>Handled here alongside the refusals a customer can cause even though only the development
+     * profile can raise it, so that every refusal in this application answers in one shape and there
+     * is one place to read what those shapes are.
+     */
+    @ExceptionHandler(ClockRefused.class)
+    ResponseEntity<ProblemDetail> clockRefused(ClockRefused refusal) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, refusal.getMessage()));
     }
 
     /**
