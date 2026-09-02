@@ -101,6 +101,8 @@ class SavingsAccountController {
     @GetMapping("/{savingsAccountId}/withdrawals")
     List<WithdrawalResponse> withdrawalsFrom(@PathVariable long savingsAccountId) {
         if (!accounts.savingsAccountExists(savingsAccountId)) {
+            log.warn("withdrawal history rejected savingsAccountId={} reason={}", savingsAccountId,
+                    AccountsService.noSuchSavingsAccount(savingsAccountId));
             throw noSuchSavingsAccount(savingsAccountId);
         }
         return withdrawals.withdrawalsFrom(savingsAccountId).stream().map(WithdrawalResponse::of).toList();
@@ -161,12 +163,11 @@ class SavingsAccountController {
 
     private BigDecimal withdrawalAmountIn(long savingsAccountId, String amount) {
         try {
-            return new BigDecimal(amount.trim());
-        } catch (NumberFormatException notANumber) {
+            return amountIn(amount);
+        } catch (ResponseStatusException notAnAmountOfMoney) {
             log.warn("withdrawal rejected savingsAccountId={} amount={} reason=not an amount of money",
                     savingsAccountId, amount);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "\"" + amount
-                    + "\" is not an amount of money. Write it in digits with a full stop, like 25.00.");
+            throw notAnAmountOfMoney;
         }
     }
 
