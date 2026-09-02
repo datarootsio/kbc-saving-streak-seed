@@ -94,3 +94,20 @@ points, and an unknown reward. `0.00` through the web form rendered its reason u
    gap that predates this branch and this ticket's flow has no refusal of its own — reading a clock
    cannot fail — so it is not held against this ticket. Ticket 06 introduces refusals of its own and
    should not repeat it.
+
+### Independently re-verified
+
+A second reviewer repeated the above on a fresh application instance (own throwaway database, port
+8080) rather than reading the evidence above. `./mvnw test`: 62 tests, 0 failures, `TimeComesFromTheClockApiTest`
+4/4. `npm run typecheck` clean. `git diff 2d690aa..HEAD -- backend/src/test` adds only
+`clock/TimeComesFromTheClockApiTest.java` — no existing test file was touched, so "passes unchanged"
+is literal.
+
+A deposit of 12.34 answered `"depositedAt":"2026-09-02T08:58:05.320Z"`, bracketed by host readings of
+`08:58:05.272116Z` and `08:58:05.545570Z`; the DEBUG line behind it reads
+`clockReads=2026-09-02T08:58:05.320936Z recordedMoment=2026-09-02T08:58:05.320Z`, so the read and the
+truncation are both on the record. A `CHARITY_DONATION` claim answered `08:58:10.932Z` off the same
+clock. Three deposits into savings account 2 listed 4/3/2, newest first. All seven deposit refusals,
+the unknown-savings-account 404 and the not-enough-points claim answered as problem documents with
+their reason in `detail`, and left the balances at `2461.66 / 12.34 / 6.00` — exactly the sum of what
+was actually accepted.
