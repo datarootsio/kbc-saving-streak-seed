@@ -46,6 +46,10 @@ BASE_BRANCH=""
 PARENT_REF=""
 APP_STARTED_BY_US=0
 APP_DB=""
+APP_BACKEND_LOG=""
+APP_FRONTEND_LOG=""
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'USAGE'
@@ -91,6 +95,22 @@ Options:
   -y, --yes            Skip the confirmation prompt
   -n, --dry-run        Print what would run and exit
   -h, --help           This
+
+Logs:
+  Everything a run produces lands in <feature>/logs, named per ticket and per attempt so
+  nothing is overwritten and a finished run can be read back in order:
+
+    <ticket>.implement.<n>.log     what the implementer ran, and what it got back
+    <ticket>.review.<n>.log        the same for the reviewer
+    <ticket>.*.jsonl               the untruncated transcript behind each of those
+    <ticket>.checks.<n>.log        full mvnw test and typecheck output for that attempt
+    <ticket>.app.<n>.backend.log   the application instance that attempt was reviewed on
+    <ticket>.app.<n>.frontend.log  the Vite dev server for it
+    <ticket>.app.<n>.browser.log   console and page errors, if the reviewer drove the page
+
+  Both prompts name these paths, so the sessions read them rather than guessing. The app
+  under review runs with its own package, the web layer and Hibernate's SQL at DEBUG.
+  The directory is gitignored.
 
 Permissions:
   The default (acceptEdits) auto-approves file edits but still asks before running
@@ -176,24 +196,36 @@ wait_for() {
 
 # The app under review gets its own throwaway database, so a reviewer making deposits
 # does not spend the demo data a trainer is about to present with.
+# The prefix is per ticket and per attempt, so a reviewer reads the boot it is actually
+# reviewing rather than whatever last overwrote a shared app-backend.log.
+#
+# The app is started chattier than it runs in normal use: its own package at DEBUG, the
+# web layer at DEBUG for request and response lines, and Hibernate's SQL. A reviewer that
+# sees a wrong number or a 500 can then answer "why" from the log instead of guessing.
 start_app() {
+    local prefix="$1"
+    APP_BACKEND_LOG="$prefix.backend.log"
+    APP_FRONTEND_LOG="$prefix.frontend.log"
     if listening_on 8080 && listening_on 5173; then
-        echo "  app already running; leaving it alone"
+        echo "  app already running; leaving it alone (no logs captured for it)"
         APP_STARTED_BY_US=0
         return 0
     fi
     APP_STARTED_BY_US=1
     APP_DB="$(mktemp -d)/saving-streak.db"
     echo "  starting app (database: $APP_DB)"
+    echo "  backend log:  $APP_BACKEND_LOG"
+    echo "  frontend log: $APP_FRONTEND_LOG"
     ( cd backend && SAVING_STREAK_DB="$APP_DB" ./mvnw -q spring-boot:run \
-        > "$LOG_DIR/app-backend.log" 2>&1 & )
-    ( cd frontend && npm run dev > "$LOG_DIR/app-frontend.log" 2>&1 & )
+        -Dspring-boot.run.arguments="--logging.level.io.dataroots.savingstreak=DEBUG --logging.level.org.springframework.web=DEBUG --logging.level.org.hibernate.SQL=DEBUG" \
+        > "$APP_BACKEND_LOG" 2>&1 & )
+    ( cd frontend && npm run dev > "$APP_FRONTEND_LOG" 2>&1 & )
     if ! wait_for "$BACKEND_URL/api/customers" 180; then
-        echo "  backend did not come up; see $LOG_DIR/app-backend.log" >&2
+        echo "  backend did not come up; see $APP_BACKEND_LOG" >&2
         return 1
     fi
     if ! wait_for "$FRONTEND_URL/" 60; then
-        echo "  frontend did not come up; see $LOG_DIR/app-frontend.log" >&2
+        echo "  frontend did not come up; see $APP_FRONTEND_LOG" >&2
         return 1
     fi
     echo "  app is up"
@@ -209,13 +241,26 @@ stop_app() {
 
 trap stop_app EXIT
 
+# Not -q. A rejected implementer is handed this log, and Maven's quiet mode drops the
+# assertion text and the stack trace, which is the only part worth reading.
 run_checks() {
-    local label="$1"
-    echo "--- checks ($label)"
-    ( cd backend && ./mvnw -q test ) || return 1
-    ( cd frontend && npm run typecheck --silent ) || return 1
+    local label="$1" log="$2"
+    echo "--- checks ($label) -> $log"
+    {
+        echo "=== backend: ./mvnw test"
+        ( cd backend && ./mvnw test )
+    } > "$log" 2>&1 || { echo "    backend tests failed; see $log" >&2; return 1; }
+    {
+        echo
+        echo "=== frontend: npm run typecheck"
+        ( cd frontend && npm run typecheck )
+    } >> "$log" 2>&1 || { echo "    frontend typecheck failed; see $log" >&2; return 1; }
     echo "--- checks passed ($label)"
 }
+
+# Surefire writes a .txt per test class with the failure and its stack trace. Naming the
+# directory is more use to an agent than any amount of Maven console output.
+SUREFIRE_DIR="backend/target/surefire-reports"
 
 # One branch per ticket, reused across rework attempts so the branch holds the whole
 # story of the ticket rather than only its last try.
@@ -241,18 +286,27 @@ land_branch() {
     fi
 }
 
+# Two logs per session. The .jsonl is the whole transcript as the CLI emitted it;
+# the .log is that rendered readable. `--verbose` alone would log only the final
+# message, which never answers the question you actually have about a bad session,
+# namely what it ran and what it got back.
 claude_session() {
     local log="$1"
-    local args=(-p --permission-mode "$PERMISSION_MODE" --verbose)
+    local jsonl="${log%.log}.jsonl"
+    local args=(-p --permission-mode "$PERMISSION_MODE" --verbose
+                --output-format stream-json)
     if [[ -n "$MODEL" ]]; then
         args+=(--model "$MODEL")
     fi
     # No --continue and no --resume: every session starts with a cold context.
-    claude "${args[@]}" 2>&1 | tee "$log"
+    claude "${args[@]}" 2>&1 \
+        | tee "$jsonl" \
+        | python3 "$SCRIPT_DIR/format-transcript.py" \
+        | tee "$log"
 }
 
 implementer_prompt() {
-    local ticket="$1" attempt="$2" branch="$3"
+    local ticket="$1" attempt="$2" branch="$3" log_prefix="$4"
     cat <<PROMPT
 /mattpocock-skills:implement $ticket
 
@@ -274,6 +328,49 @@ Branch:
 - Commit your work here. Do not switch, rebase, merge or delete any branch, and do not
   push. The script handles all of that once a reviewer has accepted the work.
 
+Logs, and how to find out what is actually happening:
+- Run the backend suite with \`cd backend && ./mvnw test\`. When something fails, do not
+  read only the console summary: \`$SUREFIRE_DIR/<test class>.txt\` holds the
+  assertion text and the full stack trace for that class, which is the part worth reading.
+- The frontend check is \`cd frontend && npm run typecheck\`.
+- If you need to see the running application, start it yourself against a throwaway
+  database so you do not spend the demo data, and keep its log where you can read it:
+      cd backend && SAVING_STREAK_DB=\$(mktemp -d)/s.db ./mvnw -q spring-boot:run \\
+        -Dspring-boot.run.arguments="--logging.level.io.dataroots.savingstreak=DEBUG --logging.level.org.springframework.web=DEBUG --logging.level.org.hibernate.SQL=DEBUG" \\
+        > $log_prefix.dev.$attempt.backend.log 2>&1 &
+      cd frontend && npm run dev > $log_prefix.dev.$attempt.frontend.log 2>&1 &
+  The API is then at $BACKEND_URL and the page at $FRONTEND_URL. Stop both when you are
+  done. A 500 from the API is a stack trace in that backend log; go and read it.
+- If this is not attempt 1, the earlier attempts left logs beside the ticket:
+  \`$log_prefix.implement.<n>.log\` is what the previous implementer did,
+  \`$log_prefix.review.<n>.log\` is what the reviewer ran and saw, and
+  \`$log_prefix.checks.<n>.log\` is the build output that rejected it. The reviewer's log
+  is usually the fastest way to reproduce the failure they are describing. Each has a
+  \`.jsonl\` twin with the untruncated transcript if the rendering has cut something you
+  need.
+
+Logging is part of the feature, not an extra:
+- Anything you implement must log its own flow. The script runs the application with
+  \`io.dataroots.savingstreak\` at DEBUG and tells the reviewer to review from that log,
+  so a feature that logs nothing leaves the reviewer with response bodies and guesswork
+  and will be sent back.
+- Use SLF4J, never System.out:
+      private static final Logger log = LoggerFactory.getLogger(Thing.class);
+- What to log, at which level:
+    INFO   one line per business event, with its outcome and the values that decided it
+           (amounts, ids, balances, points, which branch was taken).
+    WARN   every refusal or rejected request, and the reason it was refused.
+    DEBUG  the inputs and intermediate values behind a decision, so someone reading the
+           log can recompute the result by hand.
+    ERROR  unexpected failures, with the exception, not a swallowed message.
+- Log the reason, not only the fact: "rejected deposit: amount 0" beats "deposit failed".
+- Keep the lines greppable and machine-readable, in the style of the surrounding code:
+      log.info("deposit accepted customerId={} cents={} pointsEarned={} newBalance={}",
+               ...);
+- Do not log secrets or full request bodies, and do not log inside a tight loop.
+- If you are the first to add logging to a class or package, that is expected; set the
+  pattern rather than skipping it.
+
 Rules:
 - Work only on this ticket. Do not start, edit or tick off any other ticket file.
 - Do not weaken, skip or delete existing tests to make something pass.
@@ -294,6 +391,7 @@ PROMPT
 
 reviewer_prompt() {
     local ticket="$1" attempt="$2" playwright="$3" branch="$4" base="$5"
+    local app_prefix="$6" checks_log="$7"
     cat <<PROMPT
 You are reviewing somebody else's work. You did not write this code and you should not
 trust it. The ticket is $ticket, on attempt $attempt. Read it in full, then read
@@ -319,6 +417,30 @@ Do two independent things, in this order.
    - Either way, try the refusals and edge cases the ticket names, not only the happy
      path. A criterion you did not exercise is a criterion you cannot tick.
    Run the full backend test suite and the frontend typecheck yourself too.
+
+   The application is logging for you. Read the logs; do not review from response bodies
+   alone.
+   - \`$app_prefix.backend.log\` is this exact application instance, started with its own
+     package, the web layer and Hibernate's SQL all at DEBUG. Every request it served is
+     in there, along with the SQL it ran and the stack trace behind any 500.
+   - \`$app_prefix.frontend.log\` is the Vite dev server: build and transform errors show
+     up here and nowhere else.
+   - \`$checks_log\` is the build the script already ran to let this ticket reach you.
+     Per-class failures and stack traces are in \`$SUREFIRE_DIR/*.txt\`.
+   - If you drive the page with Playwright, subscribe to the browser's own output before
+     you navigate and write it to \`$app_prefix.browser.log\`, then read it:
+         page.on("console", lambda m: log(f"[console:{m.type}] {m.text}"))
+         page.on("pageerror", lambda e: log(f"[pageerror] {e}"))
+         page.on("requestfailed", lambda r: log(f"[requestfailed] {r.url} {r.failure}"))
+     A screenshot that looks right while the console is full of errors is not a pass.
+   - Quote what you actually read from these logs in whichever section you write. A claim
+     with a log line behind it is worth far more to the next person than an assertion.
+   - The implementer was required to log the flow it built: business events and their
+     deciding values at INFO, refusals and their reason at WARN, the inputs behind a
+     decision at DEBUG. Check that it did. If you exercise the new behaviour and
+     \`$app_prefix.backend.log\` shows nothing from \`io.dataroots.savingstreak\` about
+     it, or a refusal you triggered left no line saying why, that is a missing acceptance
+     criterion: send the ticket back and say which flow was silent.
 
 Then decide, and act on the decision. Commit whichever you do to $branch; do not switch
 branches, merge, rebase, delete a branch or push. The ticket keeps this branch.
@@ -423,8 +545,9 @@ mkdir -p "$ISSUES_DIR" "$REVIEW_DIR" "$DONE_DIR" "$LOG_DIR"
 pick_node
 
 echo "=== baseline checks before starting"
-if ! run_checks baseline; then
+if ! run_checks baseline "$LOG_DIR/baseline.checks.log"; then
     echo "the repository is already failing its own checks; fix that before looping" >&2
+    echo "see $LOG_DIR/baseline.checks.log" >&2
     exit 1
 fi
 
@@ -451,7 +574,7 @@ for ticket in "${selected[@]}"; do
     while [[ $attempt -le $MAX_ATTEMPTS ]]; do
         echo
         echo "=== $name: implementing (attempt $attempt/$MAX_ATTEMPTS)"
-        implementer_prompt "$ISSUES_DIR/$file" "$attempt" "$branch" \
+        implementer_prompt "$ISSUES_DIR/$file" "$attempt" "$branch" "$LOG_DIR/$name" \
             | claude_session "$LOG_DIR/$name.implement.$attempt.log" || true
 
         if [[ ! -f "$REVIEW_DIR/$file" ]]; then
@@ -462,16 +585,20 @@ for ticket in "${selected[@]}"; do
         echo "    -> to-review"
 
         # Cheap objective gate before spending a review session on a red build.
-        if ! run_checks "$name attempt $attempt" > "$LOG_DIR/$name.checks.$attempt.log" 2>&1; then
+        if ! run_checks "$name attempt $attempt" "$LOG_DIR/$name.checks.$attempt.log"; then
             echo "    build is red; sending back without review"
             send_back "$REVIEW_DIR/$file" "$attempt" "automated checks" \
 "The backend test suite or the frontend typecheck failed when this ticket reached
 review, so no reviewer looked at it. Make both pass before sending it back.
 
+The full output of that run is in \`$LOG_DIR/$name.checks.$attempt.log\`. Read it before
+you change anything; the tail below is only the last of it. Per-class failures and their
+stack traces are in \`$SUREFIRE_DIR/*.txt\`.
+
 Tail of the failing run:
 
 \`\`\`
-$(tail -40 "$LOG_DIR/$name.checks.$attempt.log")
+$(tail -60 "$LOG_DIR/$name.checks.$attempt.log")
 \`\`\`"
             attempt=$((attempt + 1))
             continue
@@ -479,12 +606,13 @@ $(tail -40 "$LOG_DIR/$name.checks.$attempt.log")
 
         echo
         echo "=== $name: reviewing (attempt $attempt/$MAX_ATTEMPTS)"
-        if ! start_app; then
+        if ! start_app "$LOG_DIR/$name.app.$attempt"; then
             echo "    could not start the app for review" >&2
             settled="app would not start"
             break
         fi
-        reviewer_prompt "$REVIEW_DIR/$file" "$attempt" "$PLAYWRIGHT_NOTE" "$branch" "$ticket_base" \
+        reviewer_prompt "$REVIEW_DIR/$file" "$attempt" "$PLAYWRIGHT_NOTE" "$branch" \
+            "$ticket_base" "$LOG_DIR/$name.app.$attempt" "$LOG_DIR/$name.checks.$attempt.log" \
             | claude_session "$LOG_DIR/$name.review.$attempt.log" || true
         stop_app
 

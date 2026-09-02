@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.rewards;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -26,11 +27,13 @@ public class RewardsService {
     private final RedemptionRepository redemptions;
     private final AccountsService accounts;
     private final PointsService points;
+    private final Clock clock;
 
-    RewardsService(RedemptionRepository redemptions, AccountsService accounts, PointsService points) {
+    RewardsService(RedemptionRepository redemptions, AccountsService accounts, PointsService points, Clock clock) {
         this.redemptions = redemptions;
         this.accounts = accounts;
         this.points = points;
+        this.clock = clock;
     }
 
     /** Everything points can be spent on, cheapest first. The same list for every customer. */
@@ -65,9 +68,10 @@ public class RewardsService {
             throw new RewardRefused(NOT_ENOUGH_POINTS, reward.title() + " costs " + cost
                     + " points, and this account has " + points.balanceOf(savingsAccountId) + ".");
         }
-        // One moment for the spend and the voucher, truncated the way a deposit's is, so that the
-        // moment reported back is the same moment the claim is later listed under.
-        Instant claimedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        // One moment for the spend and the voucher, read from the application's clock and truncated
+        // the way a deposit's is, so that the moment reported back is the same moment the claim is
+        // later listed under — and so that a clock wound forward moves claims along with deposits.
+        Instant claimedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         return redemptions.save(Redemption.issue(savingsAccountId, reward, cost, claimedAt)).asClaimed();
     }
 

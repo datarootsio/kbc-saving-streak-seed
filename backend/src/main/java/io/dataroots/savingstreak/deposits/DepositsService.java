@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.deposits;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -29,11 +30,13 @@ public class DepositsService {
     private final DepositRepository deposits;
     private final AccountsService accounts;
     private final PointsService points;
+    private final Clock clock;
 
-    DepositsService(DepositRepository deposits, AccountsService accounts, PointsService points) {
+    DepositsService(DepositRepository deposits, AccountsService accounts, PointsService points, Clock clock) {
         this.deposits = deposits;
         this.accounts = accounts;
         this.points = points;
+        this.clock = clock;
     }
 
     /**
@@ -61,10 +64,13 @@ public class DepositsService {
         // event, and later slices date them against each other: expiry runs off the age of the
         // points, the loyalty bonus off the age of the deposit.
         //
+        // Read from the application's clock rather than the machine's, so that a moment wound
+        // forward moves the deposits and the points it dates together with everything else.
+        //
         // To the millisecond, so that the moment reported back to whoever made the deposit is the
         // same moment the deposit is later listed under. A finer reading would only be a moment the
         // application could not hold on to, and one deposit would appear to have happened twice.
-        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         Deposit deposit = deposits.save(new Deposit(savingsAccountId, fromCurrentAccountId, amount, now));
         long pointsEarned = points.creditBasePointsFor(savingsAccountId, deposit.getId(), amount, now);
         return new RecordedDeposit(deposit.getId(), deposit.getAmount(), pointsEarned, deposit.getDepositedAt());

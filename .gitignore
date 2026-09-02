@@ -8,3 +8,7 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+
+# Run logs from scripts/implement-tickets.sh. Regenerated every run, and leaving them
+# untracked would trip the script's own clean-working-tree gate on the next run.
+.scratch/*/logs/

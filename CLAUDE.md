@@ -20,3 +20,14 @@ The five canonical triage roles, each label string equal to its name. See `docs/
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Logging
+
+Every feature logs its own flow; this is part of the work, not an extra. A reviewer (and
+the next agent) reads `io.dataroots.savingstreak` at DEBUG to see what the app actually
+did, so silent code is unreviewable.
+
+Use SLF4J (`LoggerFactory.getLogger(Thing.class)`), never `System.out`. One INFO line per
+business event with the values that decided it, WARN on every refusal with its reason,
+DEBUG for the inputs behind a decision, ERROR with the exception for unexpected failures.
+Keep lines greppable: `log.info("deposit accepted customerId={} cents={} points={}", ...)`.
