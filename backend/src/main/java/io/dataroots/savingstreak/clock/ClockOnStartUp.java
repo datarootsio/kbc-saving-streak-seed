@@ -36,13 +36,32 @@ class ClockOnStartUp implements SmartInitializingSingleton {
     @Override
     public void afterSingletonsInstantiated() {
         offsets.findById(ClockOffset.THE_ONE_ROW).ifPresentOrElse(
-                offset -> {
-                    clock.moveForwardTo(offset.getMovedForwardByDays());
-                    log.info("clock put back where it was left movedForwardByDays={} reading={}",
-                            offset.getMovedForwardByDays(), clock.instant());
-                },
+                offset -> putTheClockBack(offset.getMovedForwardByDays()),
                 // The ordinary case, and worth a line all the same: it says the question was asked,
                 // so a clock reading today is not blamed on a step nobody can see.
                 () -> log.debug("clock was never moved movedForwardByDays=0 reading={}", clock.instant()));
+    }
+
+    /**
+     * Moves the clock to where the record says, unless the record says somewhere the clock does not
+     * go.
+     *
+     * <p>Only {@link ClockService} writes that row and it refuses anything but a move forward within
+     * range, so a figure outside it means the file was edited by hand. Read back without asking, it
+     * would start the application behind the real moment — the one thing moving the clock is not
+     * allowed to do — and every rule about the age of a record would be quietly wrong for the rest of
+     * the session. Refused here instead, out loud, and the application comes up at the real moment.
+     */
+    private void putTheClockBack(long movedForwardByDays) {
+        if (movedForwardByDays < 0
+                || movedForwardByDays > ClockService.MOST_DAYS_THE_CLOCK_CAN_BE_MOVED) {
+            log.warn("clock not put back: the record says it was moved {} days, which is not a move "
+                            + "forward of at most {} days, so it is left at the real moment {}",
+                    movedForwardByDays, ClockService.MOST_DAYS_THE_CLOCK_CAN_BE_MOVED, clock.instant());
+            return;
+        }
+        clock.moveForwardTo(movedForwardByDays);
+        log.info("clock put back where it was left movedForwardByDays={} reading={}",
+                movedForwardByDays, clock.instant());
     }
 }

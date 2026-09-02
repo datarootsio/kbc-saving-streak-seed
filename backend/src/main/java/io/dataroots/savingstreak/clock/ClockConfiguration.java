@@ -4,7 +4,8 @@ import java.time.Clock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -56,15 +57,21 @@ class ClockConfiguration {
     }
 
     /**
-     * Says which clock the application came up on and what it reads, once everything has been wired.
+     * Says which clock the application came up on and what it reads.
      *
      * <p>The clock is injected rather than the one built above being logged, which is the difference
      * between reporting what the application is using and reporting what this class offered it: a
      * test that supplies its own clock overrides the bean, and a start-up line naming the one that
      * was overridden would be the first thing to mislead whoever is reading a wound-forward log.
+     *
+     * <p>Written on the started event rather than as soon as the beans exist, so that it is genuinely
+     * after {@link ClockOnStartUp} has put a movable clock back where it was left. Both would
+     * otherwise run in whatever order they happened to be registered in, and the line would report a
+     * clock standing at today in an application that had already been wound a year forward — exactly
+     * the reading it exists to save somebody from.
      */
     @Bean
-    SmartInitializingSingleton theClockInUse(Clock clock) {
-        return () -> log.info("application clock in use clock={} reads={}", clock, clock.instant());
+    ApplicationListener<ApplicationStartedEvent> theClockInUse(Clock clock) {
+        return started -> log.info("application clock in use clock={} reads={}", clock, clock.instant());
     }
 }
