@@ -9,12 +9,21 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
 /**
- * One movement of money out of a current account and into a savings account.
+ * One movement of money out of a current account and into a savings account, and how much of it is
+ * still sitting there.
  *
  * <p>The two accounts are held by identifier rather than by association: they belong to the Accounts
  * module, and a deposit only needs to name them. Neither is written to from here — the money comes
  * out of the current account by asking Accounts to take it, and the savings account's balance is
  * derived from the deposits made into it rather than kept anywhere.
+ *
+ * <p>What was put in is written once and never again — a deposit's amount is what happened, and what
+ * it earned was decided from it. What remains starts out as the whole of it and is the figure the
+ * savings account's balance is summed from, so that money leaving the account reduces the deposits it
+ * came out of rather than being subtracted from a total that no longer agrees with them. The two
+ * figures are identical until something can take money back out, which is the whole reason for
+ * keeping them apart: the day a withdrawal draws a deposit down, "how much of this deposit is still
+ * here" is a question about that deposit, and a balance cannot answer it.
  *
  * <p>Package-private, like the repository: what the Deposits module records, and how, is nobody
  * else's business.
@@ -33,6 +42,15 @@ class Deposit {
 
     private BigDecimal amount;
 
+    /**
+     * How much of the amount is still in the savings account.
+     *
+     * <p>Nullable in the database only because a deposit recorded before this column existed has no
+     * value in it. {@link DepositsOnStartUp} fills those in before the application serves a single
+     * request, so nothing that reads this ever sees a null.
+     */
+    private BigDecimal remainingAmount;
+
     private Instant depositedAt;
 
     protected Deposit() {
@@ -43,6 +61,8 @@ class Deposit {
         this.savingsAccountId = savingsAccountId;
         this.sourceCurrentAccountId = sourceCurrentAccountId;
         this.amount = amount;
+        // All of it, because none of it has gone anywhere yet.
+        this.remainingAmount = amount;
         this.depositedAt = depositedAt;
     }
 
@@ -52,6 +72,10 @@ class Deposit {
 
     BigDecimal getAmount() {
         return amount;
+    }
+
+    BigDecimal getRemainingAmount() {
+        return remainingAmount;
     }
 
     Instant getDepositedAt() {

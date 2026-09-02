@@ -83,6 +83,11 @@ public class DepositsService {
                 + "clockReads={} recordedMoment={}", savingsAccountId, clockReads, now);
 
         Deposit deposit = deposits.save(new Deposit(savingsAccountId, fromCurrentAccountId, amount, now));
+        // What the deposit starts out with still in it, which is all of it. The account's money
+        // balance is summed from this figure rather than from the amount, so a reader adding the
+        // balance up by hand needs to see it recorded rather than assume it.
+        log.debug("deposit records what remains of it depositId={} amount={} remainingAmount={}",
+                deposit.getId(), asMoney(deposit.getAmount()), asMoney(deposit.getRemainingAmount()));
         long pointsEarned = points.creditBasePointsFor(savingsAccountId, deposit.getId(), amount, now);
         log.info("deposit accepted depositId={} savingsAccountId={} fromCurrentAccountId={} "
                         + "amount={} pointsEarned={} depositedAt={}",
@@ -200,8 +205,13 @@ public class DepositsService {
     }
 
     /**
-     * What the savings account holds, summed from the deposits made into it. Derived on every read,
-     * so there is no stored figure that could drift away from them.
+     * What the savings account holds, summed from what remains of the deposits made into it. Derived
+     * on every read, so there is no stored figure that could drift away from them.
+     *
+     * <p>What remains rather than what was put in, which is the same figure today and will not be
+     * once money can go back out: a withdrawal draws its deposits down, and a balance summed from
+     * what each one still holds is then still the money that is actually there. Summing what was put
+     * in would report money that has already left.
      */
     @Transactional(readOnly = true)
     public BigDecimal moneyBalanceOf(long savingsAccountId) {
@@ -209,8 +219,16 @@ public class DepositsService {
         // whole numbers. SQLite has no decimal type and keeps an amount as a float, so a sum it
         // worked out itself would accumulate in floating point; adding the amounts back as decimals
         // keeps the cents the customer typed.
-        return deposits.findBySavingsAccountId(savingsAccountId).stream()
-                .map(Deposit::getAmount)
+        List<Deposit> made = deposits.findBySavingsAccountId(savingsAccountId);
+        BigDecimal balance = made.stream()
+                .map(Deposit::getRemainingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // How many terms went into the figure, so that a balance can be checked against the deposits
+        // logged into the same account rather than taken on trust. The terms themselves are not
+        // listed: this runs on every read of an account, and one line per deposit would bury the
+        // business events in a page load.
+        log.debug("money balance summed from what remains savingsAccountId={} deposits={} balance={}",
+                savingsAccountId, made.size(), asMoney(balance));
+        return balance;
     }
 }
