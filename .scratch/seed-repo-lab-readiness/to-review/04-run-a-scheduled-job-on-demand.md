@@ -9,11 +9,11 @@ is reachable.
 
 **Blocked by:** 03 (Advance the clock in the development profile).
 
-**Status:** ready-for-agent
+Status: needs-review
 
-- [ ] Scheduling is enabled, so a job annotated as scheduled anywhere in the application actually runs
-- [ ] A scheduled job can be run immediately by name while the development profile is active
-- [ ] The jobs available to run can be listed, so nobody has to guess a name
-- [ ] Naming a job that does not exist is refused with a reason saying so
-- [ ] Verified against a job defined in test scope, since the application deliberately ships none
-- [ ] Neither control exists when the development profile is not active
+- [x] Scheduling is enabled, so a job annotated as scheduled anywhere in the application actually runs
+- [x] A scheduled job can be run immediately by name while the development profile is active
+- [x] The jobs available to run can be listed, so nobody has to guess a name
+- [x] Naming a job that does not exist is refused with a reason saying so
+- [x] Verified against a job defined in test scope, since the application deliberately ships none
+- [x] Neither control exists when the development profile is not active
