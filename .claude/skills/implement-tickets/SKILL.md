@@ -2,16 +2,17 @@
 name: implement-tickets
 description: Drive a feature's tickets through implement -> review -> done, one fresh sub-agent per session, with rework.
 disable-model-invocation: true
-argument-hint: "[--feature DIR] [--from NN] [--only NN] [--max-attempts N] [--merge] [--resume] [--keep-going] [--model NAME] [-y]"
+argument-hint: "[--feature DIR] [--from NN] [--only NN] [--max-attempts N] [--merge] [--resume] [--keep-going] [--model NAME] [--effort LEVEL] [-y]"
 ---
 
 You are the orchestrator. You never implement and never review; you spawn a fresh
 sub-agent for each of those and verify what it left behind. A sub-agent that just wrote
 the code is the worst possible judge of whether it works, so the implementer and the
 reviewer of one attempt are always two different sub-agents, each with a cold context:
-every `Agent` call is a new `general-purpose` agent (`model` set to `--model` when given).
-Never `fork`, never `SendMessage` an earlier sub-agent, never do their work yourself
-when they fall short.
+every `Agent` call is a new sub-agent. `subagent_type` is `ticket-driver-<effort>` when
+`--effort` was given and `general-purpose` otherwise, and `model` is set to `--model` when
+given. Never `fork`, never `SendMessage` an earlier sub-agent, never do their work
+yourself when they fall short.
 
 Never take a sub-agent's word for anything. What decides each step is which folder the
 ticket file actually ended up in, and a build you ran yourself.
@@ -45,7 +46,9 @@ has `issues/`; ask if there are several); `--from NN` start at ticket NN; `--onl
 just NN; `--max-attempts N` (default 3); `--merge` fold each accepted branch into the base
 with `--no-ff`; `--resume` also pick up tickets already sitting in `to-review/` and start
 them at the review step; `--keep-going` carry on after a ticket fails; `--model NAME`
-model for every sub-agent; `-y` skip the confirmation.
+model for every sub-agent; `--effort LEVEL` thinking effort for every sub-agent, one of
+`low`, `medium`, `high`, `max` (see the driver agents in Setup); `-y` skip the
+confirmation.
 
 ## Setup
 
@@ -59,9 +62,16 @@ model for every sub-agent; `-y` skip the confirmation.
 3. **The lab.** Read `lab-contract.md`. Reuse `FEATURE_DIR/lab.sh` and `lab.md` when they
    exist and still match the repository; otherwise derive them, commit them on `BASE`,
    and run the contract's smoke test. `LAB` is the content of `lab.md`.
-4. Print the plan (base branch, feature directory, on-accept policy, model, max attempts,
-   the ticket list) and, unless `-y`, wait for the user to confirm.
-5. `mkdir -p FEATURE_DIR/logs`. `PARENT = BASE`.
+4. **The driver agents**, only when `--effort` was given. The `Agent` tool takes a model
+   but not an effort, so effort can only come from an agent definition:
+   `.claude/agents/ticket-driver-<level>.md`, one per level, `model: inherit` so `--model`
+   still decides the model, and `effort: <level>`. Check that the one for this run's level
+   exists. If it does not, write the four levels, commit them on `BASE`, and stop the run
+   there: the agent registry is read once when a session starts, so a definition written
+   now does not resolve until the next session. Say that, and that a re-run picks it up.
+5. Print the plan (base branch, feature directory, on-accept policy, model, effort, max
+   attempts, the ticket list) and, unless `-y`, wait for the user to confirm.
+6. `mkdir -p FEATURE_DIR/logs`. `PARENT = BASE`.
 
 ## Per ticket
 
