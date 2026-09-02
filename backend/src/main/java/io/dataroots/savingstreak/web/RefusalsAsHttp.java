@@ -2,6 +2,8 @@ package io.dataroots.savingstreak.web;
 
 import io.dataroots.savingstreak.clock.ClockRefused;
 import io.dataroots.savingstreak.deposits.DepositRefused;
+import io.dataroots.savingstreak.jobs.JobFailed;
+import io.dataroots.savingstreak.jobs.JobRefused;
 import io.dataroots.savingstreak.rewards.RewardRefused;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -51,6 +53,32 @@ class RefusalsAsHttp {
     ResponseEntity<ProblemDetail> clockRefused(ClockRefused refusal) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, refusal.getMessage()));
+    }
+
+    /**
+     * A request to run a job the application will not act on — no job answers to that name, or more
+     * than one does. A bad request rather than a missing page: the endpoint is there, it is the name
+     * in it that is wrong, and the sentence that comes back lists the names that are right.
+     *
+     * <p>Told apart from a 404 deliberately. Outside the development profile these paths do not
+     * exist at all, and a wrong name answering with the same status as a missing route would leave a
+     * participant unable to tell "you spelled it wrong" from "this application has no such feature".
+     */
+    @ExceptionHandler(JobRefused.class)
+    ResponseEntity<ProblemDetail> jobRefused(JobRefused refusal) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, refusal.getMessage()));
+    }
+
+    /**
+     * A job that was found, run, and threw. The one thing here that really is a server error: the
+     * request was fine and the job broke, which is a participant's own code failing and the most
+     * useful thing this API can do is say so in the sentence rather than answer an empty 500.
+     */
+    @ExceptionHandler(JobFailed.class)
+    ResponseEntity<ProblemDetail> jobFailed(JobFailed failure) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, failure.getMessage()));
     }
 
     /**
