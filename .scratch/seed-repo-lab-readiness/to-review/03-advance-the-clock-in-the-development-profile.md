@@ -8,11 +8,11 @@ day zero. The control exists only in the development profile and appears nowhere
 
 **Blocked by:** 01 (Read the current time from an injected clock).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] The clock can be moved forward by a number of days over the API while the development profile is active
-- [ ] A deposit made after a move records a moment that many days ahead of the real one
-- [ ] How far the clock has been moved can be read back, so somebody mid-exercise can tell where in time they are
-- [ ] The move is still in effect after the application is restarted
-- [ ] Moving the clock backwards, or by a nonsensical number of days, is refused with a reason
-- [ ] Neither control exists when the development profile is not active
+- [x] The clock can be moved forward by a number of days over the API while the development profile is active
+- [x] A deposit made after a move records a moment that many days ahead of the real one
+- [x] How far the clock has been moved can be read back, so somebody mid-exercise can tell where in time they are
+- [x] The move is still in effect after the application is restarted
+- [x] Moving the clock backwards, or by a nonsensical number of days, is refused with a reason
+- [x] Neither control exists when the development profile is not active
