@@ -231,10 +231,12 @@ start_app() {
     echo "  starting app (database: $APP_DB)"
     echo "  backend log:  $APP_BACKEND_LOG"
     echo "  frontend log: $APP_FRONTEND_LOG"
+    # The redirection sits outside the subshell on purpose. Inside it, after `cd backend`,
+    # a log path relative to the repository root does not resolve and the app never starts.
     ( cd backend && SAVING_STREAK_DB="$APP_DB" ./mvnw -q spring-boot:run \
         -Dspring-boot.run.arguments="--logging.level.io.dataroots.savingstreak=DEBUG --logging.level.org.springframework.web=DEBUG --logging.level.org.hibernate.SQL=DEBUG" \
-        > "$APP_BACKEND_LOG" 2>&1 & )
-    ( cd frontend && npm run dev > "$APP_FRONTEND_LOG" 2>&1 & )
+        ) > "$APP_BACKEND_LOG" 2>&1 &
+    ( cd frontend && npm run dev ) > "$APP_FRONTEND_LOG" 2>&1 &
     if ! wait_for "$BACKEND_URL/api/customers" 180; then
         echo "  backend did not come up; see $APP_BACKEND_LOG" >&2
         return 1
