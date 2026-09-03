@@ -12,14 +12,14 @@ screen width.
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] A single command reads the backend source and writes two outputs: a machine-readable graph document and a self-contained HTML page
 - [x] The page opens in a browser with no server and no network access, with nothing loaded from outside the file
 - [x] Every module in the application appears on the page, identified at class grain and grouped visually by its package
 - [x] Nothing appears on the page that is not present in the graph document
 - [x] Running the command twice over unchanged source produces byte-identical output, and a test asserts this
-- [ ] No timestamps, absolute paths, or machine-specific values appear anywhere in either output
+- [x] No timestamps, absolute paths, or machine-specific values appear anywhere in either output
 - [x] Every collection in the graph document is emitted in a stable sorted order
 - [x] A source file the tool cannot parse is reported loudly and named, never silently treated as empty
 - [x] The run reports how many source files were parsed and how many were not, so a reader can judge how much weight the page deserves
