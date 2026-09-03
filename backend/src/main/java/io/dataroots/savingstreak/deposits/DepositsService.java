@@ -1,7 +1,6 @@
 package io.dataroots.savingstreak.deposits;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -15,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import static io.dataroots.savingstreak.deposits.AmountOfMoney.asMoney;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.AGAINST_THE_RULES;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NOT_ENOUGH_MONEY;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NO_SUCH_ACCOUNT;
@@ -27,9 +27,6 @@ import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NO_SUCH_ACC
 public class DepositsService {
 
     private static final Logger log = LoggerFactory.getLogger(DepositsService.class);
-
-    /** Euros are quoted to the cent, so an amount carrying more places than this is not one. */
-    private static final int DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY = 2;
 
     private final DepositRepository deposits;
     private final AccountsService accounts;
@@ -126,20 +123,6 @@ public class DepositsService {
     }
 
     /**
-     * An amount of money written the way money is written, to the cent.
-     *
-     * <p>A figure that has been through the database comes back carrying whatever scale SQLite kept
-     * — it has no decimal type and holds an amount as a float — so a balance of 2359.50 arrives as
-     * 2359.5, and printed straight into a sentence it reads as a number rather than as money. This
-     * is the only place it matters: everywhere else an amount is compared, which BigDecimal does by
-     * value rather than by how many places it is carrying, or formatted by whoever displays it.
-     */
-    private static String asMoney(BigDecimal amount) {
-        return amount.setScale(DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY, RoundingMode.HALF_UP)
-                .toPlainString();
-    }
-
-    /**
      * Refuses a deposit whose two ends are not one customer's own accounts.
      *
      * <p>Asked of Accounts rather than enforced by the database: a deposit names both accounts by
@@ -158,7 +141,7 @@ public class DepositsService {
             case NO_SUCH_SAVINGS_ACCOUNT -> throw new DepositRefused(NO_SUCH_ACCOUNT,
                     AccountsService.noSuchSavingsAccount(savingsAccountId));
             case NO_SUCH_CURRENT_ACCOUNT -> throw new DepositRefused(NO_SUCH_ACCOUNT,
-                    "There is no current account " + fromCurrentAccountId + ".");
+                    AccountsService.noSuchCurrentAccount(fromCurrentAccountId));
             case HELD_BY_DIFFERENT_CUSTOMERS -> throw new DepositRefused(AGAINST_THE_RULES,
                     "A savings account can only be paid into from a current account held by the "
                             + "same customer.");
@@ -168,19 +151,14 @@ public class DepositsService {
     /**
      * Refuses anything that is not an amount of money moving in.
      *
-     * <p>Checked before a single record is written, so a refusal never has to be undone.
+     * <p>What counts as one is {@link AmountOfMoney}'s answer, given in the same words a withdrawal
+     * of the same figure would come back with. Checked before a single record is written, so a
+     * refusal never has to be undone.
      */
     private void refuseUnlessAnAmountOfMoney(BigDecimal amount) {
-        if (amount.signum() <= 0) {
-            throw new DepositRefused(AGAINST_THE_RULES, "A deposit has to be an amount of more than "
-                    + "zero, and " + amount.toPlainString() + " is not.");
-        }
-        // Refused rather than rounded. Rounding would move an amount nobody typed, and a bank that
-        // quietly decides what a figure was meant to say is worse than one that asks.
-        if (amount.scale() > DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY) {
-            throw new DepositRefused(AGAINST_THE_RULES, "An amount of money has at most two decimal "
-                    + "places, and " + amount.toPlainString() + " has " + amount.scale() + ".");
-        }
+        AmountOfMoney.whyItIsNotOne("deposit", amount).ifPresent(reason -> {
+            throw new DepositRefused(AGAINST_THE_RULES, reason);
+        });
     }
 
     /**

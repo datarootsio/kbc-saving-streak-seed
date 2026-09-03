@@ -89,10 +89,9 @@ class SavingsAccountController {
     @ResponseStatus(HttpStatus.CREATED)
     WithdrawalResponse withdraw(@PathVariable long savingsAccountId, @RequestBody WithdrawalRequest request) {
         if (request == null || request.amount() == null || request.toCurrentAccountId() == null) {
-            log.warn("withdrawal rejected savingsAccountId={} reason=missing amount or destination current account",
-                    savingsAccountId);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A withdrawal needs an amount and the current account it returns to.");
+            String reason = "A withdrawal needs an amount and the current account it returns to.";
+            log.warn("withdrawal rejected savingsAccountId={} reason={}", savingsAccountId, reason);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
         }
         return WithdrawalResponse.of(withdrawals.withdraw(
                 savingsAccountId, request.toCurrentAccountId(), withdrawalAmountIn(savingsAccountId, request.amount())));
@@ -161,12 +160,19 @@ class SavingsAccountController {
         }
     }
 
+    /**
+     * The same reading a deposit gets, logged on the way out. Every other way a withdrawal can be
+     * refused says so in the Withdrawals module's own log; this one is decided here, before the
+     * module is called at all, and would otherwise be the single refusal a reviewer reading the
+     * application's log could not find. The sentence is logged rather than a summary of it, so that
+     * what the log says and what the customer was told are the same words.
+     */
     private BigDecimal withdrawalAmountIn(long savingsAccountId, String amount) {
         try {
             return amountIn(amount);
         } catch (ResponseStatusException notAnAmountOfMoney) {
-            log.warn("withdrawal rejected savingsAccountId={} amount={} reason=not an amount of money",
-                    savingsAccountId, amount);
+            log.warn("withdrawal rejected savingsAccountId={} amount={} reason={}",
+                    savingsAccountId, amount, notAnAmountOfMoney.getReason());
             throw notAnAmountOfMoney;
         }
     }

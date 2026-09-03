@@ -77,6 +77,15 @@ public class AccountsService {
     }
 
     /**
+     * The same for a current account, which money moves into as well as out of. Both directions of a
+     * transfer have to be able to say this, and a sentence written out in each of them is two
+     * sentences one rewording away from disagreeing about what absence sounds like.
+     */
+    public static String noSuchCurrentAccount(long currentAccountId) {
+        return "There is no current account " + currentAccountId + ".";
+    }
+
+    /**
      * How the two accounts a transfer would run between stand to each other: whether each one is
      * real, and whether one customer holds both. Money moves only across the last of those, because
      * a savings account is funded from its own holder's money and from nobody else's.

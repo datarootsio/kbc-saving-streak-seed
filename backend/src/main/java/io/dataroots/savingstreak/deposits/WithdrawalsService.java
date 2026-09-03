@@ -1,7 +1,6 @@
 package io.dataroots.savingstreak.deposits;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -15,12 +14,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import static io.dataroots.savingstreak.deposits.AmountOfMoney.asMoney;
+
 /** Records money leaving savings, including the oldest deposits it reduced to make that possible. */
 @Service
 public class WithdrawalsService {
 
     private static final Logger log = LoggerFactory.getLogger(WithdrawalsService.class);
-    private static final int DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY = 2;
 
     private final DepositRepository deposits;
     private final WithdrawalRepository withdrawals;
@@ -41,8 +41,11 @@ public class WithdrawalsService {
     public RecordedWithdrawal withdraw(long savingsAccountId, long toCurrentAccountId, BigDecimal amount) {
         log.debug("withdrawal requested savingsAccountId={} toCurrentAccountId={} amount={}",
                 savingsAccountId, toCurrentAccountId, amount);
+        // The accounts before the amount, in the order a deposit asks the same two questions: a
+        // withdrawal is a movement between two of them, and if there is no such movement to make,
+        // the amount is beside the point.
         refuseUnlessOneCustomersOwnAccounts(savingsAccountId, toCurrentAccountId);
-        refuseUnlessAnAmountOfMoney(amount);
+        refuseUnlessAnAmountOfMoney(savingsAccountId, toCurrentAccountId, amount);
 
         List<Deposit> oldestFirst = deposits.findBySavingsAccountIdOrderByDepositedAtAscIdAsc(savingsAccountId);
         BigDecimal balance = oldestFirst.stream().map(Deposit::getRemainingAmount)
@@ -90,12 +93,23 @@ public class WithdrawalsService {
                 .toList();
     }
 
+    /**
+     * Refuses a withdrawal whose two ends are not one customer's own accounts.
+     *
+     * <p>The same question a deposit asks, in the opposite direction, and asked of the same module:
+     * who holds what is Accounts' answer, and the sentences naming an account that is not there are
+     * Accounts' words rather than two copies of them kept here.
+     *
+     * <p>Whose the other account was is never named. Whoever asked already knew the identifier they
+     * sent; saying who it belongs to would tell them something new about a customer who is not them.
+     */
     private void refuseUnlessOneCustomersOwnAccounts(long savingsAccountId, long toCurrentAccountId) {
         AccountPairing pairing = accounts.pairingFor(savingsAccountId, toCurrentAccountId);
         String reason = switch (pairing) {
+            // The one pairing money can move across, so the only one that goes no further.
             case HELD_BY_ONE_CUSTOMER -> null;
             case NO_SUCH_SAVINGS_ACCOUNT -> AccountsService.noSuchSavingsAccount(savingsAccountId);
-            case NO_SUCH_CURRENT_ACCOUNT -> "There is no current account " + toCurrentAccountId + ".";
+            case NO_SUCH_CURRENT_ACCOUNT -> AccountsService.noSuchCurrentAccount(toCurrentAccountId);
             case HELD_BY_DIFFERENT_CUSTOMERS -> "A withdrawal can only return money to a current account "
                     + "held by the same customer.";
         };
@@ -109,19 +123,19 @@ public class WithdrawalsService {
         throw new WithdrawalRefused(kind, reason);
     }
 
-    private void refuseUnlessAnAmountOfMoney(BigDecimal amount) {
-        String reason = null;
-        if (amount.signum() <= 0) {
-            reason = "A withdrawal has to be an amount of more than zero, and " + amount.toPlainString()
-                    + " is not.";
-        } else if (amount.scale() > DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY) {
-            reason = "An amount of money has at most two decimal places, and " + amount.toPlainString()
-                    + " has " + amount.scale() + ".";
-        }
-        if (reason != null) {
-            log.warn("withdrawal rejected amount={} reason={}", amount, reason);
+    /**
+     * Refuses anything that is not an amount of money moving out.
+     *
+     * <p>What counts as one is {@link AmountOfMoney}'s answer, so a figure quoted more finely than
+     * to the cent is refused here in the same words a deposit of it would be refused in. Checked
+     * before a single record is written, so a refusal never has to be undone.
+     */
+    private void refuseUnlessAnAmountOfMoney(long savingsAccountId, long toCurrentAccountId, BigDecimal amount) {
+        AmountOfMoney.whyItIsNotOne("withdrawal", amount).ifPresent(reason -> {
+            log.warn("withdrawal rejected savingsAccountId={} toCurrentAccountId={} amount={} reason={}",
+                    savingsAccountId, toCurrentAccountId, amount.toPlainString(), reason);
             throw new WithdrawalRefused(WithdrawalRefused.Kind.AGAINST_THE_RULES, reason);
-        }
+        });
     }
 
     private RecordedWithdrawal recorded(Withdrawal withdrawal) {
@@ -131,9 +145,5 @@ public class WithdrawalsService {
                         .map(allocation -> new RecordedWithdrawalAllocation(
                                 allocation.getDepositId(), allocation.getAmount()))
                         .toList());
-    }
-
-    private static String asMoney(BigDecimal amount) {
-        return amount.setScale(DECIMAL_PLACES_IN_AN_AMOUNT_OF_MONEY, RoundingMode.HALF_UP).toPlainString();
     }
 }
