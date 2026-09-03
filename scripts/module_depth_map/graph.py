@@ -35,11 +35,18 @@ class SourceRoot:
 
 
 def label_for(path):
-    """Where this directory sits inside its repository, or its own name if it has none."""
+    """Where this directory sits inside its repository, or its own name if it has none.
+
+    A repository is anything carrying a `.git`, whichever shape it takes: an ordinary
+    clone has a directory there, while a worktree or a submodule has a plain file
+    pointing at the real one. Only the presence is asked about, because a walk that
+    insisted on a directory would miss a worktree and label the root by its own basename
+    — a checkout-specific value in an output that has to be the same on every machine.
+    """
     absolute = os.path.abspath(path)
     walk = absolute
     while True:
-        if os.path.isdir(os.path.join(walk, ".git")):
+        if os.path.exists(os.path.join(walk, ".git")):
             return os.path.relpath(absolute, walk).replace(os.sep, "/")
         parent = os.path.dirname(walk)
         if parent == walk:

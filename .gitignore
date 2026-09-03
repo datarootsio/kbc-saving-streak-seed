@@ -3,6 +3,12 @@ backend/target/
 frontend/node_modules/
 frontend/dist/
 
+# Python bytecode from scripts/module-depth-map.py and its tests. Regenerated on every
+# run and machine-specific (a .pyc records the source's mtime and its absolute path), so
+# leaving it tracked would trip the clean-working-tree gate the moment anyone runs the tool.
+__pycache__/
+*.pyc
+
 # The SQLite database is local state, recreated on first start
 data/*.db
 data/*.db-journal

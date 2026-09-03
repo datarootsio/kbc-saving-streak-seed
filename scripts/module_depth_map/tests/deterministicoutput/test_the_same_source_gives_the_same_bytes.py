@@ -8,7 +8,7 @@ import os
 import re
 
 from ... import cli, graph, page
-from ..support.sourcetrees import BACKEND_SOURCE, SourceTreeTest
+from ..support.sourcetrees import BACKEND_SOURCE, SourceTree, SourceTreeTest
 
 
 class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
@@ -102,12 +102,52 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
 
         self.assertEqual(["backend/src/main/java"], document["source"]["roots"])
 
+    def checkout(self, name, git):
+        """A source root inside a checkout whose `.git` is written by `git(path)`."""
+        top = os.path.join(self.scratch, name)
+        root = os.path.join(top, "backend", "src", "main", "java")
+        os.makedirs(root)
+        git(os.path.join(top, ".git"))
+        return root
+
+    def test_a_root_is_named_by_its_layout_when_git_is_a_directory(self):
+        root = self.checkout("clone", os.makedirs)
+
+        self.assertEqual("backend/src/main/java", graph.label_for(root))
+
+    def test_a_root_is_named_by_its_layout_when_git_is_a_file(self):
+        """A worktree's `.git` is a file pointing at the real one, and must count too.
+
+        The tool is run inside worktrees, so a walk that only recognised a directory
+        would name this root `java` there and `backend/src/main/java` in an ordinary
+        clone: the same source, two different outputs.
+        """
+        root = self.checkout("worktree", _gitdir_pointer)
+
+        self.assertEqual("backend/src/main/java", graph.label_for(root))
+
+    def test_the_two_checkout_shapes_write_the_same_bytes(self):
+        clone = self.checkout("clone", os.makedirs)
+        worktree = self.checkout("worktree", _gitdir_pointer)
+        for root in (clone, worktree):
+            SourceTree(root).java("shop.till", "Till", "public class Till {}")
+
+        written = [graph.serialise(graph.build([graph.java_root(r)])) for r in (clone, worktree)]
+
+        self.assertEqual(written[0], written[1])
+
     def test_neither_output_carries_anything_that_looks_like_a_date_or_a_time(self):
         _, written_graph, written_page = self.written()
 
         for written in (written_graph, written_page):
             self.assertEqual([], re.findall(r"\d{4}-\d{2}-\d{2}", written))
             self.assertEqual([], re.findall(r"\d{2}:\d{2}:\d{2}", written))
+
+
+def _gitdir_pointer(path):
+    """What `git worktree add` writes in place of a `.git` directory."""
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("gitdir: /elsewhere/.git/worktrees/checkout\n")
 
 
 def _bytes_of(path):
