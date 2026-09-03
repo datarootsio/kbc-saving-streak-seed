@@ -737,6 +737,7 @@ function SavingsAccountPage({
           />
           <Withdrawals
             withdrawals={account.withdrawals}
+            currentAccounts={currentAccounts}
             landedId={celebrated?.kind === 'withdrawal' ? celebrated.withdrawal.id : null}
           />
           <Claimed
@@ -765,14 +766,26 @@ function pointsMoved(celebrated: Celebration | null): boolean {
   return celebrated.kind === 'claim' || (celebrated.kind === 'deposit' && celebrated.deposit.pointsEarned > 0)
 }
 
-/** Withdrawals are read back independently because deposits are immutable historical facts. */
+/**
+ * The withdrawals behind the money balance, newest first, beside the deposits that make up the other
+ * half of it. Together the two lists account for every movement on the account: the deposits say what
+ * came in, these say what went back out, and the balance is what the two leave.
+ *
+ * <p>Each one names the account it returned to by its IBAN rather than by the identifier the backend
+ * files it under, because a customer picked that IBAN out of the form's list and it is the only form
+ * of the destination that can be checked against a bank statement. An identifier this page cannot put
+ * a name to is still shown as one, so a withdrawal is never hidden by not knowing where it went.
+ */
 function Withdrawals({
   withdrawals,
+  currentAccounts,
   landedId,
 }: {
   withdrawals: RecordedWithdrawal[]
+  currentAccounts: CurrentAccount[]
   landedId: number | null
 }) {
+  const ibans = new Map(currentAccounts.map((account) => [account.id, account.iban]))
   return (
     <div className="history">
       <h3>Withdrawals</h3>
@@ -796,7 +809,9 @@ function Withdrawals({
               >
                 <td className="when">{dateAndTime.format(new Date(made.withdrawnAt))}</td>
                 <td className="amount">{euros.format(made.amount)}</td>
-                <td>Current account {made.toCurrentAccountId}</td>
+                <td>
+                  {ibans.get(made.toCurrentAccountId) ?? `Current account ${made.toCurrentAccountId}`}
+                </td>
               </tr>
             ))}
           </tbody>
