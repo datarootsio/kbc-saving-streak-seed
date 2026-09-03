@@ -1,0 +1,921 @@
+{
+  "modules": [
+    {
+      "id": "io.dataroots.savingstreak.SavingStreakApplication",
+      "kind": "class",
+      "language": "java",
+      "lines": 13,
+      "name": "SavingStreakApplication",
+      "nested": [],
+      "package": "io.dataroots.savingstreak",
+      "path": "io/dataroots/savingstreak/SavingStreakApplication.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.AccountPairing",
+      "kind": "enum",
+      "language": "java",
+      "lines": 23,
+      "name": "AccountPairing",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/AccountPairing.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.AccountsService",
+      "kind": "class",
+      "language": "java",
+      "lines": 181,
+      "name": "AccountsService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/AccountsService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.CurrentAccount",
+      "kind": "class",
+      "language": "java",
+      "lines": 83,
+      "name": "CurrentAccount",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/CurrentAccount.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 23,
+      "name": "CurrentAccountRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/CurrentAccountRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.Customer",
+      "kind": "class",
+      "language": "java",
+      "lines": 50,
+      "name": "Customer",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/Customer.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.CustomerAccounts",
+      "kind": "record",
+      "language": "java",
+      "lines": 12,
+      "name": "CustomerAccounts",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/CustomerAccounts.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.CustomerRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 19,
+      "name": "CustomerRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/CustomerRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.DemoData",
+      "kind": "class",
+      "language": "java",
+      "lines": 61,
+      "name": "DemoData",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/DemoData.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.SavingsAccount",
+      "kind": "class",
+      "language": "java",
+      "lines": 39,
+      "name": "SavingsAccount",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/SavingsAccount.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 22,
+      "name": "SavingsAccountRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.accounts",
+      "path": "io/dataroots/savingstreak/accounts/SavingsAccountRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
+      "kind": "class",
+      "language": "java",
+      "lines": 78,
+      "name": "ClockConfiguration",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockConfiguration.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockOffset",
+      "kind": "class",
+      "language": "java",
+      "lines": 42,
+      "name": "ClockOffset",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockOffset.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 8,
+      "name": "ClockOffsetRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockOffsetRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockOnStartUp",
+      "kind": "class",
+      "language": "java",
+      "lines": 68,
+      "name": "ClockOnStartUp",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockOnStartUp.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockRefused",
+      "kind": "class",
+      "language": "java",
+      "lines": 16,
+      "name": "ClockRefused",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockRefused.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.ClockService",
+      "kind": "class",
+      "language": "java",
+      "lines": 114,
+      "name": "ClockService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/ClockService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
+      "kind": "record",
+      "language": "java",
+      "lines": 14,
+      "name": "HowFarTheClockHasMoved",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/HowFarTheClockHasMoved.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.clock.MovableClock",
+      "kind": "class",
+      "language": "java",
+      "lines": 90,
+      "name": "MovableClock",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.clock",
+      "path": "io/dataroots/savingstreak/clock/MovableClock.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.AmountOfMoney",
+      "kind": "class",
+      "language": "java",
+      "lines": 64,
+      "name": "AmountOfMoney",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/AmountOfMoney.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.Deposit",
+      "kind": "class",
+      "language": "java",
+      "lines": 93,
+      "name": "Deposit",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/Deposit.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.DepositRefused",
+      "kind": "class",
+      "language": "java",
+      "lines": 43,
+      "name": "DepositRefused",
+      "nested": [
+        "Kind"
+      ],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/DepositRefused.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.DepositRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 47,
+      "name": "DepositRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/DepositRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
+      "kind": "class",
+      "language": "java",
+      "lines": 59,
+      "name": "DepositsOnStartUp",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/DepositsOnStartUp.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.DepositsService",
+      "kind": "class",
+      "language": "java",
+      "lines": 213,
+      "name": "DepositsService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/DepositsService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.RecordedDeposit",
+      "kind": "record",
+      "language": "java",
+      "lines": 12,
+      "name": "RecordedDeposit",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/RecordedDeposit.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+      "kind": "record",
+      "language": "java",
+      "lines": 11,
+      "name": "RecordedWithdrawal",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/RecordedWithdrawal.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
+      "kind": "record",
+      "language": "java",
+      "lines": 8,
+      "name": "RecordedWithdrawalAllocation",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/RecordedWithdrawalAllocation.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.Withdrawal",
+      "kind": "class",
+      "language": "java",
+      "lines": 40,
+      "name": "Withdrawal",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/Withdrawal.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
+      "kind": "class",
+      "language": "java",
+      "lines": 35,
+      "name": "WithdrawalAllocation",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/WithdrawalAllocation.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 12,
+      "name": "WithdrawalAllocationRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/WithdrawalAllocationRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+      "kind": "class",
+      "language": "java",
+      "lines": 17,
+      "name": "WithdrawalRefused",
+      "nested": [
+        "Kind"
+      ],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/WithdrawalRefused.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 12,
+      "name": "WithdrawalRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/WithdrawalRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+      "kind": "class",
+      "language": "java",
+      "lines": 150,
+      "name": "WithdrawalsService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.deposits",
+      "path": "io/dataroots/savingstreak/deposits/WithdrawalsService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.AJobThatRan",
+      "kind": "record",
+      "language": "java",
+      "lines": 15,
+      "name": "AJobThatRan",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/AJobThatRan.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.AScheduledJob",
+      "kind": "record",
+      "language": "java",
+      "lines": 13,
+      "name": "AScheduledJob",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/AScheduledJob.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.JobFailed",
+      "kind": "class",
+      "language": "java",
+      "lines": 17,
+      "name": "JobFailed",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/JobFailed.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.JobRefused",
+      "kind": "class",
+      "language": "java",
+      "lines": 17,
+      "name": "JobRefused",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/JobRefused.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
+      "kind": "class",
+      "language": "java",
+      "lines": 285,
+      "name": "ScheduledJobs",
+      "nested": [
+        "AJob"
+      ],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/ScheduledJobs.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.jobs.SchedulingIsOn",
+      "kind": "class",
+      "language": "java",
+      "lines": 24,
+      "name": "SchedulingIsOn",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.jobs",
+      "path": "io/dataroots/savingstreak/jobs/SchedulingIsOn.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.points.PointsCredit",
+      "kind": "class",
+      "language": "java",
+      "lines": 82,
+      "name": "PointsCredit",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.points",
+      "path": "io/dataroots/savingstreak/points/PointsCredit.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.points.PointsCreditRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 53,
+      "name": "PointsCreditRepository",
+      "nested": [
+        "EarnedPoints"
+      ],
+      "package": "io.dataroots.savingstreak.points",
+      "path": "io/dataroots/savingstreak/points/PointsCreditRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.points.PointsReason",
+      "kind": "enum",
+      "language": "java",
+      "lines": 7,
+      "name": "PointsReason",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.points",
+      "path": "io/dataroots/savingstreak/points/PointsReason.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.points.PointsService",
+      "kind": "class",
+      "language": "java",
+      "lines": 120,
+      "name": "PointsService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.points",
+      "path": "io/dataroots/savingstreak/points/PointsService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.ClaimedReward",
+      "kind": "record",
+      "language": "java",
+      "lines": 14,
+      "name": "ClaimedReward",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/ClaimedReward.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.Redemption",
+      "kind": "class",
+      "language": "java",
+      "lines": 93,
+      "name": "Redemption",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/Redemption.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.RedemptionRepository",
+      "kind": "interface",
+      "language": "java",
+      "lines": 16,
+      "name": "RedemptionRepository",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/RedemptionRepository.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.Reward",
+      "kind": "enum",
+      "language": "java",
+      "lines": 62,
+      "name": "Reward",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/Reward.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.RewardRefused",
+      "kind": "class",
+      "language": "java",
+      "lines": 36,
+      "name": "RewardRefused",
+      "nested": [
+        "Kind"
+      ],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/RewardRefused.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.rewards.RewardsService",
+      "kind": "class",
+      "language": "java",
+      "lines": 102,
+      "name": "RewardsService",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.rewards",
+      "path": "io/dataroots/savingstreak/rewards/RewardsService.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.AdvanceClockRequest",
+      "kind": "record",
+      "language": "java",
+      "lines": 13,
+      "name": "AdvanceClockRequest",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/AdvanceClockRequest.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.ClaimRequest",
+      "kind": "record",
+      "language": "java",
+      "lines": 13,
+      "name": "ClaimRequest",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/ClaimRequest.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.ClaimedRewardResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 25,
+      "name": "ClaimedRewardResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/ClaimedRewardResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.ClockResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 17,
+      "name": "ClockResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/ClockResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.CustomerAccountsResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 37,
+      "name": "CustomerAccountsResponse",
+      "nested": [
+        "CurrentAccountResponse",
+        "SavingsAccountResponse"
+      ],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/CustomerAccountsResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.CustomerController",
+      "kind": "class",
+      "language": "java",
+      "lines": 102,
+      "name": "CustomerController",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/CustomerController.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.CustomerResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 15,
+      "name": "CustomerResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/CustomerResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.DepositRequest",
+      "kind": "record",
+      "language": "java",
+      "lines": 14,
+      "name": "DepositRequest",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/DepositRequest.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.DepositResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 16,
+      "name": "DepositResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/DepositResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.DevelopmentClockController",
+      "kind": "class",
+      "language": "java",
+      "lines": 52,
+      "name": "DevelopmentClockController",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/DevelopmentClockController.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.DevelopmentJobsController",
+      "kind": "class",
+      "language": "java",
+      "lines": 54,
+      "name": "DevelopmentJobsController",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/DevelopmentJobsController.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.JobRunResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 17,
+      "name": "JobRunResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/JobRunResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.RefusalsAsHttp",
+      "kind": "class",
+      "language": "java",
+      "lines": 110,
+      "name": "RefusalsAsHttp",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/RefusalsAsHttp.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.RewardController",
+      "kind": "class",
+      "language": "java",
+      "lines": 29,
+      "name": "RewardController",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/RewardController.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.RewardResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 19,
+      "name": "RewardResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/RewardResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.SavingsAccountController",
+      "kind": "class",
+      "language": "java",
+      "lines": 186,
+      "name": "SavingsAccountController",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/SavingsAccountController.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.SavingsAccountResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 12,
+      "name": "SavingsAccountResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/SavingsAccountResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.ScheduledJobResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 15,
+      "name": "ScheduledJobResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/ScheduledJobResponse.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.SignInRequest",
+      "kind": "record",
+      "language": "java",
+      "lines": 9,
+      "name": "SignInRequest",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/SignInRequest.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.WithdrawalRequest",
+      "kind": "record",
+      "language": "java",
+      "lines": 6,
+      "name": "WithdrawalRequest",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/WithdrawalRequest.java",
+      "root": "backend/src/main/java"
+    },
+    {
+      "id": "io.dataroots.savingstreak.web.WithdrawalResponse",
+      "kind": "record",
+      "language": "java",
+      "lines": 19,
+      "name": "WithdrawalResponse",
+      "nested": [],
+      "package": "io.dataroots.savingstreak.web",
+      "path": "io/dataroots/savingstreak/web/WithdrawalResponse.java",
+      "root": "backend/src/main/java"
+    }
+  ],
+  "packages": [
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.SavingStreakApplication"
+      ],
+      "name": "io.dataroots.savingstreak"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.accounts.AccountPairing",
+        "io.dataroots.savingstreak.accounts.AccountsService",
+        "io.dataroots.savingstreak.accounts.CurrentAccount",
+        "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+        "io.dataroots.savingstreak.accounts.Customer",
+        "io.dataroots.savingstreak.accounts.CustomerAccounts",
+        "io.dataroots.savingstreak.accounts.CustomerRepository",
+        "io.dataroots.savingstreak.accounts.DemoData",
+        "io.dataroots.savingstreak.accounts.SavingsAccount",
+        "io.dataroots.savingstreak.accounts.SavingsAccountRepository"
+      ],
+      "name": "io.dataroots.savingstreak.accounts"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.clock.ClockConfiguration",
+        "io.dataroots.savingstreak.clock.ClockOffset",
+        "io.dataroots.savingstreak.clock.ClockOffsetRepository",
+        "io.dataroots.savingstreak.clock.ClockOnStartUp",
+        "io.dataroots.savingstreak.clock.ClockRefused",
+        "io.dataroots.savingstreak.clock.ClockService",
+        "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
+        "io.dataroots.savingstreak.clock.MovableClock"
+      ],
+      "name": "io.dataroots.savingstreak.clock"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.deposits.AmountOfMoney",
+        "io.dataroots.savingstreak.deposits.Deposit",
+        "io.dataroots.savingstreak.deposits.DepositRefused",
+        "io.dataroots.savingstreak.deposits.DepositRepository",
+        "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
+        "io.dataroots.savingstreak.deposits.DepositsService",
+        "io.dataroots.savingstreak.deposits.RecordedDeposit",
+        "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+        "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
+        "io.dataroots.savingstreak.deposits.Withdrawal",
+        "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
+        "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
+        "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+        "io.dataroots.savingstreak.deposits.WithdrawalRepository",
+        "io.dataroots.savingstreak.deposits.WithdrawalsService"
+      ],
+      "name": "io.dataroots.savingstreak.deposits"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.jobs.AJobThatRan",
+        "io.dataroots.savingstreak.jobs.AScheduledJob",
+        "io.dataroots.savingstreak.jobs.JobFailed",
+        "io.dataroots.savingstreak.jobs.JobRefused",
+        "io.dataroots.savingstreak.jobs.ScheduledJobs",
+        "io.dataroots.savingstreak.jobs.SchedulingIsOn"
+      ],
+      "name": "io.dataroots.savingstreak.jobs"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.points.PointsCredit",
+        "io.dataroots.savingstreak.points.PointsCreditRepository",
+        "io.dataroots.savingstreak.points.PointsReason",
+        "io.dataroots.savingstreak.points.PointsService"
+      ],
+      "name": "io.dataroots.savingstreak.points"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.rewards.ClaimedReward",
+        "io.dataroots.savingstreak.rewards.Redemption",
+        "io.dataroots.savingstreak.rewards.RedemptionRepository",
+        "io.dataroots.savingstreak.rewards.Reward",
+        "io.dataroots.savingstreak.rewards.RewardRefused",
+        "io.dataroots.savingstreak.rewards.RewardsService"
+      ],
+      "name": "io.dataroots.savingstreak.rewards"
+    },
+    {
+      "moduleIds": [
+        "io.dataroots.savingstreak.web.AdvanceClockRequest",
+        "io.dataroots.savingstreak.web.ClaimRequest",
+        "io.dataroots.savingstreak.web.ClaimedRewardResponse",
+        "io.dataroots.savingstreak.web.ClockResponse",
+        "io.dataroots.savingstreak.web.CustomerAccountsResponse",
+        "io.dataroots.savingstreak.web.CustomerController",
+        "io.dataroots.savingstreak.web.CustomerResponse",
+        "io.dataroots.savingstreak.web.DepositRequest",
+        "io.dataroots.savingstreak.web.DepositResponse",
+        "io.dataroots.savingstreak.web.DevelopmentClockController",
+        "io.dataroots.savingstreak.web.DevelopmentJobsController",
+        "io.dataroots.savingstreak.web.JobRunResponse",
+        "io.dataroots.savingstreak.web.RefusalsAsHttp",
+        "io.dataroots.savingstreak.web.RewardController",
+        "io.dataroots.savingstreak.web.RewardResponse",
+        "io.dataroots.savingstreak.web.SavingsAccountController",
+        "io.dataroots.savingstreak.web.SavingsAccountResponse",
+        "io.dataroots.savingstreak.web.ScheduledJobResponse",
+        "io.dataroots.savingstreak.web.SignInRequest",
+        "io.dataroots.savingstreak.web.WithdrawalRequest",
+        "io.dataroots.savingstreak.web.WithdrawalResponse"
+      ],
+      "name": "io.dataroots.savingstreak.web"
+    }
+  ],
+  "schema": "module-depth-map/1",
+  "source": {
+    "filesParsed": 71,
+    "filesSeen": 71,
+    "filesUnparsed": 0,
+    "roots": [
+      "backend/src/main/java"
+    ],
+    "unparsed": []
+  }
+}
