@@ -12,3 +12,7 @@ data/*.db-shm
 # Run logs from scripts/implement-tickets.sh and the /implement-tickets skill. Regenerated
 # every run, and leaving them untracked would trip the clean-working-tree gate next run.
 .scratch/*/logs/
+
+# Console logs written by the Playwright CLI when an agent drives the page. Same reason as
+# the run logs above: left untracked, they trip the clean-working-tree gate.
+.playwright-cli/
