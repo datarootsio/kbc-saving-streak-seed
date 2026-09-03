@@ -29,20 +29,21 @@ Read, in this order, and take the answer from the first place that has it:
 
 ## `lab.sh`
 
-Every ticket is worked in its own git worktree, and the orchestrator runs *that
-worktree's copy* of `lab.sh` from the main checkout. So the script must act on the
-checkout it lives in, not the caller's:
+Every ticket is worked on its own branch in the repository's one checkout, and the
+orchestrator runs the copy of `lab.sh` that is on the branch under test. So the script
+must act on the checkout it lives in, not on the caller's working directory:
 
     SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
     cd "$(git -C "$(dirname "$SELF")" rev-parse --show-toplevel)"
 
 Four subcommands, each exiting non-zero when the thing did not happen:
 
-- `prepare`: whatever a fresh checkout lacks before the checks can run: dependency
-  installs (`npm ci`, `pip install -e .`, ...), generated code, a local env file copied
-  from its example. Idempotent, and cheap when there is nothing to do, because it runs
-  once per worktree. Compilers that fetch their own dependencies (Maven, Cargo) need
-  nothing here.
+- `prepare`: whatever the checkout lacks before the checks can run: dependency installs
+  (`npm ci`, `pip install -e .`, ...), generated code, a local env file copied from its
+  example. Idempotent, and cheap when there is nothing to do, because it runs again on
+  every ticket branch. Everything it writes must be ignored by git, or it stands in the
+  way of the next branch switch. Compilers that fetch their own dependencies (Maven,
+  Cargo) need nothing here.
 - `checks <log>`: every check CI runs, in order, all output appended to `<log>`. Do not
   run the build tool in quiet mode: a rejected implementer is handed this log, and quiet
   modes drop the assertion text and the stack trace, which is the only part worth
@@ -84,8 +85,8 @@ this order, and short: it is spliced into a prompt that is already long.
 ## Smoke test
 
 Commit `lab.sh` and `lab.md` on the base branch first, so every ticket branch carries
-them. Then run the test in a throwaway worktree of the base, which is exactly what a
-ticket gets: `git worktree add <WORKTREES>/lab-smoke BASE`, and in there
+them. Then run the test in the checkout itself, on `BASE`, before the first ticket branch
+exists:
 
 - `lab.sh prepare`, then `lab.sh checks <logs>/lab.smoke.log`, must be green. If the base
   is red, stop and tell the user: the gate would blame every ticket for a failure none of
@@ -93,4 +94,5 @@ ticket gets: `git worktree add <WORKTREES>/lab-smoke BASE`, and in there
 - `lab.sh app-start <logs>/lab.smoke` then `lab.sh app-stop`, and the health URL must
   have answered in between.
 
-`git worktree remove <WORKTREES>/lab-smoke` afterwards.
+Leave the checkout clean and still on `BASE` afterwards; `app-stop` even if `app-start`
+failed.

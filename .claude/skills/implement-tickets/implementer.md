@@ -14,14 +14,16 @@ Context:
   whether you did.
 
 Where you work:
-- `cd {{WORKDIR}}` first. It is a git worktree of this repository with {{BRANCH}} checked
-  out, a branch that exists for this ticket alone and was cut from {{TICKET_BASE}}. Every
-  path in this prompt is absolute and inside it, except the reports under {{LOG_PREFIX}},
-  which live in the main checkout so they outlive the worktree. Run nothing in the main
-  checkout.
-- Commit your work on {{BRANCH}}. Do not switch, rebase, merge or delete any branch or
-  worktree, and do not push. The orchestrator handles all of that once a reviewer has
-  accepted the work.
+- `cd {{REPO}}` first. It is this repository's checkout, with {{BRANCH}} already checked
+  out: a branch that exists for this ticket alone and was cut from {{TICKET_BASE}}. Every
+  path in this prompt is absolute and inside it. Check `git branch --show-current` before
+  you change anything; if it is not {{BRANCH}}, stop and say so rather than working on
+  whatever branch you found.
+- Commit your work on {{BRANCH}}, and leave the tree clean when you are done. This is the
+  repository's only checkout: the orchestrator switches it to another branch after you,
+  and cannot while your changes are still uncommitted. Do not switch, rebase, merge or
+  delete any branch, and do not push. The orchestrator handles all of that once a reviewer
+  has accepted the work.
 
 This repository's lab, which the reviewer will hold your work to:
 

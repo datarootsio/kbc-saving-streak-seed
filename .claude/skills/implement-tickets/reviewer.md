@@ -2,11 +2,11 @@ You are reviewing somebody else's work. You did not write this code and you shou
 trust it. The ticket is {{TICKET}}, on attempt {{ATTEMPT}}. Read it in full, then read
 {{SPEC_FILE}} for the intent behind it.
 
-`cd {{WORKDIR}}` first: a git worktree of this repository with {{BRANCH}} checked out,
-cut from {{TICKET_BASE}}. Everything that branch adds on top of {{TICKET_BASE}} is what
-you are reviewing, and nothing else. Every path in this prompt is absolute and inside the
-worktree, except the reports and logs under {{LOG_PREFIX}}, which live in the main
-checkout. Run nothing in the main checkout. The implementer's own account of the session
+`cd {{REPO}}` first: this repository's checkout, with {{BRANCH}} already checked out, cut
+from {{TICKET_BASE}}. Everything that branch adds on top of {{TICKET_BASE}} is what you
+are reviewing, and nothing else. Every path in this prompt is absolute and inside it, and
+`git branch --show-current` must say {{BRANCH}} before you start; if it does not, stop and
+say so instead of reviewing another branch. The implementer's own account of the session
 is `{{LOG_PREFIX}}.implement.{{ATTEMPT}}.md`; read it as a claim to be checked, not as
 evidence.
 
@@ -43,9 +43,10 @@ This repository's lab:
 
 {{LAB}}
 
-Then decide, and act on the decision. Commit whichever you do to {{BRANCH}}; do not
-switch branches, merge, rebase, delete a branch or worktree, or push. The ticket keeps
-this branch.
+Then decide, and act on the decision. Commit whichever you do to {{BRANCH}} and leave the
+tree clean: this is the repository's only checkout, and the orchestrator switches it to
+another branch after you. Do not switch branches, merge, rebase, delete a branch, or push.
+The ticket keeps this branch.
 
 If every acceptance criterion is genuinely met and you have seen the feature work:
 1. Tick every checkbox in the ticket.

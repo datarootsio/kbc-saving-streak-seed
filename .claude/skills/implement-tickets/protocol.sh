@@ -45,7 +45,8 @@ cmd_tickets() {
 
 # The orchestrator's own verdict when the build is red: no reviewer looked at it, so
 # say so in the ticket in the same shape a reviewer would, and put it back in issues/.
-# The ticket sits in a worktree, so issues/ is found beside it, not via FEATURE_DIR.
+# issues/ is found beside the ticket rather than via FEATURE_DIR, so this works on any
+# checkout without FEATURE_DIR having been exported.
 cmd_send_back() {
     local ticket="${1:?send-back: ticket path}" attempt="${2:?attempt}"
     local heading="${3:?heading}" detail_file="${4:?detail file}"

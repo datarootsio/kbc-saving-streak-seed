@@ -24,20 +24,21 @@ repository's `docs/agents/issue-tracker.md` says): `spec.md` beside three folder
                                       |
                                       +--(reviewer, with feedback)--> issues/
 
-Every ticket gets its own branch, `ticket/NN-slug`, checked out in its own git worktree
-under `WORKTREES = <repo root>/.worktrees/`. The branch is kept across rework attempts,
-so it holds the whole story of the ticket; the worktree is where that ticket's sub-agents
-work and is removed once the ticket settles. The main checkout stays on `BASE` for the
-whole run. Tickets are a dependency chain, so each branch is cut from the previous
-accepted ticket's branch; the base only accumulates work when `--merge` is passed.
+Every ticket gets its own branch, `ticket/NN-slug`, checked out in the repository's one
+checkout: the run switches that checkout from branch to branch, and each ticket's
+sub-agents work in it. The branch is kept across rework attempts, so it holds the whole
+story of the ticket. Tickets are a dependency chain, so each branch is cut from the
+previous accepted ticket's branch; the base only accumulates work when `--merge` is
+passed. There is a single working tree, so nothing overlaps: one ticket, one role, at a
+time, and every branch switch needs the tree clean.
 
 Two scripts do the mechanical steps; run them rather than re-deriving them:
 
 - `protocol.sh` in this skill's directory (`tickets`, `send-back`), the same everywhere.
   It reads `FEATURE_DIR` from the environment; export it.
 - `FEATURE_DIR/lab.sh` (`prepare`, `checks`, `app-start`, `app-stop`), specific to the
-  repository, written to `lab-contract.md` in this skill's directory. Always run the
-  copy inside the ticket's worktree: `WORKDIR/FEATURE_DIR/lab.sh`.
+  repository, written to `lab-contract.md` in this skill's directory. Always run it from
+  the checkout, `REPO/FEATURE_DIR/lab.sh`, so it is the copy on the branch under test.
 
 ## Arguments
 
@@ -52,11 +53,12 @@ confirmation.
 
 ## Setup
 
-1. `cd` to the repository root; this is the main checkout, and it stays here all run.
-   The working tree must be clean (`git status --porcelain` empty) and HEAD must be a
-   branch, not detached: that branch is `BASE`. Stop and say so otherwise; do not commit
-   or stash on the user's behalf. `.worktrees/` must be in `.gitignore`; if it is not,
-   add it and commit that on `BASE`.
+1. `cd` to the repository root; that absolute path is `REPO`, and the whole run happens
+   in it. The working tree must be clean (`git status --porcelain` empty) and HEAD must be
+   a branch, not detached: that branch is `BASE`. Stop and say so otherwise; do not commit
+   or stash on the user's behalf. `FEATURE_DIR/logs/` must be ignored by git, since the
+   reports written there have to survive the branch switches; if it is not, add it and
+   commit that on `BASE`.
 2. Resolve `FEATURE_DIR` and export it. `protocol.sh tickets [--resume] [--from NN]
    [--only NN]` lists the tickets, in order. Empty means nothing to do.
 3. **The lab.** Read `lab-contract.md`. Reuse `FEATURE_DIR/lab.sh` and `lab.md` when they
@@ -71,14 +73,22 @@ confirmation.
    now does not resolve until the next session. Say that, and that a re-run picks it up.
 5. Print the plan (base branch, feature directory, on-accept policy, model, effort, max
    attempts, the ticket list) and, unless `-y`, wait for the user to confirm.
-6. `mkdir -p FEATURE_DIR/logs`. `PARENT = BASE`.
+6. `mkdir -p FEATURE_DIR/logs`. `PARENT = BASE`. The checkout leaves `BASE` for the rest
+   of the run, so if this skill's own directory is inside the repository, its files and
+   `protocol.sh` must exist on `PARENT` too (`git cat-file -e PARENT:<path>`); a branch
+   without them cannot drive the protocol, so stop and say which file is missing.
 
 ## Per ticket
 
-`NAME` is the file name without `.md`, `BRANCH = ticket/NAME`, `WORKDIR =
-WORKTREES/NAME`, `TICKET_BASE = PARENT`. `LOG_PREFIX` is the **main checkout's**
-`FEATURE_DIR/logs/NAME`, absolute, so the logs outlive the worktree. Every other path
-handed to a sub-agent is absolute and inside `WORKDIR`.
+`NAME` is the file name without `.md`, `BRANCH = ticket/NAME`, `TICKET_BASE = PARENT`.
+`LOG_PREFIX` is `REPO/FEATURE_DIR/logs/NAME`, absolute, and git-ignored so the logs
+survive the branch switches. Every other path handed to a sub-agent is absolute and
+inside `REPO`.
+
+Both roles run in that one checkout, so after every sub-agent returns, before you believe
+anything it left: `git branch --show-current` must still be `BRANCH` and `git status
+--porcelain` must be empty. If either is not, the ticket is settled as **unsafe handoff**
+and you switch no branches until the user has looked at it.
 
 The two prompt templates take these `{{PLACEHOLDERS}}`; fill every one, then check no
 `{{` is left:
@@ -87,17 +97,19 @@ The two prompt templates take these `{{PLACEHOLDERS}}`; fill every one, then che
 | --- | --- |
 | `TICKET` | path of the ticket file where it sits now (`issues/` or `to-review/`) |
 | `ATTEMPT` | the attempt number |
-| `BRANCH`, `TICKET_BASE`, `WORKDIR`, `LOG_PREFIX`, `LAB` | as above |
-| `SPEC_FILE`, `ISSUES_DIR`, `REVIEW_DIR`, `DONE_DIR` | `WORKDIR/FEATURE_DIR/spec.md`, `/issues`, `/to-review`, `/done` |
+| `BRANCH`, `TICKET_BASE`, `REPO`, `LOG_PREFIX`, `LAB` | as above |
+| `SPEC_FILE`, `ISSUES_DIR`, `REVIEW_DIR`, `DONE_DIR` | `REPO/FEATURE_DIR/spec.md`, `/issues`, `/to-review`, `/done` |
 | `APP_PREFIX`, `CHECKS_LOG` | `LOG_PREFIX.app.<attempt>` and the gate's log (reviewer only) |
 
-1. Make the worktree. If `WORKDIR` already exists (an earlier run left it), reuse it.
-   Otherwise `git worktree add WORKDIR -b BRANCH PARENT`, or `git worktree add WORKDIR
-   BRANCH` when the branch already exists. Then `WORKDIR/FEATURE_DIR/lab.sh prepare`; if
-   that fails the ticket is settled as **worktree would not prepare**.
+1. Check out the branch, with the tree clean. If `BRANCH` already exists (an earlier run
+   left it), `PARENT` must be an ancestor of it — it is the wrong branch otherwise, and
+   the ticket is settled as **branch does not contain its base** — then `git switch
+   BRANCH`. Otherwise `git switch -c BRANCH PARENT`. Either way confirm with `git branch
+   --show-current` before going on. Then `REPO/FEATURE_DIR/lab.sh prepare`; if that fails
+   the ticket is settled as **branch would not prepare**.
 2. Run attempts from 1 to `--max-attempts`. One attempt:
 
-   a. **Implement**, unless `--resume` and `to-review/NAME.md` exists in `WORKDIR` (then
+   a. **Implement**, unless `--resume` and `to-review/NAME.md` already exists (then
       go straight to b). Fill `implementer.md` from this skill's directory and pass it as
       the whole prompt of a new sub-agent. Wait for its completion notification. Save its
       final report verbatim to `LOG_PREFIX.implement.<attempt>.md`. If `to-review/NAME.md`
@@ -117,22 +129,25 @@ The two prompt templates take these `{{PLACEHOLDERS}}`; fill every one, then che
       the whole prompt of a new sub-agent. Wait for it, save its report verbatim to
       `LOG_PREFIX.review.<attempt>.md`, then `lab.sh app-stop`.
 
-   d. **Verdict**, read from the folders in `WORKDIR`, not the report: `done/NAME.md` exists is
-      **done**; `issues/NAME.md` exists means sent back, start the next attempt;
+   d. **Verdict**, read from the folders in the checkout, not the report: `done/NAME.md`
+      exists is **done**; `issues/NAME.md` exists means sent back, start the next attempt;
       anything else (still in `to-review/`) is **stalled in to-review**. The loop running
       out is **not accepted after N attempts**.
 
-3. **Land** a done ticket: with `--merge`, in the main checkout `git merge --no-ff
-   --no-edit -m "Merge BRANCH" BRANCH` and `PARENT = BASE`; without it, `PARENT = BRANCH`
-   so the next ticket stacks on it. Either way `git worktree remove WORKDIR`; the branch
-   stays.
-4. **Fail** otherwise: report the ticket, why it settled, its branch and its worktree,
-   which is left in place for the user to look at. Without `--keep-going`, stop the run
-   here (later tickets are blocked by this one) and tell the user where the logs are and
-   to re-run with `--from NN` after fixing it. With it, go on to the next ticket.
+3. **Land** a done ticket: with `--merge`, `git switch BASE`, then `git merge --no-ff
+   --no-edit -m "Merge BRANCH" BRANCH`, and `PARENT = BASE`; without it, leave `BRANCH`
+   checked out and `PARENT = BRANCH` so the next ticket stacks on it. Every ticket branch
+   stays either way.
+4. **Fail** otherwise: report the ticket, why it settled, and its branch, which stays for
+   the user to look at. Without `--keep-going`, stop the run here (later tickets are
+   blocked by this one), leave `BRANCH` checked out for them to inspect, and tell the
+   user where the logs are and to re-run with `--from NN` after fixing it. With it, `git
+   switch` back to `PARENT` and go on to the next ticket; if the tree is not clean enough
+   to switch, say so and stop there instead of forcing it.
 
 ## Summary
 
 List the accepted branches in the order they should be merged (oldest first; each is
-stacked on the one above it unless `--merge`), then the failed tickets with their
-reason, branch and worktree. Every claim in the summary points at a file under `logs/`.
+stacked on the one above it unless `--merge`), then the failed tickets with their reason
+and branch. Say which branch the checkout is left on. Every claim in the summary points
+at a file under `logs/`.
