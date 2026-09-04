@@ -30,6 +30,13 @@ whenever this parser can tell it is no longer reading what the compiler would re
 The last three are the ones a future edit is most likely to reach: a legal construct the
 patterns have not met yet arrives as a named failure on the page, at a line, rather than
 as a module that looks shallow.
+
+One decision cannot fail loudly, and it is where every fault found on this branch got in:
+deciding that a member which reads like a method is not one. A field, a constructor and a
+nested record all read like one and legitimately are not, so there is nothing to fail on —
+and a method wrongly declined leaves an interface quietly cheaper than the source makes
+it. So it is logged instead: `grep "member not read as a method"` at DEBUG lists every
+member declined, its line, and why, and that list is short enough to read.
 """
 
 import logging

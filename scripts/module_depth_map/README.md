@@ -51,6 +51,15 @@ Run its tests with the standard library's own runner, also from the repository r
   outputs are still written. `package-info.java` and `module-info.java` declare no type on
   purpose and are read rather than reported, and legal Java is never failed — an escaped
   `\"""` inside a text block is a quote, not the end of it.
+
+  One decision cannot be failed on, and it is where every fault found so far got in:
+  deciding that a member which reads like a method is not one. A field, a constructor and
+  a nested record all read like one and legitimately are not, so there is nothing to fail
+  on — and a method wrongly declined leaves an interface quietly cheaper than the source
+  makes it, which is what this page calls deep. So it is logged: run with
+  `--log-level DEBUG` and `grep "member not read as a method"` for every member declined,
+  its line and the reason. On this repository that is 56 lines — 43 constructors, 10
+  logger fields, 3 nested records — short enough to read and check.
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
   beside this file holds the interface-cost weights and every exclusion rule. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
