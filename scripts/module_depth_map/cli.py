@@ -14,6 +14,22 @@ from . import graph, page, scoring
 
 log = logging.getLogger("module_depth_map.cli")
 
+
+class OutputsUnwritten(Exception):
+    """The run had both documents and could not put them where they belong.
+
+    `landed` names the outputs that were moved into place before the failure. Empty is the
+    ordinary case and the good one — nothing was touched, and the files a reader opens are
+    the ones the last run left. Anything in it is the case worth shouting about: the two
+    files no longer describe the same source.
+    """
+
+    def __init__(self, reason, landed=()):
+        super().__init__(reason)
+        self.reason = reason
+        self.landed = tuple(landed)
+
+
 DEFAULT_SOURCE = os.path.join("backend", "src", "main", "java")
 DEFAULT_GRAPH = os.path.join("docs", "module-depth-map.json")
 DEFAULT_PAGE = os.path.join("docs", "module-depth-map.html")
@@ -96,13 +112,41 @@ def main(argv=None):
 
     # Both outputs are turned into bytes before either is written, and then written
     # together. A page that fails to render, or fails to be written, after the graph has
-    # landed would leave a fresh document beside a stale picture of it, which is the one
-    # thing this command promises cannot happen.
-    serialised = graph.serialise(document)
-    rendered = page.render(document, serialised)
-    written_graph, written_page = write_together(
-        (arguments.graph, serialised), (arguments.page, rendered)
-    )
+    # landed would leave a fresh document beside a stale picture of it — the failure
+    # `write_together` exists to prevent, and to name out loud if it ever happens anyway.
+    # Nothing in here is allowed to end the run with a traceback: a stack of Python names
+    # a line of this file, where a reader needs the two paths and which of them changed.
+    try:
+        serialised = graph.serialise(document)
+        rendered = page.render(document, serialised)
+        written_graph, written_page = write_together(
+            (arguments.graph, serialised), (arguments.page, rendered)
+        )
+    except OSError as failed:
+        log.error(
+            "the run could not turn the graph it built into files: %s. Nothing was "
+            "written, and both files are the previous run's",
+            failed,
+            exc_info=True,
+        )
+        return 5
+    except OutputsUnwritten as unwritten:
+        if unwritten.landed:
+            log.error(
+                "the run wrote %s and then could not write the rest: %s. Those files no "
+                "longer describe the same source, and the ones that did not land are the "
+                "previous run's",
+                ", ".join(unwritten.landed),
+                unwritten.reason,
+                exc_info=True,
+            )
+        else:
+            log.warning(
+                "refused to write: %s. Nothing was written, and both files are the "
+                "previous run's",
+                unwritten.reason,
+            )
+        return 5
     log.info(
         "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
         "scored=%d neverScored=%d",
@@ -127,7 +171,7 @@ def main(argv=None):
 
 
 def write_together(*outputs):
-    """Write every one of these (path, bytes), or leave all of them as they were.
+    """Write every one of these (path, bytes) where they belong, or write none of them.
 
     Each is written beside where it belongs and then moved into place. Rendering both to
     bytes before writing either is not enough on its own: the second `open` fails on a
@@ -135,10 +179,30 @@ def write_together(*outputs):
     that had already landed would then sit beside the page it no longer describes — the
     stale one being the file a reader opens.
 
-    The two moves are not one step, and nothing here pretends otherwise. They are metadata
-    operations on files already written whole, so what is left to fail between them is
-    what would have failed at the `open` above; the window this closes is the wide one.
+    The moves are what is left, and two moves are not one step: there is no way to rename
+    two files at once, so "both or neither" cannot be promised outright and is not
+    promised here. What is promised is that no failure is a silent or a partial one:
+
+    - every way a move can fail that this tool can see coming is checked before a single
+      byte is written. A destination that is already a directory is the one such way, and
+      the only one the `open` below does not catch first: `page.html.writing` opens
+      perfectly well next to a directory called `page.html`, and the move then fails
+      after the graph has landed.
+    - a move that fails anyway raises with the paths that did land, so the run can say
+      which of the two files a reader is now looking at and which one is the old one.
+      Silence there is the failure this whole function exists to prevent, and a traceback
+      is a kind of silence: it names a line of Python rather than the two files.
+
+    A staged file is registered before it is opened, so a `.writing` file whose own write
+    failed is discarded with the rest rather than left behind for the next run to puzzle
+    over.
     """
+    for path, _ in outputs:
+        if os.path.isdir(path):
+            raise OutputsUnwritten(
+                "%s is a directory, and a file cannot be moved onto one" % path
+            )
+
     staged = []
     try:
         for path, content in outputs:
@@ -146,22 +210,39 @@ def write_together(*outputs):
             if directory:
                 os.makedirs(directory, exist_ok=True)
             beside = path + ".writing"
+            staged.append((beside, path, len(content)))
             with open(beside, "wb") as handle:
                 handle.write(content)
-            staged.append((beside, path, len(content)))
-    except OSError:
-        for beside, path, _ in staged:
-            log.debug("discarding path=%s: nothing was written for %s", beside, path)
-            _discard(beside)
-        raise
-    for beside, path, size in staged:
-        os.replace(beside, path)
+    except OSError as unwritable:
+        _discard_all(staged)
+        raise OutputsUnwritten(
+            "%s could not be written: %s" % (staged[-1][1], unwritable)
+        ) from unwritable
+
+    landed = []
+    for index, (beside, path, size) in enumerate(staged):
+        try:
+            os.replace(beside, path)
+        except OSError as unmovable:
+            _discard_all(staged[index:])
+            raise OutputsUnwritten(
+                "%s could not be moved into place: %s" % (path, unmovable), landed
+            ) from unmovable
+        landed.append(path)
         log.debug("wrote path=%s bytes=%d", path, size)
     return [size for _, _, size in staged]
+
+
+def _discard_all(staged):
+    for beside, path, _ in staged:
+        log.debug("discarding path=%s: nothing was written for %s", beside, path)
+        _discard(beside)
 
 
 def _discard(path):
     try:
         os.remove(path)
+    except FileNotFoundError:
+        pass
     except OSError as stuck:
         log.warning("could not remove the part-written file %s: %s", path, stuck)

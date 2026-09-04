@@ -70,28 +70,46 @@ class TheRunSaysWhatItDidTest(SourceTreeTest):
 
 
 class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
-    """The graph and the page are written together or not at all.
+    """The graph and the page are written together, or neither is and the run says so.
 
     A page that failed to render after the graph had landed would leave a fresh document
-    beside a stale picture of it — and the stale one is the file a reader opens.
+    beside a stale picture of it — and the stale one is the file a reader opens. Every
+    test here drives one of the ways that can happen and asserts the same three things:
+    the previous run's files are still the previous run's, nothing is left half written,
+    and the reason is in the log rather than in a traceback.
     """
 
-    def test_a_page_that_cannot_be_rendered_leaves_no_graph_behind(self):
+    def a_module(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {}")
+        return tree
+
+    def a_previous_run(self):
+        """An output directory with both of last run's files already in it."""
+        out = os.path.join(self.scratch, "out")
+        os.makedirs(out)
+        for name in ("graph.json", "page.html"):
+            with open(os.path.join(out, name), "wb") as handle:
+                handle.write(b"the previous run's " + name.encode("ascii"))
+        return out
+
+    def test_a_page_that_cannot_be_rendered_leaves_no_graph_behind(self):
+        tree = self.a_module()
         graph_path = os.path.join(self.scratch, "out", "graph.json")
         rendering = page.render
         page.render = _refuse_to_render
         self.addCleanup(setattr, page, "render", rendering)
 
-        with self.assertRaises(OSError):
-            cli.main(
+        with self.assertLogs("module_depth_map.cli", level=logging.ERROR) as logged:
+            code = cli.main(
                 ["--source", tree.root, "--graph", graph_path,
-                 "--page", os.path.join(self.scratch, "out", "page.html"),
-                 "--log-level", "ERROR"]
+                 "--page", os.path.join(self.scratch, "out", "page.html")]
             )
 
+        self.assertEqual(5, code)
         self.assertFalse(os.path.exists(graph_path))
+        self.assertIn("no room on the disk for a page", "\n".join(logged.output))
+        self.assertIn("Traceback", "\n".join(logged.output))
 
     def test_a_page_that_cannot_be_written_leaves_the_graph_as_it_was(self):
         """The other half of the same claim, and the one rendering to bytes first misses.
@@ -101,27 +119,91 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         directory, a full disk — is still open if the graph is written in place first,
         and it leaves behind exactly what this class says cannot happen.
         """
-        tree = self.tree("fixture")
-        tree.java("shop.till", "Till", "public class Till {}")
-        out = os.path.join(self.scratch, "out")
-        os.makedirs(out)
-        graph_path = os.path.join(out, "graph.json")
-        with open(graph_path, "wb") as handle:
-            handle.write(b"the previous run's graph")
+        tree = self.a_module()
+        out = self.a_previous_run()
         blocker = os.path.join(out, "not-a-directory")
         with open(blocker, "w", encoding="utf-8") as handle:
             handle.write("a file, so nothing can be written underneath it")
 
-        with self.assertRaises(OSError):
-            cli.main(
-                ["--source", tree.root, "--graph", graph_path,
-                 "--page", os.path.join(blocker, "page.html"),
-                 "--log-level", "ERROR"]
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = cli.main(
+                ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
+                 "--page", os.path.join(blocker, "page.html")]
             )
 
-        self.assertEqual(b"the previous run's graph", bytes_of(graph_path))
-        self.assertEqual(["graph.json", "not-a-directory"], sorted(os.listdir(out)))
+        self.assertEqual(5, code)
+        self.assertEqual(b"the previous run's graph.json", bytes_of(os.path.join(out, "graph.json")))
+        self.assertEqual(
+            ["graph.json", "not-a-directory", "page.html"], sorted(os.listdir(out))
+        )
+        self.assertIn("could not be written", "\n".join(logged.output))
+
+    def test_a_page_whose_path_is_a_directory_leaves_the_graph_as_it_was(self):
+        """The way a *move* fails after both files have been written whole.
+
+        `page.html.writing` opens perfectly well beside a directory called `page.html`,
+        so staging both outputs succeeds and the failure lands on the rename — which is
+        after the graph has already been moved into place. The graph landed, the page
+        never did, and `page.html.writing` was left behind, all under a traceback.
+        """
+        tree = self.a_module()
+        out = self.a_previous_run()
+        os.remove(os.path.join(out, "page.html"))
+        os.makedirs(os.path.join(out, "page.html"))
+
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = cli.main(
+                ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
+                 "--page", os.path.join(out, "page.html")]
+            )
+
+        self.assertEqual(5, code)
+        self.assertEqual(b"the previous run's graph.json", bytes_of(os.path.join(out, "graph.json")))
+        self.assertEqual(["graph.json", "page.html"], sorted(os.listdir(out)))
+        self.assertEqual([], os.listdir(os.path.join(out, "page.html")))
+        self.assertIn("is a directory", "\n".join(logged.output))
+
+    def test_a_move_that_fails_anyway_says_which_file_landed_and_which_did_not(self):
+        """Two renames are not one step, and the run has to say so when the second fails.
+
+        This is the failure that cannot be checked for in advance, so what is asserted is
+        not that it cannot happen but that it is never quiet: an error carrying the
+        exception, naming the file that landed, so a reader knows the page beside the
+        graph is the old one. Nothing is left half written either way.
+        """
+        tree = self.a_module()
+        out = self.a_previous_run()
+        moving = os.replace
+        os.replace = _refuse_the_second_move(moving)
+        self.addCleanup(setattr, os, "replace", moving)
+
+        with self.assertLogs("module_depth_map.cli", level=logging.ERROR) as logged:
+            code = cli.main(
+                ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
+                 "--page", os.path.join(out, "page.html")]
+            )
+
+        self.assertEqual(5, code)
+        said = "\n".join(logged.output)
+        self.assertIn("graph.json", said)
+        self.assertIn("no room to rename anything", said)
+        self.assertIn("Traceback", said)
+        self.assertEqual(b"the previous run's page.html", bytes_of(os.path.join(out, "page.html")))
+        self.assertEqual(["graph.json", "page.html"], sorted(os.listdir(out)))
 
 
 def _refuse_to_render(document, serialised):
     raise OSError("no room on the disk for a page")
+
+
+def _refuse_the_second_move(moving):
+    """The real `os.replace` for the first call, and a failure for every one after it."""
+    moved = []
+
+    def replace(source, destination):
+        moved.append(destination)
+        if len(moved) > 1:
+            raise OSError("no room to rename anything")
+        return moving(source, destination)
+
+    return replace
