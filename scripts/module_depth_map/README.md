@@ -67,6 +67,9 @@ Run its tests with the standard library's own runner, also from the repository r
   rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
   because that is how the parser records what it read; a qualified name, or a kind the
   parser never reports, is refused rather than accepted as a rule that could never fire.
+  So is an empty list of names for a rule to match on, and `--scoring ""`. The one list
+  that may be empty is `typesEveryCallerAlreadyKnows`: charging a caller for every type
+  they meet is a position somebody can hold, not a misspelling.
 - **Nothing is excluded without a named rule.** Each excluded module carries the rule that
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
@@ -121,13 +124,23 @@ Everything a caller has to learn before they can use a module correctly:
 Every bar is drawn against one number, `scoring.widestInterface` in the graph, so two of
 them can be compared by eye.
 
-Prose invariants, ordering constraints, the bound on a type variable and the methods a
-module inherits rather than declares are part of an interface and are not measured. The
-last of those is a limit of reading one file at a time: `MovableClock extends Clock` is
-read for the five methods it writes down, and `Clock.millis()` is reachable through it
-without being in this file to count. A bar is therefore a floor on what a caller must
-learn rather than the whole of it, and the page says as much rather than letting the
-number read as complete.
+A record's components each give it an accessor, and a record that writes one of those
+accessors out itself — to copy or to normalise what it hands back — is offering the one
+method Java compiles, not two.
+
+Prose invariants, ordering constraints, the bound on a type variable, the methods a
+module inherits rather than declares, and the members of a type declared inside a module
+are part of an interface and are not measured. Inheritance is a limit of reading one file
+at a time: `MovableClock extends Clock` is read for the five methods it writes down, and
+`Clock.millis()` is reachable through it without being in this file to count. A nested
+type is a deliberate boundary rather than a limit — it is named on the module that holds
+it instead of becoming one — and its members are named nowhere. A bar is therefore a
+floor on what a caller must learn rather than the whole of it, and the page says as much,
+in those words, rather than letting the number read as complete.
+
+Under each bar the page draws the counts the cost was added up from, one for every weight
+in the configuration file, so a reader with the weights in front of them can take the
+number apart.
 
 ## What is drawn but never scored
 
