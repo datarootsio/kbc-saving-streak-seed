@@ -403,6 +403,56 @@ class SourceReachedTwiceIsReadOnceTest(SourceTreeTest):
         self.assertTrue(any("not reading source directory" in line for line in logged.output))
 
 
+class LegalJavaIsNotFailedForBeingWrittenTightlyTest(SourceTreeTest):
+    """A file the compiler reads has to be a file this parser reads.
+
+    The alarm band over a file with nothing wrong with it is the same fault as a module
+    priced at zero for a shape nobody understood, one step louder: a reader who meets a
+    false alarm reads the next one less carefully, and the whole promise of the band is
+    that it never cries wolf.
+
+    The shape asserted here is a modifier written flush against a type-parameter list.
+    `javac` compiles it; this parser read `static` as part of the return type, called the
+    whole thing `static<T> T`, and failed the file — every module in it off the page for a
+    space nobody wrote. It was found by review rather than by this suite, which is the
+    reason it is written down here rather than only fixed.
+    """
+
+    def read(self, body):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/A.java", body)
+
+        document = graph.build([graph.java_root(tree.root)], scoring.load())
+
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["name"]: module for module in document["modules"]}
+
+    def test_a_modifier_flush_against_a_type_parameter_list_is_read_rather_than_failed(self):
+        modules = self.read(
+            "package shop.till;\npublic class A {\n"
+            "    static<T> T first(T only) { return only; }\n}\n"
+        )
+        interface = modules["A"]["interface"]
+
+        self.assertEqual(["first"], [method["name"] for method in interface["methods"]])
+        self.assertEqual(["T"], interface["methods"][0]["parameters"])
+        self.assertEqual("T", interface["methods"][0]["returns"])
+        self.assertEqual([], interface["typesCrossingTheSeam"])
+
+    def test_a_type_written_flush_against_the_name_it_declares_is_read_too(self):
+        """The two neighbouring spellings, which have always worked and have to keep working."""
+        modules = self.read(
+            "package shop.till;\npublic class A {\n"
+            "    public java.util.List<String>all() { return null; }\n"
+            "    public String[]some() { return null; }\n}\n"
+        )
+
+        self.assertEqual(
+            ["all", "some"],
+            [method["name"] for method in modules["A"]["interface"]["methods"]],
+        )
+
+
 class AShapeThatWouldMakeAnInterfaceCheaperIsNamedTest(SourceTreeTest):
     """The three places where losing part of a declaration would look like a finding.
 

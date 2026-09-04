@@ -20,6 +20,16 @@ one source tree and never resolves a name, so `ProblemDetail` is charged at
 said "a type this application invented" made the graph assert something about the source
 that a reader could check and find wrong.
 
+What a module reaches is the other half, and the numerator of depth: the distinct things
+it coordinates that its caller therefore does not — collaborating modules it calls,
+adapters it drives, persistent records it keeps, and the transaction it establishes.
+Depth is that count over interface cost, and never implementation lines over interface
+lines: the line-count measure pays a module for padding, and under it the largest file in
+a repository scores as its deepest module. Reach counts distinct names, so there is
+nothing a keyboard can do to it. What an adapter is, what a persistent record is and what
+establishes a transaction are three more rules in the file rather than three judgements
+written down here.
+
 Three kinds of thing are drawn but never scored, each by a rule the file names: values
 that only carry data across a seam, repository interfaces whose implementation is
 generated rather than written, and the application's entry point. They are shallow by
@@ -37,12 +47,22 @@ from . import javasource
 
 log = logging.getLogger("module_depth_map.scoring")
 
-SCHEMA = "module-depth-map-scoring/1"
+# The shape of the file this reads. It moved to /2 when the rules gained a `reach`
+# section: a /1 file names no rule for what an adapter is, what a persistent record is or
+# what establishes a transaction, and running it would score depth with three rules
+# nobody wrote. Refused instead, which is the same promise the rest of this file keeps.
+SCHEMA = "module-depth-map-scoring/2"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
 WEIGHTS = ("method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows")
 VISIBILITIES = ("public", "protected", "package-private", "private")
+
+# What a reached thing can be, and in what order two readings of one thing settle. A
+# module that builds a persistent record and also calls it is coordinating the record: the
+# stronger reading wins, so that one thing reached is one line in the fan whichever way it
+# was found. `transaction` is last because nothing else can ever be one.
+_REACH_KINDS = ("record", "adapter", "module", "transaction")
 
 
 class ConfigurationRefused(Exception):
@@ -66,21 +86,31 @@ class Exclusion:
         self.when = when
 
     def matches(self, declared):
-        """The evidence for excluding this module, or None if this rule says nothing about it.
+        """The evidence for excluding this module, or None if this rule says nothing about it."""
+        return evidence_for(self.when, declared)
 
-        Every condition in the rule has to hold, and the evidence names each of them by
-        the fact that satisfied it, so the graph can say "excluded by *this* rule for
-        *this* reason" rather than only that something matched. The conditions are read
-        in one fixed order rather than the file's, so that two rules written with their
-        conditions in different orders still read the same way on the page.
-        """
-        evidence = []
-        for condition in [name for name in CONDITIONS if name in self.when]:
-            met, because = CONDITIONS[condition].met(self.when[condition], declared)
-            if not met:
-                return None
-            evidence.append(because)
-        return ", ".join(evidence)
+
+def evidence_for(when, declared):
+    """The facts about this module that satisfy every condition, or None if one does not.
+
+    Every condition in the rule has to hold, and the evidence names each of them by the
+    fact that satisfied it, so the graph can say "covered by *this* rule for *this*
+    reason" rather than only that something matched. The conditions are read in one fixed
+    order rather than the file's, so that two rules written with their conditions in
+    different orders still read the same way on the page.
+
+    Written once and used by every rule the file holds — the exclusions, and what makes a
+    reached thing an adapter or a persistent record — because a second reading of the same
+    four conditions would be a second set of words for one rule a reader is invited to
+    argue with.
+    """
+    evidence = []
+    for condition in [name for name in CONDITIONS if name in when]:
+        met, because = CONDITIONS[condition].met(when[condition], declared)
+        if not met:
+            return None
+        evidence.append(because)
+    return ", ".join(evidence)
 
 
 # What a value written in the file has to be before any of it is applied. Each check
@@ -266,15 +296,45 @@ CONDITIONS = {
 }
 
 
+class WhatIsReached:
+    """What the file says an adapter is, what a persistent record is, and what a transaction is.
+
+    Three rules rather than three judgements written into the analyser, for the same
+    reason the exclusions are: a reader who thinks a repository is not an adapter, or that
+    this application's records are marked with something else, edits them and runs the tool
+    again. Each carries the sentence it is argued for with, and the page prints it.
+    """
+
+    def __init__(self, adapter, persistent_record, transaction, transaction_annotations):
+        self.adapter = adapter
+        self.persistent_record = persistent_record
+        self.transaction = transaction
+        self.transaction_annotations = transaction_annotations
+
+
+class Reason:
+    """One rule about what a reached thing is: the sentence for it, and what it matches."""
+
+    def __init__(self, because, when):
+        self.because = because
+        self.when = when
+
+    def matches(self, declared):
+        """The evidence that this rule covers the module, or None if it says nothing about it."""
+        return evidence_for(self.when, declared)
+
+
 class Rules:
     """The scoring rules one configuration file holds, ready to be applied to a module."""
 
-    def __init__(self, path, weights, reachable_from_outside, already_known, exclusions):
+    def __init__(self, path, weights, reachable_from_outside, already_known, exclusions,
+                 reached):
         self.path = path
         self.weights = weights
         self.reachable_from_outside = reachable_from_outside
         self.already_known = already_known
         self.exclusions = exclusions
+        self.reached = reached
 
     def excluded_by(self, declared):
         """The first rule that says this module is never scored, or None if it is scored.
@@ -350,6 +410,158 @@ class Rules:
             "cost": cost,
         }
 
+    def reach_of(self, declared, module_id, package, imports, modules):
+        """Everything this module coordinates on its caller's behalf, one entry apiece.
+
+        Reach is the numerator of depth, and it is a count of *distinct things* rather
+        than of anything a keyboard produces: the collaborating modules it calls, the
+        adapters it drives, the persistent records it writes, and the transaction it
+        establishes. Writing the same call ten more times, or a hundred more lines around
+        it, moves none of them — which is precisely why reach replaced the line count that
+        the first design measured depth with.
+
+        Nothing is reached that this graph does not hold. A name is followed to a module
+        through the file's own imports and its package, exactly as the compiler would
+        follow it, and a name that resolves to nothing here — `Clock`, `BigDecimal`, a
+        type from a dependency — is not counted at all. Reading it as reached would put a
+        line in the fan pointing at something a reader could not click, and would let a
+        module's score rise by importing more of the JDK.
+
+        What is left out is left out in the same direction, so reach reads as a floor:
+        a collaborator handed in as a parameter rather than held as a field, and a record
+        this module loads and mutates rather than creates, are coordination this tool
+        cannot see and does not guess at.
+        """
+        reached = {}
+
+        def note(target_id, kind, matched):
+            here = reached.get(target_id)
+            if here is not None and _REACH_KINDS.index(here["kind"]) <= _REACH_KINDS.index(kind):
+                return
+            reached[target_id] = {
+                "kind": kind,
+                "name": modules[target_id].name,
+                "moduleId": target_id,
+                "matched": matched,
+            }
+
+        def resolve(name):
+            for candidate in javasource.candidate_ids(name, package, imports):
+                if candidate in modules and candidate != module_id:
+                    return candidate
+            return None
+
+        held = {field.name: field for field in declared.fields}
+        for receiver in declared.receivers:
+            if receiver in held:
+                # Every name the field's type is spelled with, because a module keeps a
+                # collaborator in whatever shape it needs it in: `List<AScheduledJob>` is
+                # held to reach the jobs, and reading only the `List` would report a module
+                # driving a collection and nothing else.
+                written = held[receiver].written
+                found = [
+                    (name, "called through the field %s, which holds a %s" % (receiver, written))
+                    for name in javasource.names_in(written)
+                ]
+            else:
+                found = [(receiver, "called on %s" % receiver)]
+            for name, matched in found:
+                target = resolve(name)
+                if target is not None:
+                    note(target, self._what_is_reached(modules[target]), matched)
+
+        # A member imported statically is written with no receiver in front of it, so the
+        # only thing tying `asMoney(...)` to the module that declares it is the import.
+        for imported in imports:
+            if imported.member in declared.called:
+                target = resolve(imported.type.rsplit(".", 1)[-1])
+                if target is not None:
+                    note(target, self._what_is_reached(modules[target]),
+                         "calls %s, imported statically from it" % imported.member)
+
+        for built in declared.constructed:
+            target = resolve(built)
+            if target is None:
+                continue
+            evidence = self.reached.persistent_record.matches(modules[target])
+            if evidence is not None:
+                note(target, "record", "builds one: %s" % evidence)
+
+        entries = sorted(reached.values(), key=lambda entry: (entry["kind"], entry["name"]))
+        establishes = self._transaction_in(declared)
+        if establishes is not None:
+            entries.append(
+                {
+                    "kind": "transaction",
+                    "name": "a transaction",
+                    "moduleId": None,
+                    "matched": establishes,
+                }
+            )
+        log.debug(
+            "reach read name=%s modules=%d adapters=%d records=%d transaction=%s",
+            declared.name,
+            sum(1 for entry in entries if entry["kind"] == "module"),
+            sum(1 for entry in entries if entry["kind"] == "adapter"),
+            sum(1 for entry in entries if entry["kind"] == "record"),
+            "yes" if establishes else "no",
+        )
+        return {"count": len(entries), "reaches": entries}
+
+    def _what_is_reached(self, declared):
+        """What a thing this module reaches is: a persistent record, an adapter, or a module.
+
+        Read off the rules in the file, in the order they settle: an entity reached at all
+        is a row this module is handling — whether it built one or asked the type to — and
+        an interface whose implementation is generated is the storage it is handling it
+        through. Everything else is a module it calls. Each answer only names what the
+        thing is; how it was found is recorded beside it, so a reader can see the rule and
+        the evidence for it separately.
+        """
+        for kind, rule in (
+            ("record", self.reached.persistent_record),
+            ("adapter", self.reached.adapter),
+        ):
+            if rule.matches(declared) is not None:
+                return kind
+        return "module"
+
+    def _transaction_in(self, declared):
+        """How this module establishes a transaction, or None when it establishes none.
+
+        The module's own mark or any one of its methods', because either is how the one
+        transaction a caller gets is established, and a caller who does not have to open
+        one is a caller who does not have to know there is one.
+        """
+        for name in sorted(self.reached.transaction_annotations):
+            if name in declared.annotations:
+                return "the module is annotated with %s" % name
+            on = sorted(
+                method.name for method in declared.methods if name in method.annotations
+            )
+            if on:
+                return "%s is annotated with %s" % (on[0], name)
+        return None
+
+    def depth_of(self, reach, interface):
+        """Leverage: what a caller can set in motion per unit of interface they must learn.
+
+        Reported with both numbers it came from rather than as a bare ratio, so a reader
+        can check it and argue with it. Never lines over lines: that measure rewards
+        padding, and under it the largest file in a repository is its deepest module.
+
+        A module nobody scores has no denominator, and neither has one whose interface
+        costs nothing this tool can count — dividing by that would report the leverage of
+        a module as infinite on the strength of a bar that says only that there was
+        nothing on it to count. The reach and the cost are still both reported.
+        """
+        cost = interface["cost"]
+        return {
+            "reach": reach["count"],
+            "interfaceCost": cost,
+            "leverage": round(reach["count"] / cost, 2) if cost else None,
+        }
+
     def _cost_of(self, method):
         return self.weights["method"] + len(method.parameters) * self.weights["parameter"]
 
@@ -420,7 +632,7 @@ def load(path=None):
         raise ConfigurationRefused(
             "schema is %r, and this tool reads %r" % (document.get("schema"), SCHEMA)
         )
-    _only(document, ("schema", "interfaceCost", "exclusions"), "the configuration")
+    _only(document, ("schema", "interfaceCost", "reach", "exclusions"), "the configuration")
 
     cost = document.get("interfaceCost")
     _an_object(cost, "interfaceCost")
@@ -468,16 +680,72 @@ def load(path=None):
         may_be_empty=True,
     )
 
+    reached = _reach(document.get("reach"))
     exclusions = _exclusions(document.get("exclusions"))
-    rules = Rules(path, dict(weights), frozenset(reachable), frozenset(known), exclusions)
+    rules = Rules(
+        path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached
+    )
     log.debug(
-        "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d rules=%s",
+        "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
+        "transaction=%s rules=%s",
         ",".join("%s=%d" % (name, weights[name]) for name in WEIGHTS),
         ",".join(sorted(reachable)),
         len(known),
+        ",".join(sorted(reached.transaction_annotations)),
         ",".join(exclusion.rule for exclusion in exclusions),
     )
     return rules
+
+
+def _reach(reach):
+    """What the file says an adapter, a persistent record and a transaction are.
+
+    All three are required rather than defaulted. A missing rule would not read as "count
+    none of those": it would read as an adapter being nothing, a record being nothing and
+    a transaction being nothing, and every module in the graph would come back coordinating
+    less than it does — a low score for three rules nobody wrote, which is the one thing
+    this file refuses to hand anybody.
+    """
+    _an_object(reach, "reach")
+    _only(reach, ("adapter", "persistentRecord", "transaction"), "reach")
+    transaction = reach.get("transaction")
+    _an_object(transaction, "reach.transaction")
+    _only(transaction, ("because", "annotatedWith"), "reach.transaction")
+    return WhatIsReached(
+        adapter=_a_reason(reach.get("adapter"), "reach.adapter"),
+        persistent_record=_a_reason(reach.get("persistentRecord"), "reach.persistentRecord"),
+        transaction=_a_sentence(transaction, "reach.transaction"),
+        transaction_annotations=frozenset(
+            _simple_names(transaction.get("annotatedWith"), "reach.transaction.annotatedWith")
+        ),
+    )
+
+
+def _a_reason(entry, where):
+    """One rule about what a reached thing is: the sentence for it, and the facts it matches."""
+    _an_object(entry, where)
+    _only(entry, ("because", "when"), where)
+    because = _a_sentence(entry, where)
+    when = entry.get("when")
+    _an_object(when, "%s.when" % where)
+    if not when:
+        raise ConfigurationRefused(
+            "%s.when says nothing, so every module in the graph would be one" % where
+        )
+    _only(when, CONDITIONS, "%s.when" % where)
+    for condition in sorted(when):
+        CONDITIONS[condition].valid(when[condition], "%s.when.%s" % (where, condition))
+    return Reason(because, dict(when))
+
+
+def _a_sentence(entry, where):
+    """The `because` an entry carries, refused when there is nothing anybody could argue with."""
+    if not isinstance(entry.get("because"), str) or not entry["because"].strip():
+        raise ConfigurationRefused(
+            "%s.because is %r, and a rule nobody can read the reason for is one nobody "
+            "can argue with" % (where, entry.get("because"))
+        )
+    return entry["because"]
 
 
 def _exclusions(listed):

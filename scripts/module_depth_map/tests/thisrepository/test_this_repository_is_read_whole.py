@@ -140,6 +140,63 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
                 module["id"],
             )
 
+    def test_every_line_in_every_fan_points_at_a_module_this_graph_holds(self):
+        """A fan a reader cannot follow is worse than no fan.
+
+        The transaction is the one thing reached that is not a module, and it says so by
+        carrying no module id at all rather than by carrying one nothing answers to.
+        """
+        held = {module["id"] for module in self.document["modules"]}
+
+        for module in self.document["modules"]:
+            for entry in module["reach"]["reaches"]:
+                if entry["kind"] == "transaction":
+                    self.assertIsNone(entry["moduleId"], module["id"])
+                    continue
+                self.assertIn(entry["moduleId"], held, module["id"])
+                self.assertTrue(entry["matched"].strip(), module["id"])
+
+    def test_every_reach_is_a_whole_number_the_page_can_draw_a_fan_from(self):
+        furthest = self.document["scoring"]["widestReach"]
+
+        for module in self.document["modules"]:
+            reach = module["reach"]
+            self.assertEqual(len(reach["reaches"]), reach["count"], module["id"])
+            self.assertLessEqual(reach["count"], furthest, module["id"])
+            self.assertEqual(
+                len({entry["moduleId"] for entry in reach["reaches"]}),
+                len(reach["reaches"]),
+                module["id"],
+            )
+        self.assertEqual(
+            furthest, max(module["reach"]["count"] for module in self.document["modules"])
+        )
+
+    def test_every_depth_is_the_two_numbers_it_was_taken_from(self):
+        """Leverage is checkable by hand, on every card, or it is a ranking nobody can argue with."""
+        for module in self.document["modules"]:
+            depth = module["depth"]
+            self.assertEqual(module["reach"]["count"], depth["reach"], module["id"])
+            self.assertEqual(module["interface"]["cost"], depth["interfaceCost"], module["id"])
+            if not depth["interfaceCost"]:
+                self.assertIsNone(depth["leverage"], module["id"])
+            else:
+                self.assertEqual(
+                    round(depth["reach"] / depth["interfaceCost"], 2),
+                    depth["leverage"],
+                    module["id"],
+                )
+
+    def test_the_three_kinds_of_thing_a_module_can_reach_are_all_present_here(self):
+        """A rule for what is reached that matched nothing would be one nobody could check."""
+        found = {
+            entry["kind"]
+            for module in self.document["modules"]
+            for entry in module["reach"]["reaches"]
+        }
+
+        self.assertEqual({"module", "adapter", "record", "transaction"}, found)
+
     def test_the_three_kinds_of_thing_the_rules_name_are_all_present_to_exclude(self):
         """A rule that matches nothing here would be a rule nobody could have checked."""
         for entry in self.document["scoring"]["exclusions"]:
@@ -160,3 +217,18 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
 
         self.assertGreater(len(wide["methods"]), len(deep["methods"]))
         self.assertGreater(wide["cost"], deep["cost"])
+
+    def test_the_module_the_specification_predicted_would_be_shallow_reads_as_shallow(self):
+        """The same prediction again, now that there is a numerator to read it against.
+
+        `AccountsService` asks more of a caller than `DepositsService` and coordinates
+        less on their behalf, which is the whole of what this page means by shallow. Both
+        halves are compared rather than pinned to a number, so a feature landing in either
+        module moves the figures without reddening the suite.
+        """
+        by_id = {module["id"]: module for module in self.document["modules"]}
+        wide = by_id["io.dataroots.savingstreak.accounts.AccountsService"]
+        deep = by_id["io.dataroots.savingstreak.deposits.DepositsService"]
+
+        self.assertGreater(deep["reach"]["count"], wide["reach"]["count"])
+        self.assertGreater(deep["depth"]["leverage"], wide["depth"]["leverage"])

@@ -26,6 +26,9 @@ _STYLE = """
   --alarm-ground: #fdf1ec;
   --alarm-edge: #d98a6a;
   --alarm-ink: #8a3b16;
+  --adapter: #7a5195;
+  --record: #1f7a5a;
+  --transaction: #a05a1f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -38,6 +41,9 @@ _STYLE = """
     --alarm-ground: #2e1d16;
     --alarm-edge: #8a5236;
     --alarm-ink: #f0b295;
+    --adapter: #c39ae0;
+    --record: #6ec8a4;
+    --transaction: #e0a86e;
   }
 }
 * { box-sizing: border-box; }
@@ -103,15 +109,26 @@ section.package { margin: 2rem 0 0; }
   text-transform: uppercase;
   color: var(--ink-soft);
 }
+.module .shape { margin: .5rem 0 .35rem; }
 .module .bar {
   height: .5rem;
-  margin: .5rem 0 .35rem;
   background: var(--edge);
   border-radius: .25rem;
   overflow: hidden;
 }
-.module .bar span { display: block; height: 100%; background: var(--accent); }
+.module .bar span { display: block; height: 100%; margin: 0 auto; background: var(--accent); }
+.module .bar.unscored { background: none; border: 1px dashed var(--edge); }
+.module .fan { display: block; width: 100%; }
+.fan line { stroke: var(--accent); stroke-width: 1.1; }
+.fan circle { fill: var(--accent); }
+.fan .adapter { stroke: var(--adapter); fill: var(--adapter); }
+.fan .record { stroke: var(--record); fill: var(--record); }
+.fan .transaction { stroke: var(--transaction); fill: var(--transaction); stroke-dasharray: 3 2.5; }
 .module .cost { margin: 0; font-size: .8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.module .reach { margin: .2rem 0 0; font-size: .8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.key { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin: .6rem 0 0; padding: 0; list-style: none; }
+.key li { display: flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--ink-soft); }
+.key svg { flex: none; }
 .module .unscored { margin: .5rem 0 0; font-size: .8rem; color: var(--ink-soft); font-style: italic; }
 .module .nested { margin: .4rem 0 0; font-size: .8rem; color: var(--ink-soft); }
 .rules {
@@ -142,6 +159,38 @@ _SCRIPT = """
     return element;
   }
 
+  // The shape is drawn rather than written, so it is SVG, and SVG elements have to be
+  // made in their own namespace: `createElement("svg")` produces an unknown HTML element
+  // that renders as nothing at all, with no error anywhere for a reader to go on.
+  //
+  // The namespace is asked of the browser's own parser rather than written down here,
+  // because writing it down would put a URL in a file whose whole promise is that it
+  // fetches nothing. This one would not be fetched either, but a reader checking that
+  // promise by grepping the page cannot tell those two apart, and a page that has to be
+  // explained is not one that can be checked.
+  var svgNamespace = (function () {
+    var carrier = document.createElement("template");
+    carrier.innerHTML = "<svg></svg>";
+    return carrier.content.firstChild.namespaceURI;
+  }());
+
+  function draw(parent, tag, className, attributes) {
+    var element = document.createElementNS(svgNamespace, tag);
+    if (className) { element.setAttribute("class", className); }
+    for (var name in attributes || {}) {
+      if (Object.prototype.hasOwnProperty.call(attributes, name)) {
+        element.setAttribute(name, String(attributes[name]));
+      }
+    }
+    parent.appendChild(element);
+    return element;
+  }
+
+  function titled(element, text) {
+    draw(element, "title", null, {}).textContent = text;
+    return element;
+  }
+
   // The shape this renderer reads, checked before anything is read out of it. A document
   // of an older shape has no `scoring` object, and reaching into one would throw halfway
   // down a single pass — which a reader sees as a page that stopped early or never
@@ -161,9 +210,10 @@ _SCRIPT = """
   add(head, "h1", null, "Module depth map");
   add(head, "p", "lede",
     "Every module this application is made of, at class grain, grouped by the package it "
-    + "lives in, each carrying what its interface costs a caller. An observation of the "
-    + "source it was generated from, and nothing more: nothing here is ranked, and no "
-    + "module here is proposed for change.");
+    + "lives in, each drawn as what its interface costs a caller over a fan of everything "
+    + "it coordinates on that caller's behalf. An observation of the source it was "
+    + "generated from, and nothing more: nothing here is ranked, and no module here is "
+    + "proposed for change.");
 
   var read = add(root, "div", "read");
   var list = add(read, "dl");
@@ -226,6 +276,54 @@ _SCRIPT = """
     + " modules are drawn but never scored, each by a named rule in "
     + document_.scoring.configuration + ". They are shallow by construction, and ranking "
     + "them beside the modules that are not would bury the finding.");
+  var fans = add(root, "section", "rules");
+  add(fans, "h2", null, "What the fans measure");
+  add(fans, "p", null,
+    "Under each bar is one line out to every distinct thing that module coordinates on "
+    + "its caller's behalf: another module it calls, an adapter it drives, a persistent "
+    + "record it keeps, and the transaction it establishes. That count is its reach, and "
+    + "reach is what depth is read as \u2014 the behaviour a caller sets in motion per unit "
+    + "of interface they have to learn, printed under every card as "
+    + "reach \u00f7 interface cost. Never lines over lines: that measure pays a module for "
+    + "padding its implementation, and under it the largest file in a repository is its "
+    + "deepest module. Writing the same call again, or a hundred more lines around it, "
+    + "moves no fan on this page. Every fan is drawn to one scale, the widest reach in "
+    + "this document, which is " + document_.scoring.widestReach + ".");
+  add(fans, "p", null,
+    "So a deep module reads as a short bar over a wide fan, and a module that coordinates "
+    + "one thing per method reads as a bar as wide as its fan. The shape is the whole "
+    + "argument; the words under it are there to be checked against it.");
+  var kindsNamed = add(fans, "ul");
+  [
+    {rule: "an adapter", because: document_.scoring.reach.adapter},
+    {rule: "a persistent record", because: document_.scoring.reach.persistentRecord},
+    {rule: "a transaction", because: document_.scoring.reach.transaction}
+  ].forEach(function (named_) {
+    var item = add(kindsNamed, "li");
+    add(item, "strong", null, named_.rule);
+    add(item, "span", null, " \u2014 " + named_.because);
+  });
+  add(fans, "p", null,
+    "Everything else a module calls is a module it calls. A transaction is established by "
+    + document_.scoring.reach.transactionAnnotations.join(", ") + " on the module or on one "
+    + "of its methods. All three rules live in " + document_.scoring.configuration
+    + ", beside the weights: change one and the fans change with it.");
+  var key = add(fans, "ul", "key");
+  ["module", "adapter", "record", "transaction"].forEach(function (kind) {
+    var item = add(key, "li");
+    var swatch = draw(item, "svg", "fan", {viewBox: "0 0 24 10", width: 24, height: 10});
+    draw(swatch, "line", kind, {x1: 0, y1: 5, x2: 18, y2: 5});
+    draw(swatch, "circle", kind, {cx: 20, cy: 5, r: 2});
+    add(item, "span", null, kind);
+  });
+  add(fans, "p", null,
+    "A fan is a floor on what a module coordinates, the way a bar is a floor on what a "
+    + "caller must learn. Only names this graph holds are counted, so a module reaching "
+    + "for the JDK or for a framework reaches nothing here and cannot raise its own score "
+    + "by importing more of either. Nor is a collaborator handed in as an argument rather "
+    + "than held, or a record this module loads and changes rather than keeps: neither is "
+    + "coordination this tool can see, and it does not guess at them.");
+
   var named = add(rules, "ul");
   var because = {};
   document_.scoring.exclusions.forEach(function (exclusion) {
@@ -319,6 +417,98 @@ _SCRIPT = """
       };
     });
 
+  // The scale the fans share, from the document for the same reason as the first: two
+  // shapes compared by eye are compared against a number a reader can find in the graph.
+  var furthest = document_.scoring.widestReach;
+
+  // The shape, drawn to one geometry every card shares: an interface bar as wide as what
+  // the module asks of a caller, and under it one line out to each thing it coordinates
+  // on that caller's behalf, spread as wide as it reaches. A deep module is a short bar
+  // over a wide fan; a bar as wide as its fan is a module coordinating a thing per method.
+  // Both halves are drawn from the same document the numbers under them come from.
+  var SHAPE = {width: 200, height: 46, apex: 2, feet: 42};
+
+  function drawShape(item, module) {
+    var shape = add(item, "div", "shape");
+    var scored = module.interface.cost !== null;
+    var track = add(shape, "div", scored ? "bar" : "bar unscored");
+    if (scored) {
+      track.title = "interface cost " + module.interface.cost;
+      add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
+    } else {
+      track.title = "never scored \u2014 " + module.excludedBy.rule;
+    }
+    drawFan(shape, module);
+  }
+
+  // One line from under the middle of the bar out to each thing the module coordinates,
+  // the whole fan as wide a share of the card as its reach is of the widest reach in the
+  // document. Two encodings of one number on purpose: the lines can be counted, and the
+  // spread can be compared across a page at a glance.
+  function drawFan(shape, module) {
+    var fan = draw(shape, "svg", "fan", {
+      viewBox: "0 0 " + SHAPE.width + " " + SHAPE.height,
+      preserveAspectRatio: "xMidYMid meet"
+    });
+    var reaches = module.reach.reaches;
+    var span = furthest > 0 ? SHAPE.width * module.reach.count / furthest : 0;
+    reaches.forEach(function (reached, index) {
+      var foot = reaches.length === 1
+        ? SHAPE.width / 2
+        : (SHAPE.width - span) / 2 + span * index / (reaches.length - 1);
+      var says = reached.kind + " " + reached.name + " \u2014 " + reached.matched;
+      titled(draw(fan, "line", reached.kind, {
+        x1: SHAPE.width / 2, y1: SHAPE.apex, x2: foot, y2: SHAPE.feet
+      }), says);
+      titled(draw(fan, "circle", reached.kind, {cx: foot, cy: SHAPE.feet, r: 2}), says);
+    });
+  }
+
+  // What the fan under this module comes to, in words, under the shape that drew it. The
+  // kinds read in a fixed order rather than the document's, which sorts them by name.
+  var kinds = [
+    {kind: "module", one: "module called", many: "modules called"},
+    {kind: "adapter", one: "adapter driven", many: "adapters driven"},
+    {kind: "record", one: "persistent record kept", many: "persistent records kept"},
+    {kind: "transaction", one: "transaction established", many: "transactions established"}
+  ];
+
+  function drawReach(item, module) {
+    var parts = [];
+    var accounted = 0;
+    kinds.forEach(function (term) {
+      var howMany = 0;
+      module.reach.reaches.forEach(function (reached) {
+        if (reached.kind === term.kind) { howMany += 1; }
+      });
+      accounted += howMany;
+      if (howMany > 0) { parts.push(count(howMany, term.one, term.many)); }
+    });
+    if (accounted !== module.reach.count) {
+      parts.push(count(module.reach.count - accounted, "thing this page cannot name",
+        "things this page cannot name"));
+    }
+    var reading = add(item, "p", "reach", module.reach.count === 0
+      ? "reaches nothing this graph holds"
+      : "reaches " + module.reach.count + ": " + parts.join(", "));
+    // The ratio and the two numbers it came from, so that a reader can do the division
+    // themselves. A depth whose reach is not the reach drawn above it says so: the shape
+    // and the number under it are the same claim, and a reader cannot argue with two.
+    if (module.depth.reach !== module.reach.count) {
+      reading.appendChild(document.createTextNode(
+        " \u2014 but this module's depth was taken over a reach of " + module.depth.reach));
+    } else if (module.depth.leverage !== null) {
+      reading.appendChild(document.createTextNode(
+        " \u2014 " + module.depth.leverage + " reached per unit of interface"));
+    } else if (module.interface.cost === null) {
+      reading.appendChild(document.createTextNode(
+        " \u2014 never scored, so there is no interface cost to read it against"));
+    } else {
+      reading.appendChild(document.createTextNode(
+        " \u2014 nothing on the bar to read it against"));
+    }
+  }
+
   // Branching on the fact that carries the exclusion, not on the absent cost that
   // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
   // would throw for a module that had one without the other, and the renderer is one
@@ -330,9 +520,6 @@ _SCRIPT = """
       never.title = module.excludedBy.matched + ". " + because[module.excludedBy.rule];
       return;
     }
-    var track = add(item, "div", "bar");
-    track.title = "interface cost " + module.interface.cost;
-    add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
     var parts = [];
     var added = 0;
     breakdown.forEach(function (term) {
@@ -375,7 +562,9 @@ _SCRIPT = """
       var item = add(modules, "li", "module");
       add(item, "div", "name", module.name);
       add(item, "div", "kind", module.kind);
+      drawShape(item, module);
       drawInterface(item, module);
+      drawReach(item, module);
       if (module.nested.length > 0) {
         add(item, "p", "nested", "nested: " + module.nested.join(", "));
       }

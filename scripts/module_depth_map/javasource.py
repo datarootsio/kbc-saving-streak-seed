@@ -31,6 +31,12 @@ The last three are the ones a future edit is most likely to reach: a legal const
 patterns have not met yet arrives as a named failure on the page, at a line, rather than
 as a module that looks shallow.
 
+The other side of the seam is read the same way and weighed just as little: the fields a
+module holds, the names it writes a call against, the types it builds one of, and the
+imports that say which module each of those names means. All four are sets of names rather
+than counts of occurrences, because what they feed — a module's reach — must not be
+movable by writing the same call again.
+
 One decision cannot fail loudly, and it is where every fault found on this branch got in:
 deciding that a member which reads like a method is not one. A field, a constructor and a
 nested record all read like one and legitimately are not, so there is nothing to fail on —
@@ -45,6 +51,35 @@ import re
 log = logging.getLogger("module_depth_map.javasource")
 
 _PACKAGE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
+
+# What a file says it is allowed to spell by simple name. `import static a.b.C.m` names a
+# member of a type; `import a.b.*` names no type at all and is carried as the package it
+# opens, so a name used in the body can be tried against it.
+_IMPORT = re.compile(r"^\s*import\s+(static\s+)?([\w.]+(?:\.\*)?)\s*;", re.M)
+
+# A call written against something the source names: `deposits.save(...)`, `Money.of(...)`.
+# Only the name in front of the dot is taken, because that is the thing being reached; what
+# is called on it is its own business.
+_A_RECEIVER = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*\s*\(")
+
+# `new Deposit(...)`, `new java.util.ArrayList<>()`: the type a body builds one of.
+_CONSTRUCTED = re.compile(r"(?<![\w.$])new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
+
+# A name with a call's brackets after it and nothing in front of the name. Read only so
+# that a member imported statically — `asMoney(amount)` — can be followed back to the type
+# it was imported from; everything else it matches is a name nothing ever asks about.
+_A_CALL = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(")
+
+# The words Java writes brackets after that are not calls. Listed so that `if`, `while`
+# and their kind are not carried as things a module called.
+_NOT_A_CALL = frozenset(
+    ["assert", "case", "catch", "do", "else", "for", "if", "new", "return", "super",
+     "switch", "synchronized", "this", "throw", "while", "yield"]
+)
+
+# `this.deposits.save(...)` reaches exactly what `deposits.save(...)` reaches. Taken off
+# before anything is read, so one module writing both spellings is not two collaborators.
+_THROUGH_THIS = re.compile(r"(?<![\w.$])this[ \t\r\n]*\.[ \t\r\n]*")
 
 # An annotation, wherever one can be written: on a declaration, on a member, on a
 # parameter, or inside another annotation's arguments.
@@ -123,12 +158,48 @@ class Method:
     rule outside this file to tell apart from the types it has to go and read.
     """
 
-    def __init__(self, name, visibility, parameters, returns, type_parameters=()):
+    def __init__(self, name, visibility, parameters, returns, type_parameters=(),
+                 annotations=()):
         self.name = name
         self.visibility = visibility
         self.parameters = tuple(parameters)
         self.returns = returns
         self.type_parameters = tuple(type_parameters)
+        self.annotations = tuple(annotations)
+
+
+class Field:
+    """One value a module holds, by the name it calls it and the type it declared it with.
+
+    Read for one reason only: a field is how a module keeps hold of a collaborator, so the
+    name is what a call through it is written against — `deposits.save(...)` — and the type
+    is what that call reaches. Nothing here says whether either is worth counting.
+
+    A field a module never calls anything on is still recorded. Deciding what a held value
+    amounts to is a rule, and rules do not live in this file.
+    """
+
+    def __init__(self, name, written):
+        self.name = name
+        self.written = written
+
+
+class Imported:
+    """One import, as the type it names and whether it was written `import static`.
+
+    A static import names a member and the type holding it — `AmountOfMoney.asMoney` — so
+    `type` is the part that could be a module and `member` is what the source may then
+    call with no receiver in front of it. An ordinary import has no member.
+
+    Imports are read so that a name used in a body can be followed to the module it means
+    rather than guessed at by matching simple names across the whole graph, which would
+    hand one module the collaborators of another that happened to share a name.
+    """
+
+    def __init__(self, type_, member, on_demand):
+        self.type = type_
+        self.member = member
+        self.on_demand = on_demand
 
 
 class DeclaredType:
@@ -142,10 +213,17 @@ class DeclaredType:
     `annotations`, `supertypes` and `methods` are what a rule outside this file gets to
     reason about: what this type is marked with, what it is built on, and what it offers
     anybody holding one. Nothing here decides what any of that is worth.
+
+    `fields`, `receivers`, `constructed` and `called` are the same again for the other
+    side of the seam — what the implementation reaches for. They are read for a module
+    only, because a type declared inside one is named on it rather than measured, and they
+    are counts of *names*, never of lines: writing the same call ten more times adds
+    nothing to any of them.
     """
 
     def __init__(self, name, kind, depth, ends_at, owner, qualified,
-                 annotations=(), supertypes=(), methods=(), type_parameters=()):
+                 annotations=(), supertypes=(), methods=(), type_parameters=(),
+                 fields=(), receivers=(), constructed=(), called=()):
         self.name = name
         self.kind = kind
         self.depth = depth
@@ -156,15 +234,20 @@ class DeclaredType:
         self.supertypes = tuple(supertypes)
         self.methods = tuple(methods)
         self.type_parameters = tuple(type_parameters)
+        self.fields = tuple(fields)
+        self.receivers = tuple(receivers)
+        self.constructed = tuple(constructed)
+        self.called = tuple(called)
 
 
 class ParsedFile:
     """What one Java file turned out to contain."""
 
-    def __init__(self, package, types, lines):
+    def __init__(self, package, types, lines, imports=()):
         self.package = package
         self.types = types
         self.lines = lines
+        self.imports = tuple(imports)
 
     @property
     def top_level(self):
@@ -401,10 +484,11 @@ def parse(text, path):
 
     types = _declared_types(masked, depths)
     package = _PACKAGE.search(masked)
+    imports = _imports_in(masked)
 
     if path.rsplit("/", 1)[-1] in DECLARES_NO_TYPE:
         log.debug("read package descriptor path=%s declaring no module", path)
-        return ParsedFile(package.group(1) if package else "", types, lines)
+        return ParsedFile(package.group(1) if package else "", types, lines, imports)
 
     if package is None:
         raise ParseFailure("no package declaration")
@@ -412,14 +496,37 @@ def parse(text, path):
         raise ParseFailure("no top-level type declaration")
 
     log.debug(
-        "parsed file path=%s package=%s lines=%d topLevel=%d nested=%d",
+        "parsed file path=%s package=%s lines=%d topLevel=%d nested=%d imports=%d",
         path,
         package.group(1),
         lines,
         sum(1 for declared in types if declared.owner is None),
         sum(1 for declared in types if declared.owner is not None),
+        len(imports),
     )
-    return ParsedFile(package.group(1), types, lines)
+    return ParsedFile(package.group(1), types, lines, imports)
+
+
+def _imports_in(masked):
+    """Every import this file wrote, as the type it names and the member it may call.
+
+    A single-type import names the type outright. A static import names a member and the
+    type holding it, so both halves are kept: the member is what the body then writes with
+    no receiver in front of it. An on-demand import — `a.b.*`, `static a.b.C.*` — names no
+    one type, so what is carried is the prefix a name can be tried under.
+    """
+    imports = []
+    for found in _IMPORT.finditer(masked):
+        static = bool(found.group(1))
+        written = found.group(2)
+        if written.endswith(".*"):
+            imports.append(Imported(written[:-2], None, on_demand=True))
+        elif static:
+            holder, _, member = written.rpartition(".")
+            imports.append(Imported(holder, member, on_demand=False))
+        else:
+            imports.append(Imported(written, None, on_demand=False))
+    return tuple(imports)
 
 
 def _declared_types(masked, depths):
@@ -489,6 +596,10 @@ def _declared_types(masked, depths):
             # scored, so reading its members would be work nothing asks for.
             methods=() if owner is not None
             else _methods_of(masked, kind, header, body_starts_at, body_ends_at, line),
+            fields=() if owner is not None
+            else _fields_of(masked, kind, body_starts_at, body_ends_at),
+            **({} if owner is not None
+               else _reached_in(masked[body_starts_at:body_ends_at])),
         )
         types.append(declared)
         open_types.append(declared)
@@ -533,7 +644,12 @@ _LEADING_BRACKETS = re.compile(r"\s*(?:\[\s*\]\s*)+")
 # belongs, so anything else there is a member this parser has misread.
 _A_TYPE = re.compile(r"[A-Za-z_$][\w$.<>,\[\] ?]*$")
 
-_LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s")
+# A word at the front of a declaration, with whatever follows it left where it is. The
+# boundary is looked at rather than eaten, because a modifier may be written flush
+# against a type-parameter list — `static<T> T k(T t)`, which javac compiles — and a
+# pattern that insisted on whitespace after the word left `static` on the front of the
+# return type, which reads as no type at all and failed the whole file by name.
+_LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)(?=[\s<])")
 
 _TRAILING_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)\s*$")
 
@@ -657,6 +773,89 @@ def _components_in(header, line):
     return _declared_parameters(
         header[opened + 1:_after_balanced(header, opened) - 1], line
     )
+
+
+def _fields_of(masked, kind, body_starts_at, body_ends_at):
+    """Every value this type holds, by the name it holds it under.
+
+    Nothing is failed on here, and that is the difference from reading a method. A method
+    this parser declines leaves an interface cheaper than the source makes it — a claim
+    about a caller — while a field it declines leaves a module reaching for one thing
+    fewer, which understates it. Both are logged; only the first is worth stopping a run
+    for, and stopping on an initialiser block or a `record` component would fail files
+    that are perfectly readable.
+    """
+    found = []
+    for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
+        field = _field_in(member, _line_of(masked, at))
+        if field is not None:
+            found.append(field)
+    return tuple(found)
+
+
+def _field_in(member, line):
+    """The field this member declares, or None when the member is not one.
+
+    A member with a parameter list is a method, a constructor or a nested record, and a
+    member holding a declaration keyword is a type. What is left has a type and a name,
+    and anything that does not read that way — an initialiser block, several names
+    declared at once — is declined with a line, never repaired into a guess.
+    """
+    text = _without_annotations(member)
+    before = text.split("=", 1)[0]
+    if "(" in before or _TYPE.search(before):
+        return None
+    _, rest = _modifiers_in(before)
+    rest = _without_type_parameters(rest)
+    name = _TRAILING_NAME.search(rest)
+    if name is None:
+        return None
+    # `int xs[]` declares the array after the name, and hands back the same thing
+    # `int[] xs` does.
+    written = _normalised(rest[:name.start()]) + _brackets_after(rest[name.end():])
+    if not written or not _reads_as_a_type(written):
+        log.debug(
+            "member not read as a field line=%d reason=%s member=%s",
+            line,
+            "nothing before the name reads as a type" if written
+            else "there is nothing before the name",
+            _one_line(member),
+        )
+        return None
+    return Field(name.group(1), written)
+
+
+def _reached_in(body):
+    """What this module's implementation reaches for, by name and never by volume.
+
+    Three readings, each a set of names rather than a count of occurrences, which is the
+    whole point: a module that writes the same call ten more times reaches for nothing
+    new, and a measure built on these cannot be moved by adding lines.
+
+    - `receivers`: what a call was written against, `deposits` in `deposits.save(...)`
+      and `AmountOfMoney` in `AmountOfMoney.whyItIsNotOne(...)`. Whether that name is a
+      field, a type or a local is not this file's business to decide.
+    - `constructed`: the types a `new` builds one of.
+    - `called`: a name with a call's brackets after it and nothing in front of it, so
+      that a member imported statically can be followed back to the type it came from.
+
+    Everything a body writes inside a comment or a literal is already blanked out by the
+    time this reads it, so a call in a javadoc example is not a collaborator.
+    """
+    plain = _THROUGH_THIS.sub("", body)
+    return {
+        "receivers": sorted({found.group(1) for found in _A_RECEIVER.finditer(plain)}),
+        "constructed": sorted(
+            {found.group(1).rsplit(".", 1)[-1] for found in _CONSTRUCTED.finditer(plain)}
+        ),
+        "called": sorted(
+            {
+                found.group(1)
+                for found in _A_CALL.finditer(plain)
+                if found.group(1) not in _NOT_A_CALL
+            }
+        ),
+    }
 
 
 def _member_headers(masked, kind, body_starts_at, body_ends_at):
@@ -791,7 +990,37 @@ def _method_in(member, holder_kind, line):
         )],
         returns,
         _type_parameters_in(rest),
+        _annotations_on(member),
     )
+
+
+def _annotations_on(member):
+    """The annotations written on this member, by simple name.
+
+    Read by walking the front of the member over exactly what Java allows to precede a
+    type there — annotations, what they were given, and modifiers — and stopping at the
+    first thing that is neither, the same way a declaration's own annotations are read.
+    Reading every `@` in the member instead would collect the ones written on its
+    parameters, and `@Transactional` on the method would then be indistinguishable from
+    `@RequestBody` on an argument.
+    """
+    found = []
+    rest = member.lstrip()
+    while rest:
+        if rest.startswith("@"):
+            annotation = _ANNOTATION.match(rest)
+            if annotation is None or annotation.group(1) == "interface":
+                break
+            found.append(annotation.group(1).rsplit(".", 1)[-1])
+            rest = rest[annotation.end():].lstrip()
+            if rest.startswith("("):
+                rest = rest[_after_balanced(rest, 0):].lstrip()
+            continue
+        word = _LEADING_WORD.match(rest)
+        if word is None or word.group(1) not in _MODIFIERS:
+            break
+        rest = rest[word.end():].lstrip()
+    return tuple(found)
 
 
 def _declined(member, line, reason):
@@ -1076,6 +1305,27 @@ def _normalised(written):
         tidy = tidy.replace(" " + bracket, bracket)
     tidy = tidy.replace("< ", "<").replace("[ ", "[")
     return re.sub(r",\s*", ", ", tidy).strip()
+
+
+def candidate_ids(name, package, imports):
+    """Every module id this simple name could mean in a file written with these imports.
+
+    Best first, in the order Java itself settles the question: a single-type import wins
+    over the package the file sits in, and an on-demand import — `a.b.*` — is tried last
+    because it names no one type. Whoever asks tries them against the modules it actually
+    holds and takes the first that is one; a name that matches none of them is a name from
+    outside this source tree, and answering it with a guess is how one module would end up
+    with another's collaborators for having shared a simple name with it.
+    """
+    found = []
+    for imported in imports:
+        if not imported.on_demand and imported.type.rsplit(".", 1)[-1] == name:
+            found.append(imported.type)
+    found.append(package + "." + name if package else name)
+    for imported in imports:
+        if imported.on_demand:
+            found.append(imported.type + "." + name)
+    return found
 
 
 def names_in(written):

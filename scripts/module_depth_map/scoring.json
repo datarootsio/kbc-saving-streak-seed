@@ -1,5 +1,5 @@
 {
-  "schema": "module-depth-map-scoring/1",
+  "schema": "module-depth-map-scoring/2",
 
   "interfaceCost": {
     "weights": {
@@ -51,6 +51,30 @@
       "long",
       "short"
     ]
+  },
+
+  "reach": {
+    "adapter": {
+      "because": "An interface whose implementation Spring Data generates at run time is how this application reaches its database. A module that drives one coordinates storage its caller never has to open, which is the plainest kind of reach there is.",
+      "when": {
+        "kind": ["interface"],
+        "extendsOrImplements": [
+          "CrudRepository",
+          "JpaRepository",
+          "JpaSpecificationExecutor",
+          "PagingAndSortingRepository",
+          "Repository"
+        ]
+      }
+    },
+    "persistentRecord": {
+      "because": "A type marked as an entity is a row that outlives the call it was written in. A module reaching one is keeping a record on its caller's behalf: it decides what goes into it, and the caller learns neither the table nor the identifier it was written under.",
+      "when": {"annotatedWith": ["Entity"]}
+    },
+    "transaction": {
+      "because": "A module that marks itself or one of its methods transactional establishes the transaction its whole flow runs in. That is the one piece of coordination a caller most obviously does not do: they make one call, and either all of what it set in motion happened or none of it did.",
+      "annotatedWith": ["Transactional"]
+    }
   },
 
   "exclusions": [

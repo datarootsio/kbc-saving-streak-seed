@@ -19,11 +19,12 @@ log = logging.getLogger("module_depth_map.graph")
 
 # The shape this document promises to have, and the version a reader checks before
 # trusting a key is there. It moved to /2 when the document grew a top-level `scoring`
-# object and gave every module an `interface` and an `excludedBy`: a v1 reader looking
-# for what it was promised finds none of them. The tool refuses a *configuration* whose
-# schema it does not know, so versioning what it writes as well is the same promise kept
-# in the other direction.
-SCHEMA = "module-depth-map/2"
+# object and gave every module an `interface` and an `excludedBy`, and to /3 when every
+# module gained a `reach` and a `depth`: a reader of either older shape looking for what
+# it was promised finds none of them. The tool refuses a *configuration* whose schema it
+# does not know, so versioning what it writes as well is the same promise kept in the
+# other direction.
+SCHEMA = "module-depth-map/3"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -172,6 +173,7 @@ def build(roots, rules):
     """
     modules = []
     unparsed = []
+    read = []
     seen = 0
 
     for root in roots:
@@ -231,10 +233,12 @@ def build(roots, rules):
                         "excludedBy": excluded,
                     }
                 )
+                read.append((modules[-1], declared, parsed))
 
     modules.sort(key=lambda module: (module["package"], module["name"]))
     unparsed.sort(key=lambda entry: (entry["root"], entry["path"]))
     _refuse_duplicate_ids(modules)
+    _measure_depth(read, rules)
 
     packages = {}
     for module in modules:
@@ -284,7 +288,56 @@ def build(roots, rules):
             len(dearest["interface"]["methods"]),
             sum(1 for type_ in dearest["interface"]["typesCrossingTheSeam"] if type_["mustBeLearned"]),
         )
+    furthest = max(modules, key=lambda module: (module["reach"]["count"], module["id"]), default=None)
+    if furthest is not None:
+        log.info(
+            "furthest reach module=%s reach=%d over interfaceCost=%s leverage=%s",
+            furthest["id"],
+            furthest["reach"]["count"],
+            furthest["depth"]["interfaceCost"],
+            furthest["depth"]["leverage"],
+        )
+    with_leverage = [module for module in modules if module["depth"]["leverage"] is not None]
+    if with_leverage:
+        deepest = max(with_leverage, key=lambda module: (module["depth"]["leverage"], module["id"]))
+        shallowest = min(with_leverage, key=lambda module: (module["depth"]["leverage"], module["id"]))
+        log.info(
+            "deepest module=%s leverage=%s reach=%d interfaceCost=%d",
+            deepest["id"],
+            deepest["depth"]["leverage"],
+            deepest["depth"]["reach"],
+            deepest["depth"]["interfaceCost"],
+        )
+        log.info(
+            "shallowest module=%s leverage=%s reach=%d interfaceCost=%d",
+            shallowest["id"],
+            shallowest["depth"]["leverage"],
+            shallowest["depth"]["reach"],
+            shallowest["depth"]["interfaceCost"],
+        )
     return document
+
+
+def _measure_depth(read, rules):
+    """Give every module its reach and its depth, once the whole graph is known.
+
+    A second pass rather than part of the first, because reach is the one measurement
+    that cannot be taken from a file on its own: a name in a body means a module, and
+    which module it means is settled by the imports of the file it was written in and by
+    what the rest of the source turned out to hold. Reading it early would mean either
+    resolving against half a graph or guessing.
+
+    Every module gets both, including the ones no rule scores. An excluded module still
+    coordinates whatever it coordinates, and drawing its fan is what lets a reader see
+    that the rule declined to price something real. Its depth carries the same two numbers
+    with no ratio between them, because there is no interface cost to divide by.
+    """
+    declared_by_id = {module["id"]: declared for module, declared, _ in read}
+    for module, declared, parsed in read:
+        module["reach"] = rules.reach_of(
+            declared, module["id"], parsed.package, parsed.imports, declared_by_id
+        )
+        module["depth"] = rules.depth_of(module["reach"], module["interface"])
 
 
 def _scoring(rules, modules):
@@ -315,6 +368,18 @@ def _scoring(rules, modules):
         "configuration": label_for(rules.path),
         "weights": dict(rules.weights),
         "widestInterface": max(costs) if costs else 0,
+        # The other scale on the page, for the same reason as the first: a fan is drawn
+        # against the widest fan in the document, so two shapes compared by eye are being
+        # compared against a number a reader can find in the graph rather than against
+        # arithmetic only the page can do. Every module counts towards it, scored or not,
+        # because every module is drawn with a fan.
+        "widestReach": max([module["reach"]["count"] for module in modules] or [0]),
+        "reach": {
+            "adapter": rules.reached.adapter.because,
+            "persistentRecord": rules.reached.persistent_record.because,
+            "transaction": rules.reached.transaction,
+            "transactionAnnotations": sorted(rules.reached.transaction_annotations),
+        },
         "reachableFromOutside": sorted(rules.reachable_from_outside),
         "typesEveryCallerAlreadyKnows": sorted(rules.already_known),
         "exclusions": [

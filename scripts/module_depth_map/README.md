@@ -50,7 +50,11 @@ Run its tests with the standard library's own runner, also from the repository r
   otherwise be missing while every count still added up. One bad file costs one card; both
   outputs are still written. `package-info.java` and `module-info.java` declare no type on
   purpose and are read rather than reported, and legal Java is never failed — an escaped
-  `\"""` inside a text block is a quote, not the end of it.
+  `\"""` inside a text block is a quote, not the end of it, and a modifier written flush
+  against a type-parameter list (`static<T> T first(T only)`) is a modifier rather than
+  part of a return type nobody can read. That last one was a false alarm this tool used to
+  raise, found by review rather than by the suite; there is a test for the shape now,
+  because an alarm that cries wolf stops being read.
 
   One decision cannot be failed on, and it is where every fault found so far got in:
   deciding that a member which reads like a method is not one. A field, a constructor and
@@ -100,7 +104,8 @@ Run its tests with the standard library's own runner, also from the repository r
   here ends the run with a traceback.
 - **The graph says which shape it is.** `schema` in the document is the contract an agent
   reading it is promised: it moved to `module-depth-map/2` when the document gained a
-  top-level `scoring` object and gave every module an `interface` and an `excludedBy`. The
+  top-level `scoring` object and gave every module an `interface` and an `excludedBy`, and
+  to `module-depth-map/3` when every module gained a `reach` and a `depth`. The
   page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
@@ -116,8 +121,9 @@ declared inside another are listed on the module that holds them rather than bec
 modules of their own, each named by where it sits inside that module — `Body.Kind`, not a
 second `Kind` a reader cannot tell from the first.
 
-Each module carries a bar whose width is what its interface costs a caller. Nothing is
-ranked, and nothing is proposed for change.
+Each module is drawn as a bar whose width is what its interface costs a caller, over a fan
+with one line out to each thing it coordinates on that caller's behalf. Nothing is ranked,
+and nothing is proposed for change.
 
 ## What an interface costs
 
@@ -175,6 +181,49 @@ the page has no term for arrives as a term saying so rather than as part of a to
 nothing under it. The counts are checked against the cost they are printed under, and a
 breakdown that does not come to it says so on the card: a number a reader is invited to
 argue with has to be one they can add up.
+
+## What a module reaches, and what depth is
+
+A module's **reach** is the count of distinct things it coordinates that its caller
+therefore does not:
+
+- **another module it calls** — through a field it holds, by name for a static call, or
+  through a member it imported statically;
+- **an adapter it drives** — an interface whose implementation Spring Data generates, which
+  is how this application reaches its database;
+- **a persistent record it keeps** — a type marked as an entity, a row that outlives the
+  call it was written in;
+- **the transaction it establishes** — `@Transactional` on the module or on one of its
+  methods.
+
+**Depth is reach over interface cost**: the behaviour a caller can set in motion per unit
+of interface they have to learn. Never implementation lines over interface lines — that
+measure pays a module for padding, and under it the largest file in a repository is its
+deepest module. Reach cannot be inflated by writing more lines, which is exactly why it is
+the numerator: it counts distinct *names*, so the same call written ten more times, or a
+hundred lines of local variables around it, moves nothing. Every module carries `depth`
+with both numbers it was taken from, so the division can be checked by hand.
+
+Nothing is reached that the graph does not also hold. A name in a body is followed to a
+module the way the compiler would follow it — through the file's own single-type imports
+first, then its package, then any on-demand import — and a name that resolves to no module
+here is not counted at all. That is what keeps every line in a fan pointing at a card on
+the same page, and what stops a module raising its own score by importing more of the JDK.
+The transaction is the one thing reached with no module behind it, and it says so by
+carrying no module id.
+
+A fan is a floor on what a module coordinates, the way a bar is a floor on what a caller
+must learn. A collaborator handed in as an argument rather than held as a field, and a
+record this module loads and changes rather than creates, are coordination this tool
+cannot see; it leaves them out rather than guessing.
+
+The three rules deciding what a reached thing *is* live in `scoring.json` beside the
+weights, each with the sentence it is argued for, which the page prints. Change what counts
+as an adapter and the fans change with it.
+
+Each fan is drawn against one number, `scoring.widestReach` in the graph, so that two of
+them can be compared by eye. A deep module reads as a short bar over a wide fan; a module
+coordinating one thing per method reads as a bar as wide as its fan.
 
 ## What is drawn but never scored
 

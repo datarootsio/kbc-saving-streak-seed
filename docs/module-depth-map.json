@@ -1,6 +1,11 @@
 {
   "modules": [
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "annotated with SpringBootApplication",
         "rule": "entry point"
@@ -33,9 +38,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak",
       "path": "io/dataroots/savingstreak/SavingStreakApplication.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is enum",
         "rule": "data carrier"
@@ -53,9 +67,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/AccountPairing.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 30,
+        "leverage": 0.13,
+        "reach": 4
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.AccountsService",
       "interface": {
@@ -208,9 +231,43 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/AccountsService.java",
+      "reach": {
+        "count": 4,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+            "name": "CurrentAccountRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field customers, which holds a CustomerRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.CustomerRepository",
+            "name": "CustomerRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
+            "name": "SavingsAccountRepository"
+          },
+          {
+            "kind": "transaction",
+            "matched": "accountsOf is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 7,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.CurrentAccount",
       "interface": {
@@ -282,9 +339,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/CurrentAccount.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -342,9 +408,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/CurrentAccountRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 3,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.Customer",
       "interface": {
@@ -390,9 +465,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/Customer.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -438,9 +522,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/CustomerAccounts.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -481,9 +574,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/CustomerRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 2,
+        "leverage": 3.5,
+        "reach": 7
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.DemoData",
       "interface": {
@@ -513,9 +615,61 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/DemoData.java",
+      "reach": {
+        "count": 7,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+            "name": "CurrentAccountRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field customers, which holds a CustomerRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.CustomerRepository",
+            "name": "CustomerRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
+            "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
+            "name": "SavingsAccountRepository"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccount",
+            "name": "CurrentAccount"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.accounts.Customer",
+            "name": "Customer"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccount",
+            "name": "SavingsAccount"
+          },
+          {
+            "kind": "transaction",
+            "matched": "run is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.SavingsAccount",
       "interface": {
@@ -543,9 +697,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/SavingsAccount.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -616,9 +779,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/SavingsAccountRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 10,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
       "interface": {
@@ -674,9 +846,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockConfiguration.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockOffset",
       "interface": {
@@ -704,9 +885,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockOffset.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -724,9 +914,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockOffsetRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 2.0,
+        "reach": 2
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockOnStartUp",
       "interface": {
@@ -749,9 +948,31 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockOnStartUp.java",
+      "reach": {
+        "count": 2,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field offsets, which holds a ClockOffsetRepository",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
+            "name": "ClockOffsetRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field clock, which holds a MovableClock",
+            "moduleId": "io.dataroots.savingstreak.clock.MovableClock",
+            "name": "MovableClock"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 0,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockRefused",
       "interface": {
@@ -766,9 +987,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockRefused.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 5,
+        "leverage": 0.6,
+        "reach": 3
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockService",
       "interface": {
@@ -809,9 +1039,37 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockService.java",
+      "reach": {
+        "count": 3,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field offsets, which holds a ClockOffsetRepository",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
+            "name": "ClockOffsetRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field clock, which holds a MovableClock",
+            "moduleId": "io.dataroots.savingstreak.clock.MovableClock",
+            "name": "MovableClock"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockOffset",
+            "name": "ClockOffset"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -853,9 +1111,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/HowFarTheClockHasMoved.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 8,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.MovableClock",
       "interface": {
@@ -938,9 +1205,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/MovableClock.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 5,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.AmountOfMoney",
       "interface": {
@@ -988,9 +1264,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/AmountOfMoney.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 6,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.Deposit",
       "interface": {
@@ -1056,9 +1341,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/Deposit.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 3,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositRefused",
       "interface": {
@@ -1088,9 +1382,18 @@
       ],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositRefused.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 1
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -1160,9 +1463,25 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositRepository.java",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "transaction",
+            "matched": "giveEveryDepositWhatRemainsOfIt is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 1.0,
+        "reach": 1
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
       "interface": {
@@ -1185,9 +1504,25 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositsOnStartUp.java",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field deposits, which holds a DepositRepository",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
+            "name": "DepositRepository"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 10,
+        "leverage": 0.6,
+        "reach": 6
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsService",
       "interface": {
@@ -1249,9 +1584,55 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositsService.java",
+      "reach": {
+        "count": 6,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field deposits, which holds a DepositRepository",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
+            "name": "DepositRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "called on AccountsService",
+            "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
+            "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on AmountOfMoney",
+            "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
+            "name": "AmountOfMoney"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field points, which holds a PointsService",
+            "moduleId": "io.dataroots.savingstreak.points.PointsService",
+            "name": "PointsService"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.deposits.Deposit",
+            "name": "Deposit"
+          },
+          {
+            "kind": "transaction",
+            "matched": "deposit is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -1315,9 +1696,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/RecordedDeposit.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -1396,9 +1786,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/RecordedWithdrawal.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -1440,9 +1839,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/RecordedWithdrawalAllocation.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 4,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.Withdrawal",
       "interface": {
@@ -1503,9 +1911,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/Withdrawal.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 2,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
       "interface": {
@@ -1544,9 +1961,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalAllocation.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -1587,9 +2013,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalAllocationRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 3,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
       "interface": {
@@ -1619,9 +2054,18 @@
       ],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalRefused.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -1662,9 +2106,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 8,
+        "leverage": 1.0,
+        "reach": 8
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
       "interface": {
@@ -1717,9 +2170,67 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalsService.java",
+      "reach": {
+        "count": 8,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field deposits, which holds a DepositRepository",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
+            "name": "DepositRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field allocations, which holds a WithdrawalAllocationRepository",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
+            "name": "WithdrawalAllocationRepository"
+          },
+          {
+            "kind": "adapter",
+            "matched": "called through the field withdrawals, which holds a WithdrawalRepository",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
+            "name": "WithdrawalRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "called on AccountsService",
+            "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
+            "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on AmountOfMoney",
+            "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
+            "name": "AmountOfMoney"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.deposits.Withdrawal",
+            "name": "Withdrawal"
+          },
+          {
+            "kind": "record",
+            "matched": "builds one: annotated with Entity",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
+            "name": "WithdrawalAllocation"
+          },
+          {
+            "kind": "transaction",
+            "matched": "withdraw is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -1779,9 +2290,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/AJobThatRan.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -1826,9 +2346,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/AScheduledJob.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 0,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.JobFailed",
       "interface": {
@@ -1843,9 +2372,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/JobFailed.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 0,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.JobRefused",
       "interface": {
@@ -1860,9 +2398,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/JobRefused.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 8,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
       "interface": {
@@ -1920,9 +2467,18 @@
       ],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/ScheduledJobs.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 0,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.SchedulingIsOn",
       "interface": {
@@ -1937,9 +2493,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/SchedulingIsOn.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 10,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.points.PointsCredit",
       "interface": {
@@ -1996,9 +2561,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.points",
       "path": "io/dataroots/savingstreak/points/PointsCredit.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -2076,9 +2650,18 @@
       ],
       "package": "io.dataroots.savingstreak.points",
       "path": "io/dataroots/savingstreak/points/PointsCreditRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is enum",
         "rule": "data carrier"
@@ -2096,9 +2679,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.points",
       "path": "io/dataroots/savingstreak/points/PointsReason.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 12,
+        "leverage": 0.25,
+        "reach": 3
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.points.PointsService",
       "interface": {
@@ -2183,9 +2775,37 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.points",
       "path": "io/dataroots/savingstreak/points/PointsService.java",
+      "reach": {
+        "count": 3,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field credits, which holds a PointsCreditRepository",
+            "moduleId": "io.dataroots.savingstreak.points.PointsCreditRepository",
+            "name": "PointsCreditRepository"
+          },
+          {
+            "kind": "record",
+            "matched": "called on PointsCredit",
+            "moduleId": "io.dataroots.savingstreak.points.PointsCredit",
+            "name": "PointsCredit"
+          },
+          {
+            "kind": "transaction",
+            "matched": "balanceOf is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2260,9 +2880,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/ClaimedReward.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 12,
+        "leverage": 0.08,
+        "reach": 1
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.Redemption",
       "interface": {
@@ -2318,9 +2947,25 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/Redemption.java",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called through the field reward, which holds a Reward",
+            "moduleId": "io.dataroots.savingstreak.rewards.Reward",
+            "name": "Reward"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
@@ -2361,9 +3006,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/RedemptionRepository.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is enum",
         "rule": "data carrier"
@@ -2426,9 +3080,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/Reward.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 3,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardRefused",
       "interface": {
@@ -2458,9 +3121,18 @@
       ],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/RewardRefused.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 10,
+        "leverage": 0.6,
+        "reach": 6
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardsService",
       "interface": {
@@ -2519,9 +3191,55 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/RewardsService.java",
+      "reach": {
+        "count": 6,
+        "reaches": [
+          {
+            "kind": "adapter",
+            "matched": "called through the field redemptions, which holds a RedemptionRepository",
+            "moduleId": "io.dataroots.savingstreak.rewards.RedemptionRepository",
+            "name": "RedemptionRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "called on AccountsService",
+            "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
+            "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field points, which holds a PointsService",
+            "moduleId": "io.dataroots.savingstreak.points.PointsService",
+            "name": "PointsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on Reward",
+            "moduleId": "io.dataroots.savingstreak.rewards.Reward",
+            "name": "Reward"
+          },
+          {
+            "kind": "record",
+            "matched": "called on Redemption",
+            "moduleId": "io.dataroots.savingstreak.rewards.Redemption",
+            "name": "Redemption"
+          },
+          {
+            "kind": "transaction",
+            "matched": "claim is annotated with Transactional",
+            "moduleId": null,
+            "name": "a transaction"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2552,9 +3270,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/AdvanceClockRequest.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2585,9 +3312,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/ClaimRequest.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2682,9 +3418,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/ClaimedRewardResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2743,9 +3488,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/ClockResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2794,9 +3548,18 @@
       ],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/CustomerAccountsResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 11,
+        "leverage": 0.27,
+        "reach": 3
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.CustomerController",
       "interface": {
@@ -2858,9 +3621,37 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/CustomerController.java",
+      "reach": {
+        "count": 3,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called through the field accounts, which holds a AccountsService",
+            "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
+            "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field deposits, which holds a DepositsService",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositsService",
+            "name": "DepositsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field points, which holds a PointsService",
+            "moduleId": "io.dataroots.savingstreak.points.PointsService",
+            "name": "PointsService"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2926,9 +3717,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/CustomerResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -2970,9 +3770,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/DepositRequest.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3053,9 +3862,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/DepositResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 7,
+        "leverage": 0.29,
+        "reach": 2
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.DevelopmentClockController",
       "interface": {
@@ -3096,9 +3914,31 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/DevelopmentClockController.java",
+      "reach": {
+        "count": 2,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called on ClockResponse",
+            "moduleId": "io.dataroots.savingstreak.web.ClockResponse",
+            "name": "ClockResponse"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field clock, which holds a ClockService",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockService",
+            "name": "ClockService"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 7,
+        "leverage": 0.29,
+        "reach": 2
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.DevelopmentJobsController",
       "interface": {
@@ -3147,9 +3987,31 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/DevelopmentJobsController.java",
+      "reach": {
+        "count": 2,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called on JobRunResponse",
+            "moduleId": "io.dataroots.savingstreak.web.JobRunResponse",
+            "name": "JobRunResponse"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field jobs, which holds a ScheduledJobs",
+            "moduleId": "io.dataroots.savingstreak.jobs.ScheduledJobs",
+            "name": "ScheduledJobs"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3226,9 +4088,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/JobRunResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 28,
+        "leverage": 0.0,
+        "reach": 0
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.RefusalsAsHttp",
       "interface": {
@@ -3331,9 +4202,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/RefusalsAsHttp.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 3,
+        "leverage": 0.33,
+        "reach": 1
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.RewardController",
       "interface": {
@@ -3365,9 +4245,25 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/RewardController.java",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called through the field rewards, which holds a RewardsService",
+            "moduleId": "io.dataroots.savingstreak.rewards.RewardsService",
+            "name": "RewardsService"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3440,9 +4336,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/RewardResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": 31,
+        "leverage": 0.29,
+        "reach": 9
+      },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.SavingsAccountController",
       "interface": {
@@ -3561,9 +4466,73 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/SavingsAccountController.java",
+      "reach": {
+        "count": 9,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "called on AccountsService",
+            "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
+            "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on ClaimedRewardResponse",
+            "moduleId": "io.dataroots.savingstreak.web.ClaimedRewardResponse",
+            "name": "ClaimedRewardResponse"
+          },
+          {
+            "kind": "module",
+            "matched": "called on DepositResponse",
+            "moduleId": "io.dataroots.savingstreak.web.DepositResponse",
+            "name": "DepositResponse"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field deposits, which holds a DepositsService",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositsService",
+            "name": "DepositsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field points, which holds a PointsService",
+            "moduleId": "io.dataroots.savingstreak.points.PointsService",
+            "name": "PointsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on Reward",
+            "moduleId": "io.dataroots.savingstreak.rewards.Reward",
+            "name": "Reward"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field rewards, which holds a RewardsService",
+            "moduleId": "io.dataroots.savingstreak.rewards.RewardsService",
+            "name": "RewardsService"
+          },
+          {
+            "kind": "module",
+            "matched": "called on WithdrawalResponse",
+            "moduleId": "io.dataroots.savingstreak.web.WithdrawalResponse",
+            "name": "WithdrawalResponse"
+          },
+          {
+            "kind": "module",
+            "matched": "called through the field withdrawals, which holds a WithdrawalsService",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+            "name": "WithdrawalsService"
+          }
+        ]
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3627,9 +4596,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/SavingsAccountResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3691,9 +4669,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/ScheduledJobResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3724,9 +4711,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/SignInRequest.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3768,9 +4764,18 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/WithdrawalRequest.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     },
     {
+      "depth": {
+        "interfaceCost": null,
+        "leverage": null,
+        "reach": 0
+      },
       "excludedBy": {
         "matched": "kind is record",
         "rule": "data carrier"
@@ -3866,6 +4871,10 @@
       "nested": [],
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/WithdrawalResponse.java",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
       "root": "backend/src/main/java"
     }
   ],
@@ -3982,7 +4991,7 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/2",
+  "schema": "module-depth-map/3",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "exclusions": [
@@ -4004,6 +5013,14 @@
     ],
     "modulesNeverScored": 36,
     "modulesScored": 35,
+    "reach": {
+      "adapter": "An interface whose implementation Spring Data generates at run time is how this application reaches its database. A module that drives one coordinates storage its caller never has to open, which is the plainest kind of reach there is.",
+      "persistentRecord": "A type marked as an entity is a row that outlives the call it was written in. A module reaching one is keeping a record on its caller's behalf: it decides what goes into it, and the caller learns neither the table nor the identifier it was written under.",
+      "transaction": "A module that marks itself or one of its methods transactional establishes the transaction its whole flow runs in. That is the one piece of coordination a caller most obviously does not do: they make one call, and either all of what it set in motion happened or none of it did.",
+      "transactionAnnotations": [
+        "Transactional"
+      ]
+    },
     "reachableFromOutside": [
       "package-private",
       "protected",
@@ -4057,7 +5074,8 @@
       "typeEveryCallerAlreadyKnows": 0,
       "typeToLearn": 2
     },
-    "widestInterface": 31
+    "widestInterface": 31,
+    "widestReach": 9
   },
   "source": {
     "filesParsed": 71,

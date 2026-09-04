@@ -524,7 +524,7 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         read", which sends its author to delete a key their own tool needs. The schema is
         the field that says which of the two is behind, so it is the field read first.
         """
-        reason = self.refusal_for(schema="module-depth-map-scoring/2", somethingNew={})
+        reason = self.refusal_for(schema="module-depth-map-scoring/3", somethingNew={})
 
         self.assertIn("schema", reason)
         self.assertIn(scoring.SCHEMA, reason)
@@ -649,7 +649,7 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
         """Because a run that quietly fell back to defaults would make every test here a lie."""
         broken = os.path.join(self.scratch, "broken.json")
         with open(broken, "w", encoding="utf-8") as handle:
-            handle.write('{"schema": "module-depth-map-scoring/1", "interfaceCost": {}}')
+            handle.write('{"schema": "%s", "interfaceCost": {}}' % scoring.SCHEMA)
 
         with self.assertRaises(scoring.ConfigurationRefused) as refused:
             scoring.load(broken)
