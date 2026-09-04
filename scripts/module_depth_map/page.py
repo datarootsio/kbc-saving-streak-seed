@@ -214,8 +214,13 @@ _SCRIPT = """
   // that two bars are comparable against a number a reader can find in the graph.
   var widest = document_.scoring.widestInterface;
 
+  // Branching on the fact that carries the exclusion, not on the absent cost that
+  // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
+  // would throw for a module that had one without the other, and the renderer is one
+  // pass: a throw abandons every package section after it, which reads as a page that
+  // ends early rather than as a page that failed.
   function drawInterface(item, module) {
-    if (module.interface.cost === null) {
+    if (module.excludedBy) {
       var never = add(item, "p", "unscored", "never scored \\u2014 " + module.excludedBy.rule);
       never.title = module.excludedBy.matched + ". " + because[module.excludedBy.rule];
       return;

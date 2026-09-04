@@ -38,7 +38,13 @@ Run its tests with the standard library's own runner, also from the repository r
   - a type is declared somewhere the parser cannot place, rather than being hung off
     whichever module happened to come before it;
   - a reserved declaration keyword matched no declaration, caught by counting `class`,
-    `interface` and `enum` against the declarations actually found.
+    `interface` and `enum` against the declarations actually found;
+  - a type declaration's body cannot be found — every kind of type Java declares has one,
+    and a type read without a body would have its whole interface priced at zero;
+  - a parameter cannot be read, or a member hands back something that is not spelled the
+    way a type is. These two are where a misread shape would make an interface *cheaper*
+    rather than absent, and a cheap interface is what this page calls deep, so each is
+    named with its line instead.
 
   A directory that will not open is named the same way, because the modules under it would
   otherwise be missing while every count still added up. One bad file costs one card; both
@@ -48,17 +54,26 @@ Run its tests with the standard library's own runner, also from the repository r
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
   beside this file holds the interface-cost weights and every exclusion rule. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
-  is edited, and no rule name or weight is written into it to fall back on.
+  is edited, and no rule name or weight is written into it to fall back on. Every name a
+  rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
+  because that is how the parser records what it read; a qualified name, or a kind the
+  parser never reports, is refused rather than accepted as a rule that could never fire.
 - **Nothing is excluded without a named rule.** Each excluded module carries the rule that
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
 - **It refuses rather than guessing.** No source directory (exit 2), two files declaring
-  the same module id (exit 3), and a scoring configuration this tool cannot use (exit 4)
-  all stop the run with the reason logged as a warning — because a page that drew one of
-  two clashing modules twice, or that scored with weights nobody wrote, would be worse than
-  no page. Nothing is written on any of those paths, and the graph and the page are always
-  written together or not at all: both are rendered to bytes, written beside where they
-  belong, and moved into place.
+  the same module id (exit 3), a scoring configuration this tool cannot use (exit 4) and
+  outputs it cannot write (exit 5) all stop the run with the reason logged as a warning —
+  because a page that drew one of two clashing modules twice, or that scored with weights
+  nobody wrote, would be worse than no page. Nothing is written on any of those paths.
+- **The graph and the page are written together, or neither is and the run says so.** Both
+  are rendered to bytes, written beside where they belong, and then moved into place. Two
+  renames are not one step and this does not claim to be atomic: what it claims is that no
+  failure is silent. Every way a move can fail that the tool can check for — a destination
+  that is already a directory is the one the `open` does not catch — is checked before a
+  byte is written, and nothing is left half written; a move that fails anyway is logged at
+  ERROR with the exception, naming which file landed and which one is still the previous
+  run's. Nothing here ends the run with a traceback.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
   and `docs/module-depth-map.html` are checked in, and a test byte-compares them against a
   fresh run, so adding a Java class without rerunning the tool fails the suite instead of
@@ -82,8 +97,10 @@ Everything a caller has to learn before they can use a module correctly:
   public, protected and package-private here, because a method the neighbours can call is a
   method somebody has to learn. A constructor is left out — it says how a module is built,
   which in this application is the framework's business rather than a caller's.
-- **each parameter of each of those methods.** `Map<String, Long>` is one parameter, and
-  `String...` hands over a `String`.
+- **each parameter of each of those methods.** `Map<String, Long>` is one parameter,
+  `String...` hands over a `String`, `int xs[]` is the same parameter as `int[] xs`, and
+  the receiver a method may name (`void ring(Till this, long id)`) is not a parameter a
+  caller passes at all.
 - **each distinct type crossing the seam** in a parameter or a return, counted once per
   module however many methods hand it over, and weighted apart depending on whether it is
   one every Java caller already knows or one this application invented. That is what makes
