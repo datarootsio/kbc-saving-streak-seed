@@ -26,6 +26,8 @@ import logging
 import os
 import re
 
+from . import javasource
+
 log = logging.getLogger("module_depth_map.scoring")
 
 SCHEMA = "module-depth-map-scoring/1"
@@ -34,7 +36,6 @@ DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 WEIGHTS = ("method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows")
 VISIBILITIES = ("public", "protected", "package-private", "private")
-CONDITIONS = ("kind", "annotatedWith", "extendsOrImplements", "nameEndsWith")
 
 
 class ConfigurationRefused(Exception):
@@ -68,24 +69,47 @@ class Exclusion:
         """
         evidence = []
         for condition in [name for name in CONDITIONS if name in self.when]:
-            met, because = _condition_met(condition, self.when[condition], declared)
+            met, because = CONDITIONS[condition](self.when[condition], declared)
             if not met:
                 return None
             evidence.append(because)
         return ", ".join(evidence)
 
 
-def _condition_met(condition, wanted, declared):
-    if condition == "kind":
-        return declared.kind in wanted, "kind is %s" % declared.kind
-    if condition == "annotatedWith":
-        hit = [name for name in wanted if name in declared.annotations]
-        return bool(hit), "annotated with %s" % (hit[0] if hit else "")
-    if condition == "extendsOrImplements":
-        hit = [name for name in wanted if name in declared.supertypes]
-        return bool(hit), "extends or implements %s" % (hit[0] if hit else "")
+def _is_of_kind(wanted, declared):
+    return declared.kind in wanted, "kind is %s" % declared.kind
+
+
+def _is_annotated_with(wanted, declared):
+    hit = [name for name in wanted if name in declared.annotations]
+    return bool(hit), "annotated with %s" % (hit[0] if hit else "")
+
+
+def _extends_or_implements(wanted, declared):
+    hit = [name for name in wanted if name in declared.supertypes]
+    return bool(hit), "extends or implements %s" % (hit[0] if hit else "")
+
+
+def _name_ends_with(wanted, declared):
     hit = [suffix for suffix in wanted if declared.name.endswith(suffix)]
     return bool(hit), "name ends with %s" % (hit[0] if hit else "")
+
+
+# Each condition a rule can be written with, and how it is read. A dictionary rather than
+# a chain of comparisons, because the last branch of a chain is whatever fell through it:
+# a fifth condition added to this list without a reader of its own would silently become
+# the fourth one, and every rule written with it would quietly match on suffixes instead.
+CONDITIONS = {
+    "kind": _is_of_kind,
+    "annotatedWith": _is_annotated_with,
+    "extendsOrImplements": _extends_or_implements,
+    "nameEndsWith": _name_ends_with,
+}
+
+# The conditions whose values are matched against a name the parser read from the source.
+# It records every one of those by its simple name, so a qualified name written here could
+# never match anything — see `_simple_names`.
+BY_SIMPLE_NAME = ("annotatedWith", "extendsOrImplements", "nameEndsWith")
 
 
 class Rules:
@@ -259,7 +283,7 @@ def load(path=None):
             "interfaceCost.reachableFromOutside names %s, and a method is %s"
             % (", ".join(sorted(unknown)), " or ".join(VISIBILITIES))
         )
-    known = _strings(
+    known = _simple_names(
         cost.get("typesEveryCallerAlreadyKnows"), "interfaceCost.typesEveryCallerAlreadyKnows"
     )
 
@@ -304,9 +328,24 @@ def _exclusions(listed):
             )
         _only(when, CONDITIONS, "%s.when" % where)
         for condition in sorted(when):
-            _strings(when[condition], "%s.when.%s" % (where, condition))
+            field = "%s.when.%s" % (where, condition)
+            if condition in BY_SIMPLE_NAME:
+                _simple_names(when[condition], field)
+            else:
+                _known_kinds(_strings(when[condition], field), field)
         exclusions.append(Exclusion(entry["rule"], entry["because"], dict(when)))
     return exclusions
+
+
+def _known_kinds(kinds, where):
+    unknown = [kind for kind in kinds if kind not in javasource.KINDS]
+    if unknown:
+        raise ConfigurationRefused(
+            "%s names %s, and a module is %s: a condition on any other kind could never "
+            "hold, and a rule that can never fire is not one anybody could argue with"
+            % (where, ", ".join(sorted(unknown)), " or ".join(javasource.KINDS))
+        )
+    return kinds
 
 
 def _an_object(value, where):
@@ -332,6 +371,31 @@ def _strings(value, where):
         if not isinstance(entry, str) or not entry.strip():
             raise ConfigurationRefused("%s holds %r, and every entry has to be a name" % (where, entry))
     return list(value)
+
+
+def _simple_names(value, where):
+    """Names to be matched against the source, refusing any that could never match one.
+
+    The parser records an annotation, a supertype and a module's own name by simple name,
+    so `org.springframework...SpringBootApplication` written here is a condition that can
+    never hold — and writing it is the natural mistake, because the qualified form is what
+    the *source* says and works there. Accepted quietly it is the worst kind of rule: the
+    file names an exclusion, the graph reports it excluding nothing, the module it was
+    written for is scored like anything else, and the run exits zero with nothing said.
+    """
+    names = _strings(value, where)
+    qualified = [name for name in names if "." in name]
+    if qualified:
+        raise ConfigurationRefused(
+            "%s holds %s, and every name here is matched against a simple name the source "
+            "was read with: write %s instead"
+            % (
+                where,
+                ", ".join(sorted(qualified)),
+                ", ".join(sorted(name.rsplit(".", 1)[-1] for name in qualified)),
+            )
+        )
+    return names
 
 
 def _shape(value):

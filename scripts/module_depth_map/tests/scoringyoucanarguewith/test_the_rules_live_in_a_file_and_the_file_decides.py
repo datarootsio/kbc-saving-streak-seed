@@ -206,6 +206,157 @@ class ChangingAnExclusionChangesWhatIsScoredTest(RulesFromAFileTest):
         self.assertIn("Reworded on purpose.", rendered)
 
 
+class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
+    """A rule the file names has to be able to fire, or naming it is worse than silence.
+
+    `load`'s own reason for existing is that a condition this tool cannot apply reads as
+    "always true" or as "never true", and either one is a score nobody chose. The one
+    shape it used to let through is the natural mistake: a name written the way the
+    *source* writes it. `extends org.springframework.data.jpa.repository.JpaRepository`
+    is matched perfectly well in Java, so writing the same words in the rule looks right
+    — but the parser records an annotation, a supertype and a module's name by simple
+    name, so the qualified form matched nothing, excluded nothing, and said nothing.
+    """
+
+    def refusal_for(self, **changes):
+        with self.assertRaises(scoring.ConfigurationRefused) as refused:
+            scoring.load(self.rules(**changes))
+        return refused.exception.reason
+
+    def with_a_rule(self, when):
+        return {
+            "exclusions": [
+                {"rule": "the rule under test", "because": "For the test.", "when": when}
+            ]
+        }
+
+    def test_a_qualified_annotation_name_is_refused_rather_than_matching_nothing(self):
+        reason = self.refusal_for(
+            **self.with_a_rule(
+                {"annotatedWith": ["org.springframework.boot.autoconfigure.SpringBootApplication"]}
+            )
+        )
+
+        self.assertIn("annotatedWith", reason)
+        self.assertIn("simple name", reason)
+        self.assertIn("write SpringBootApplication instead", reason)
+
+    def test_a_qualified_supertype_name_is_refused_too(self):
+        reason = self.refusal_for(
+            **self.with_a_rule(
+                {"kind": ["interface"],
+                 "extendsOrImplements": ["org.springframework.data.jpa.repository.JpaRepository"]}
+            )
+        )
+
+        self.assertIn("extendsOrImplements", reason)
+        self.assertIn("write JpaRepository instead", reason)
+
+    def test_a_suffix_with_a_dot_in_it_is_refused_because_a_module_name_has_none(self):
+        reason = self.refusal_for(**self.with_a_rule({"nameEndsWith": ["till.Till"]}))
+
+        self.assertIn("nameEndsWith", reason)
+        self.assertIn("write Till instead", reason)
+
+    def test_a_qualified_familiar_type_is_refused_rather_than_making_string_dear(self):
+        """Otherwise every caller is charged for learning `String`, `List` and `Optional`."""
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows=["java.lang.String", "java.util.List"],
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("write List, String instead", reason)
+
+    def test_a_kind_this_tool_never_reports_is_refused(self):
+        reason = self.refusal_for(**self.with_a_rule({"kind": ["struct"]}))
+
+        self.assertIn("struct", reason)
+        for kind in javasource.KINDS:
+            self.assertIn(kind, reason)
+
+    def test_the_simple_name_the_refusal_asks_for_is_a_rule_that_does_fire(self):
+        """The control: the refusal names the form that works, and it works."""
+        tree = self.tree("fixture")
+        tree.java(
+            "shop", "Application",
+            '@SpringBootApplication(scanBasePackages = {"shop"})\n'
+            "public class Application {\n"
+            "    public static void main(String[] args) {}\n}",
+        )
+        rules = self.rules(
+            **self.with_a_rule({"annotatedWith": ["SpringBootApplication"]})
+        )
+
+        modules = self.modules(graph.java_root(tree.root), rules)
+
+        self.assertEqual("the rule under test", modules["Application"]["excludedBy"]["rule"])
+        self.assertEqual(
+            "annotated with SpringBootApplication",
+            modules["Application"]["excludedBy"]["matched"],
+        )
+
+    def test_the_command_refuses_to_run_on_a_rule_that_could_never_fire(self):
+        """Exit 4 and a warning, the same as any other configuration it cannot use."""
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", A_MODULE)
+        out = os.path.join(self.scratch, "out")
+
+        with self.assertLogs("module_depth_map.cli", level="WARNING") as logged:
+            code = cli.main(
+                [
+                    "--source", tree.root,
+                    "--graph", os.path.join(out, "graph.json"),
+                    "--page", os.path.join(out, "page.html"),
+                    "--scoring", self.rules(
+                        **self.with_a_rule({"annotatedWith": ["a.b.C"]})
+                    ),
+                ]
+            )
+
+        self.assertEqual(4, code)
+        self.assertFalse(os.path.exists(out))
+        self.assertIn("refused to run", "\n".join(logged.output))
+        self.assertIn("simple name", "\n".join(logged.output))
+
+
+class AnEnumConstantIsNotScoredAsAMethodTest(RulesFromAFileTest):
+    """What the invented enum method cost, read through the file that decides scores.
+
+    Enums are excluded by a rule, so a method invented out of a constant only reached a
+    bar once that rule was taken out of the file — which is an edit the ticket's own
+    criterion invites, and the edit the test above this one makes.
+    """
+
+    def test_an_enum_scored_by_a_file_without_the_rule_costs_what_it_offers(self):
+        tree = self.tree("fixture")
+        tree.java(
+            "shop.till", "Kind",
+            "public enum Kind {\n"
+            '    A("x") { int n() { return 1; } },\n'
+            '    B("y");\n'
+            "    Kind(String s) {}\n"
+            "    public String label() { return null; }\n}",
+        )
+        without_data_carriers = [
+            exclusion
+            for exclusion in self.as_committed["exclusions"]
+            if exclusion["rule"] != "data carrier"
+        ]
+
+        modules = self.modules(
+            graph.java_root(tree.root), self.rules(exclusions=without_data_carriers)
+        )
+
+        self.assertIsNone(modules["Kind"]["excludedBy"])
+        self.assertEqual(
+            ["label"], [method["name"] for method in modules["Kind"]["interface"]["methods"]]
+        )
+        self.assertEqual(1, modules["Kind"]["interface"]["cost"])
+
+
 class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
     """Criterion four, asserted mechanically rather than by reading the analyser."""
 
@@ -230,12 +381,14 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
                     )
 
     def test_no_type_the_file_calls_familiar_is_named_in_the_analyser(self):
-        """Nor is the list of types every caller already knows, which is a judgement too."""
-        familiar = [
-            name
-            for name in self.as_committed["interfaceCost"]["typesEveryCallerAlreadyKnows"]
-            if len(name) > 4
-        ]
+        """Nor is the list of types every caller already knows, which is a judgement too.
+
+        Every name on the list, short ones included. `int`, `long`, `void`, `List`, `Map`
+        and `Set` are the names most likely to be reached for as a literal, so exempting
+        them for being short would leave the guard covering only the names nobody would
+        have hardcoded anyway.
+        """
+        familiar = self.as_committed["interfaceCost"]["typesEveryCallerAlreadyKnows"]
         for source in _analyser_source():
             for name in familiar:
                 self.assertNotIn(
@@ -324,15 +477,17 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
 
 
 def _analyser_source():
-    """Every file that reads the source or draws the page, as (name, text).
+    """Every file the tool is made of, as (name, text).
 
-    `scoring.py` is left out: it is the file that reads the rules, so the names of the
-    fields they are written in have to appear in it. What must not appear anywhere is a
-    rule's own name or a weight's own value.
+    `scoring.py` included, and it is the one that matters: it is the file that reads the
+    rules, so it is where a rule's name or a familiar type would most plausibly be
+    written as a shortcut. The names of the *fields* rules are written in do appear
+    there, and have to; what must appear nowhere is a rule's own name, or one of the
+    judgements the file makes.
     """
     return [
         (os.path.basename(module.__file__), _text(module.__file__))
-        for module in (graph, javasource, page, cli)
+        for module in (graph, javasource, page, cli, scoring)
     ]
 
 
