@@ -12,9 +12,9 @@ disagrees with a score can point at the rule that produced it.
 
 **Blocked by:** 01 (Modules on a page).
 
-**Status:** needs-info
+**Status:** needs-review
 
-- [ ] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
+- [x] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
 - [x] A method handing back a domain type costs a caller more than one handing back a primitive
 - [x] Each module's bar width on the page is its interface cost, and comparable between modules
 - [x] Scoring weights and exclusion rules live in a configuration file beside the tool, not inside it
