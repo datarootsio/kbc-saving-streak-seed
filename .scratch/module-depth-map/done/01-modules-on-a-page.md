@@ -12,7 +12,7 @@ screen width.
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] A single command reads the backend source and writes two outputs: a machine-readable graph document and a self-contained HTML page
 - [x] The page opens in a browser with no server and no network access, with nothing loaded from outside the file
@@ -525,3 +525,161 @@ On this branch at `96d1b15`. Everything below passed.
   above it.
 - Logs and screenshots from this review at
   `.scratch/module-depth-map/logs/01-modules-on-a-page.review.4.{browser.log,light.png,dark.png,light.narrow.png,broken.png}`.
+
+## Verified - attempt 5
+
+Reviewed on `ticket/01-modules-on-a-page` at `cc0dfc1`, against `agentic_engineered`. All eleven
+criteria are met and every one was exercised, not just read. The three attempt-4 blockers are
+genuinely fixed, and the widened scope the implementer took on (os.walk error handling, symlinked
+directories, stricter unterminated literals) introduced no regression.
+
+### Lab checks
+
+- `cd backend && ./mvnw test` — 113 tests, `BUILD SUCCESS`.
+- `cd frontend && npm run typecheck` — clean.
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — 76 tests, OK.
+  Also OK inside a throwaway `git worktree` and under `TMPDIR` pointed inside a git checkout
+  (attempt-4 item 4 fixed).
+
+### The parser rewrite did not break anything (the main risk this round)
+
+Rather than trust the fixture suite, I ran the tool over 1,116 real Java files from two
+independent corpora — Apache Ant (922 files, from `Android Studio.app/.../ant/src.zip`) and
+`jakarta.persistence-api-3.1.0-sources.jar` (194 files) — with both the attempt-4 parser
+(`git archive 96d1b15`) and this one:
+
+    ant: filesSeen=922 filesParsed=922 filesUnparsed=0 packages=77 modules=922
+    jpa: filesSeen=194 filesParsed=194 filesUnparsed=0 packages=4  modules=189
+
+- Zero unparsed in either corpus, under either parser.
+- The set of top-level module ids is **identical** between attempt 4 and attempt 5 — nothing that
+  used to parse now fails, and nothing new appeared.
+- Only 7 nested lists changed, all of them the intended qualification fix, with no simple name
+  lost: e.g. `FTP` went from `['AntFTPFile', 'AntFTPRootFile', 'FTPDirectoryScanner', ...]` to
+  `['FTPDirectoryScanner', 'FTPDirectoryScanner.AntFTPFile', 'FTPDirectoryScanner.AntFTPRootFile', ...]`,
+  which matches the source.
+- The only files with no module are the 7 `package-info.java` and 1 `module-info.java` — the
+  descriptor exemption behaving exactly as intended on real input.
+
+I also probed ~30 legal Java shapes directly (escaped quotes, `\"""` in a text block, `""`
+adjacency, char literals holding `'` and `"`, anonymous + local classes, enum constant bodies,
+`@interface`, sealed/non-sealed, generic bounds, compact record constructors, CRLF, `Thing.class`,
+`class`/`record` inside javadoc): all parse, none is falsely called unreadable.
+
+### Criterion 8, exercised rather than assumed
+
+Every previous round's reproduction now behaves as its feedback asked:
+
+    @Deprecated public class Foo {} / class Bar {}  -> both present  (attempt 2 #2)
+    /*/ class Ghost {} */                            -> Real only    (attempt 2 #3)
+    /* forgot to close                               -> FAIL block comment is never closed: opened on line 3   (attempt 4 #1)
+    }\nclass Vanished {                              -> FAIL braces do not balance: a closing brace with nothing open on line 2  (attempt 4 #2)
+    class A {}\n}\nclass B {                         -> FAIL ... on line 3   (attempt 4 #2 mirror)
+    text block holding \"""                          -> A with nested ["Real"], filesUnparsed=0   (attempt 4 #3)
+
+A fixture holding eight failure modes at once produced one named WARNING each with a distinct
+reason, both outputs still written, exit 0, and byte-identical output on a second run:
+
+    WARNING module_depth_map.graph could not read source directory root=broken path=shop/locked reason=directory could not be read: Permission denied
+    WARNING module_depth_map.graph could not parse source file root=broken path=shop/till/Braces.java reason=braces do not balance: a closing brace with nothing open on line 2
+    WARNING module_depth_map.graph could not read source file root=broken path=shop/till/Bytes.java reason=not valid UTF-8: invalid start byte
+    WARNING module_depth_map.graph could not read source file root=broken path=shop/till/Dangling.java reason=could not be opened: No such file or directory
+    WARNING module_depth_map.graph could not parse source file root=broken path=shop/till/NoPackage.java reason=no package declaration
+    WARNING module_depth_map.graph could not parse source file root=broken path=shop/till/Str.java reason=string literal is never closed: opened on line 2
+    WARNING module_depth_map.graph could not parse source file root=broken path=shop/till/Unclosed.java reason=block comment is never closed: opened on line 3
+    INFO  module_depth_map.graph graph built roots=broken filesSeen=8 filesParsed=1 filesUnparsed=7 packages=1 modules=1
+    WARNING module_depth_map.cli the page is drawn from 1 of 8 source files: 7 could not be read, ...
+
+The page drew the band for all seven with their reasons (screenshot `...review.5.band.png`).
+
+### The widened scope specifically
+
+- **Locked directory** — named and counted instead of vanishing: `could not read source directory
+  root=t1 path=shop/locked reason=directory could not be read: Permission denied`. Removing
+  `onerror=refuse, followlinks=True` fails 4 named tests.
+- **Symlink loop** (`shop/loop -> the root`) — terminates, one warning, no duplicate module:
+  `not reading source directory root=t3 path=shop/loop twice: it is the same directory as t3`.
+- **Symlinked directory outside the root** — followed and drawn (`shop/extra/Extra.java`).
+- **Alias of a directory already read** — read once, warned, module drawn once.
+
+### The tests bite
+
+I mutated ten rules one at a time; every one was caught by a test named for the property, and the
+tree was restored clean afterwards (`git status` empty, 76 tests OK): the block-comment raise
+(2 failures), the negative-depth record (2), the placement check (1), text-block escape handling
+(1), string escape handling (4, including both committed-output tests), the `/*` inner-scan offset
+(1), `os.walk` onerror/followlinks (4), `basicConfig(force=True)` (1), render-before-write (1), and
+the WARNING refusal level (1).
+
+### Determinism, completeness, the page
+
+- Two runs into separate directories are byte-identical to each other and to the committed
+  `docs/module-depth-map.{json,html}` (`graphBytes=31187 pageBytes=37162`). Still identical under
+  `LC_ALL=C TZ=Pacific/Kiritimati PYTHONHASHSEED=7`, under `TZ=Asia/Kolkata PYTHONHASHSEED=91`,
+  from another cwd with an absolute `--source`, and inside a `git worktree` whose `.git` is a file.
+- 71 `.java` on disk, 71 modules, 0 unparsed, 8 packages; set difference empty both ways; every
+  module name equals its file basename, every package equals its directory, every `lines` equals
+  `wc -l`; `modules`, `packages`, `moduleIds` and every `nested` list sorted; every `moduleId`
+  resolves to a module and every module appears in exactly one package.
+- Zero `/Users/`, zero dates, zero times, zero `http`/`src=`/`href=` in either output. The tool
+  imports only `argparse json logging os re shutil sys tempfile unittest`; no clock, env, randomness,
+  network or subprocess; no `print(`; a named logger per module.
+- The HTML's embedded JSON is byte-identical to the graph file, and the rendered card names are
+  exactly the graph's module names.
+- Playwright over `file://docs/module-depth-map.html`, `console`/`pageerror`/`requestfailed`
+  subscribed before navigating, light and dark at 768/1024/1280: 71 cards, 8 sections, 0 alarm
+  bands, **exactly one network request per load**, zero console messages, zero page errors, zero
+  failed requests, `scrollWidth == innerWidth` at every width. Screenshots read and legible:
+  light `rgb(27,28,30)` on `rgb(247,247,245)`, dark `rgb(233,234,236)` on `rgb(22,24,27)`,
+  "Source read backend/src/main/java", "Files parsed 71 of 71".
+- Refusals: `--source /no/such/dir` and `--source README.md` both log
+  `WARNING module_depth_map.cli refused to run: no such source directory ...` and exit 2. Duplicate
+  ids across two roots log both paths at WARNING, exit 3, and write **neither** output. An empty
+  root runs cleanly with `modules=0`.
+
+### The application
+
+The branch changes no `.java`, `.ts`, `.tsx` or `.xml`. Driven anyway against the running app:
+`GET /api/customers` 200; `POST /api/savings-accounts/1/deposits {"amount":"12.50"}` 201 with
+
+    DEBUG i.d.s.deposits.DepositsService : deposit takes its moment from the application clock savingsAccountId=1 clockReads=2026-09-04T08:04:23.241966Z recordedMoment=2026-09-04T08:04:23.241Z
+    DEBUG i.d.s.deposits.DepositsService : deposit records what remains of it depositId=1 amount=12.50 remainingAmount=12.50
+    INFO  i.d.s.deposits.DepositsService : deposit accepted depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=12.50 pointsEarned=12 depositedAt=2026-09-04T08:04:23.241Z
+
+and `{"amount":"0"}` refused 400. No stack trace in the log.
+
+### Known nits, none blocking, for whoever picks up ticket 02
+
+None of these violates a criterion here, and each was checked against the attempt-4 parser and
+found **pre-existing** where noted. Worth folding into a later pass:
+
+- **A UTF-8 BOM fails the file with the wrong reason.** `﻿package shop.till;` gives
+  `no package declaration` and drops the module. Loud and named, so criterion 8 holds, but the
+  reason is unactionable. Identical under attempt 4. Fix: decode `utf-8-sig`.
+- **`A . class` (whitespace before the dot) fails a legal file.** `_RESERVED_DECLARATION`'s
+  lookbehind only blocks `[\w.$]`, so the cross-check counts the keyword as a missed declaration:
+  `a type declaration this parser cannot read: class on line 2`. Identical under attempt 4.
+- **`record` used as an identifier can invent a nested name.** `if (record instanceof String s)`
+  yields `nested: ["instanceof"]`. Identical under attempt 4; unreachable here (every `record` in
+  this backend is inside javadoc, which is masked).
+- **A `.JAVA` file is skipped silently** — `filesSeen=0`, no warning. `name.endswith(root.suffixes)`
+  is case-sensitive. The only genuinely silent drop I found, and not a file javac would accept.
+- **The graph is still written before the page write is attempted.** Attempt 4 asked for "render
+  both to bytes first, then write both"; that was done, but the two `write()` calls are still
+  sequential, so a failing page write (read-only `docs/`, full disk) leaves a fresh graph beside a
+  stale page — reproduced with an unwritable `--page`. `cli.py`'s docstring claims this cannot
+  happen. Write to temp files and `os.replace`.
+- **`test_every_source_file_is_either_parsed_or_reported_as_unparseable` contradicts the descriptor
+  exemption.** `assertEqual(on_disk, parsed | reported)` has no bucket for a file that is parsed but
+  declares no module, so adding a `package-info.java` to `backend/src/main/java` turns the suite red
+  for correct behaviour — while `AFileDeclaringNoTypeOnPurposeIsNotAnAlarmTest` pins that same
+  behaviour as right.
+- **A symlink alias that sorts first wins the recorded path.** With `shop/alias -> shop/till`, the
+  module's `path` is `shop/alias/Good.java`. Deterministic, so no criterion fails.
+- **An unlistable root gives an empty path**: `path=` in the log and `root/` on the page.
+  `_refuse_duplicate_ids` already has the join that fixes this.
+- **No `log.error` anywhere**, so an unexpected `OSError` out of `write()` escapes as a bare
+  traceback. CLAUDE.md reserves ERROR for exactly that. (Attempt 4 asked for refusals to move off
+  ERROR, which was done correctly; nothing took its place for real failures.)
+- **Two method-local classes sharing a name collapse to one entry**, logged only at DEBUG. A
+  deliberate call the implementer flagged; not reachable in this repository.
