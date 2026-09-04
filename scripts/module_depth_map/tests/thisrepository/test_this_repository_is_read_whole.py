@@ -103,7 +103,14 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
         )
 
     def test_every_cost_is_a_whole_number_the_page_can_draw_a_bar_from(self):
-        """One scale for every bar means one kind of number behind all of them."""
+        """One scale for every bar means one kind of number behind all of them.
+
+        The weights come out of the document rather than being written here. Writing one
+        of them into this file would make editing `scoring.json` — the whole point of the
+        configuration being a file — red the suite, which is the opposite of the property
+        the ticket claims.
+        """
+        weights = self.document["scoring"]["weights"]
         for module in self.document["modules"]:
             cost = module["interface"]["cost"]
             if cost is None:
@@ -113,8 +120,10 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
             self.assertEqual(
                 cost,
                 sum(method["cost"] for method in module["interface"]["methods"])
-                + 2 * sum(
-                    1 for t in module["interface"]["typesCrossingTheSeam"] if t["mustBeLearned"]
+                + sum(
+                    weights["typeToLearn" if t["mustBeLearned"]
+                            else "typeEveryCallerAlreadyKnows"]
+                    for t in module["interface"]["typesCrossingTheSeam"]
                 ),
                 module["id"],
             )
@@ -128,14 +137,14 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
         """The tool can be checked against a prediction rather than merely admired.
 
         The specification named `AccountsService` from reading, before the tool existed:
-        eleven methods over a small implementation. It is not asserted to be the widest —
-        that would break the day somebody widens another one — only to present all eleven
-        and to cost more than the module the specification calls deep for comparison.
+        many methods over a small implementation, against the module it calls deep. The
+        comparison is what was predicted and the comparison is what is asserted — a
+        method count written in here would red the suite the day somebody adds a method,
+        which is a tax on writing code rather than a property of the tool.
         """
         by_id = {module["id"]: module for module in self.document["modules"]}
         wide = by_id["io.dataroots.savingstreak.accounts.AccountsService"]["interface"]
         deep = by_id["io.dataroots.savingstreak.deposits.DepositsService"]["interface"]
 
-        self.assertEqual(11, len(wide["methods"]))
-        self.assertEqual(3, len(deep["methods"]))
+        self.assertGreater(len(wide["methods"]), len(deep["methods"]))
         self.assertGreater(wide["cost"], deep["cost"])
