@@ -112,9 +112,12 @@ Everything a caller has to learn before they can use a module correctly:
 Every bar is drawn against one number, `scoring.widestInterface` in the graph, so two of
 them can be compared by eye.
 
-Prose invariants, ordering constraints and the bound on a type variable are part of an
-interface and are deliberately not measured. A bar is therefore a floor on what a caller
-must learn rather than the whole of it, and the page says as much rather than letting the
+Prose invariants, ordering constraints, the bound on a type variable and the methods a
+module inherits rather than declares are part of an interface and are not measured. The
+last of those is a limit of reading one file at a time: `MovableClock extends Clock` is
+read for the five methods it writes down, and `Clock.millis()` is reachable through it
+without being in this file to count. A bar is therefore a floor on what a caller must
+learn rather than the whole of it, and the page says as much rather than letting the
 number read as complete.
 
 ## What is drawn but never scored
