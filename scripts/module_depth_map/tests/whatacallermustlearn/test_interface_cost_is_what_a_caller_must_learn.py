@@ -265,3 +265,75 @@ class WhatEachMethodCostsIsSaidPerMethodTest(SourceOfKnownShapeTest):
             ["Aisle", "Receipt"],
             [t["name"] for t in module["interface"]["typesCrossingTheSeam"]],
         )
+
+
+class ATypeVariableIsNotATypeAnybodyLearnsTest(SourceOfKnownShapeTest):
+    """A hole the caller fills with a type they already hold, not a type to go and read.
+
+    Counted as a domain type it would price the letter, and every generic signature would
+    read as asking more of a caller than the same signature without one does.
+    """
+
+    def test_a_type_variable_a_method_introduces_costs_nothing(self):
+        module = self.modules(
+            ("Till", "import java.util.List;\npublic class Till {\n"
+                     "    public <T> T first(List<T> of) { return null; }\n}")
+        )["Till"]
+
+        self.assertEqual(
+            [{"name": "List", "mustBeLearned": False}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+        self.assertEqual(2, module["interface"]["cost"])
+
+    def test_a_type_variable_the_module_introduces_costs_nothing(self):
+        module = self.modules(
+            ("Shelf", "public interface Shelf<T> {\n    T get(long id);\n    void put(T it);\n}")
+        )["Shelf"]
+
+        self.assertEqual(
+            ["long", "void"], [t["name"] for t in module["interface"]["typesCrossingTheSeam"]]
+        )
+        self.assertEqual(4, module["interface"]["cost"])
+
+    def test_a_bounded_type_variable_is_still_a_variable(self):
+        module = self.modules(
+            ("Till", "import java.util.List;\npublic class Till {\n"
+                     "    public <T extends Comparable<T>> T largest(List<T> in) { return null; }\n}")
+        )["Till"]
+
+        self.assertEqual(
+            ["List"], [t["name"] for t in module["interface"]["typesCrossingTheSeam"]]
+        )
+
+    def test_two_type_variables_are_both_holes(self):
+        module = self.modules(
+            ("Cache", "public interface Cache<K, V> {\n    V get(K key);\n}")
+        )["Cache"]
+
+        self.assertEqual([], module["interface"]["typesCrossingTheSeam"])
+        self.assertEqual(2, module["interface"]["cost"])
+
+    def test_a_type_of_the_same_name_as_no_variable_is_still_learned(self):
+        """The rule is what the signature declared, not how short the name is."""
+        module = self.modules(
+            ("Till", "public class Till {\n    public T ring() { return null; }\n}")
+        )["Till"]
+
+        self.assertEqual(
+            [{"name": "T", "mustBeLearned": True}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+        self.assertEqual(3, module["interface"]["cost"])
+
+    def test_the_method_that_declared_the_variable_is_the_only_one_it_is_a_hole_in(self):
+        module = self.modules(
+            ("Till", "import java.util.List;\npublic class Till {\n"
+                     "    public <T> T first(List<T> of) { return null; }\n"
+                     "    public T stored() { return null; }\n}")
+        )["Till"]
+
+        self.assertEqual(
+            [{"name": "List", "mustBeLearned": False}, {"name": "T", "mustBeLearned": True}],
+            module["interface"]["typesCrossingTheSeam"],
+        )

@@ -4249,8 +4249,9 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   add(head, "h1", null, "Module depth map");
   add(head, "p", "lede",
     "Every module this application is made of, at class grain, grouped by the package it "
-    + "lives in. An observation of the source it was generated from, and nothing more: "
-    + "no module here is scored, ranked, or proposed for change.");
+    + "lives in, each carrying what its interface costs a caller. An observation of the "
+    + "source it was generated from, and nothing more: nothing here is ranked, and no "
+    + "module here is proposed for change.");
 
   var read = add(root, "div", "read");
   var list = add(read, "dl");

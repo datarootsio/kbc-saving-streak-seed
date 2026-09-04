@@ -58,3 +58,84 @@ class ThisRepositoryIsReadWholeTest(SourceTreeTest):
             "io.dataroots.savingstreak.deposits",
             by_id["io.dataroots.savingstreak.deposits.DepositsService"]["package"],
         )
+
+
+class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
+    """The property, not the numbers.
+
+    Which module costs what changes every time a feature lands, and asserting any of
+    those numbers here would make the suite a tax on writing code. What must hold whatever
+    is written is that no module fell between the two: nothing is scored and excluded at
+    once, and nothing is neither.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.document = graph.build([graph.java_root(BACKEND_SOURCE)])
+
+    def test_every_module_is_either_scored_or_excluded_and_never_both(self):
+        for module in self.document["modules"]:
+            self.assertEqual(
+                module["excludedBy"] is None,
+                module["interface"]["cost"] is not None,
+                module["id"],
+            )
+
+    def test_every_exclusion_names_a_rule_the_configuration_file_holds(self):
+        named = {entry["rule"] for entry in self.document["scoring"]["exclusions"]}
+
+        for module in self.document["modules"]:
+            if module["excludedBy"]:
+                self.assertIn(module["excludedBy"]["rule"], named, module["id"])
+                self.assertTrue(module["excludedBy"]["matched"].strip(), module["id"])
+
+    def test_the_counts_the_graph_reports_are_the_modules_it_holds(self):
+        scored = [m for m in self.document["modules"] if m["interface"]["cost"] is not None]
+
+        self.assertEqual(len(scored), self.document["scoring"]["modulesScored"])
+        self.assertEqual(
+            len(self.document["modules"]) - len(scored),
+            self.document["scoring"]["modulesNeverScored"],
+        )
+        self.assertEqual(
+            len(self.document["modules"]) - len(scored),
+            sum(entry["modulesExcluded"] for entry in self.document["scoring"]["exclusions"]),
+        )
+
+    def test_every_cost_is_a_whole_number_the_page_can_draw_a_bar_from(self):
+        """One scale for every bar means one kind of number behind all of them."""
+        for module in self.document["modules"]:
+            cost = module["interface"]["cost"]
+            if cost is None:
+                continue
+            self.assertIsInstance(cost, int)
+            self.assertGreaterEqual(cost, 0)
+            self.assertEqual(
+                cost,
+                sum(method["cost"] for method in module["interface"]["methods"])
+                + 2 * sum(
+                    1 for t in module["interface"]["typesCrossingTheSeam"] if t["mustBeLearned"]
+                ),
+                module["id"],
+            )
+
+    def test_the_three_kinds_of_thing_the_rules_name_are_all_present_to_exclude(self):
+        """A rule that matches nothing here would be a rule nobody could have checked."""
+        for entry in self.document["scoring"]["exclusions"]:
+            self.assertGreater(entry["modulesExcluded"], 0, entry["rule"])
+
+    def test_the_module_the_specification_predicted_would_be_dear_is_dear(self):
+        """The tool can be checked against a prediction rather than merely admired.
+
+        The specification named `AccountsService` from reading, before the tool existed:
+        eleven methods over a small implementation. It is not asserted to be the widest —
+        that would break the day somebody widens another one — only to present all eleven
+        and to cost more than the module the specification calls deep for comparison.
+        """
+        by_id = {module["id"]: module for module in self.document["modules"]}
+        wide = by_id["io.dataroots.savingstreak.accounts.AccountsService"]["interface"]
+        deep = by_id["io.dataroots.savingstreak.deposits.DepositsService"]["interface"]
+
+        self.assertEqual(11, len(wide["methods"]))
+        self.assertEqual(3, len(deep["methods"]))
+        self.assertGreater(wide["cost"], deep["cost"])
