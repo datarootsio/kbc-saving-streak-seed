@@ -119,6 +119,34 @@ class EveryMethodACallerCanReachIsCountedTest(SourceOfKnownShapeTest):
             ),
         )
 
+    def test_a_method_named_after_a_contextual_keyword_is_still_a_method(self):
+        """`record` is a legal method name, and a module in this application would use it.
+
+        The one member with a parameter list that is not a method is a nested record, and
+        telling the two apart by the word alone dropped `void record(Deposit)` from the
+        interface without a word said — the module cheaper than the source makes it, and
+        nothing in `unparsed` to say so. The keyword only declares a type when a name
+        follows it, so both are asserted here: the method counts, the nested record does
+        not, and the record's own accessor is not the outer module's method either.
+        """
+        module = self.modules(
+            ("Till",
+             "public class Till {\n"
+             "    record Row(long id) {}\n"
+             "    public void record(Receipt receipt) {}\n"
+             "    public Receipt record() { return null; }\n"
+             "}"),
+        )["Till"]
+
+        self.assertEqual(
+            [("record", [], "Receipt"), ("record", ["Receipt"], "void")],
+            [
+                (method["name"], method["parameters"], method["returns"])
+                for method in module["interface"]["methods"]
+            ],
+        )
+        self.assertEqual(["Row"], module["nested"])
+
 
 class EveryParameterOfThoseMethodsIsCountedTest(SourceOfKnownShapeTest):
 
@@ -453,6 +481,38 @@ class OneInterfaceCostsTheSameHoweverItIsWrittenTest(SourceOfKnownShapeTest):
 
         self.assertEqual(method["returns"], method["parameters"][0])
         self.assertEqual("Map<String, Long>", method["returns"])
+
+    def test_an_array_written_after_the_parameters_is_the_array_written_on_the_type(self):
+        """`int total()[]` and `int[] total()` hand a caller back the same array.
+
+        The mirror of the parameter spelling above, one place further along the signature:
+        brackets dropped here would hand a caller back the element type instead of the
+        array, and say so in the graph as if the source had.
+        """
+        methods = self.methods_of(
+            "Till",
+            "public class Till {\n"
+            "    public int takings()[] { return null; }\n"
+            "    public int[] alsoTakings() { return null; }\n"
+            "}",
+        )
+
+        self.assertEqual("int[]", methods["takings"]["returns"])
+        self.assertEqual(methods["alsoTakings"]["returns"], methods["takings"]["returns"])
+
+    def test_a_records_accessor_for_a_varargs_component_hands_back_the_array(self):
+        """`record Sale(int... cents)` accepts any number of ints and hands back `int[]`.
+
+        The dots say how many on the way in and nothing at all on the way out, so the
+        component and its accessor are spelled differently on purpose — and the accessor
+        is what a caller of the record meets.
+        """
+        methods = self.methods_of(
+            "Sale", "public record Sale(String name, int... cents) {}"
+        )
+
+        self.assertEqual("int[]", methods["cents"]["returns"])
+        self.assertEqual("String", methods["name"]["returns"])
 
     def test_the_receiver_a_method_can_name_is_not_a_parameter_a_caller_passes(self):
         """`void ring(Till this, long id)` is one parameter, and `this` is not it."""

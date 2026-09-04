@@ -49,6 +49,10 @@ _ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)")
 # `class Outer { class Inner {} }` without a word, which is the one failure this file
 # exists to make impossible. What the anchor used to buy is bought by the lookbehind
 # instead: `Thing.class` is a class literal, not a declaration.
+#
+# "Followed by the name it declares" is what also tells a nested record from a method
+# named `record`, which is why `_method_in` asks this pattern rather than a second one
+# looking for the keyword on its own.
 _TYPE = re.compile(
     r"(?<![\w.$])(class|interface|enum|record|@interface)[ \t\r\n]+([A-Za-z_$][\w$]*)"
 )
@@ -495,11 +499,11 @@ _MODIFIERS = frozenset(
 
 _ACCESS = ("public", "protected", "private")
 
-# The keywords that make a member a type rather than a method. A nested record has a
-# parameter list that reads exactly like one and is not one.
-_TYPE_KEYWORD = re.compile(r"(?<![\w.$])(?:class|interface|enum|record)(?![\w$])")
-
 _TRAILING_NAME = re.compile(r"([A-Za-z_$][\w$]*)\s*$")
+
+# The `[]` pairs Java lets a method write after its parameter list rather than on its
+# return type: `int f()[]` hands back the same array `int[] f()` does.
+_LEADING_BRACKETS = re.compile(r"\s*(?:\[\s*\]\s*)+")
 
 # How a type is spelled, once annotations are off it and its spacing is normalised: a
 # name, and then the shapes a name can be carried in. Nothing else belongs where a type
@@ -575,8 +579,11 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
     is named by a line a reader can go and open.
     """
     methods = [
-        Method(name, "public", (), written)
-        for written, name in _components_in(header, line)
+        # `record R(int... more)` accepts any number of ints and hands the caller back the
+        # array they arrived in, so the accessor's return is the array rather than the
+        # element: the dots say how many on the way in, and nothing at all on the way out.
+        Method(name, "public", (), written + ("[]" if dots else ""))
+        for written, name, dots in _components_in(header, line)
     ] if kind == "record" else []
 
     for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
@@ -587,7 +594,7 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
 
 
 def _components_in(header, line):
-    """A record's components, as (type, name), from the header it declares them in."""
+    """A record's components, as (type, name, varargs), from the header declaring them."""
     opened = header.find("(")
     if opened < 0:
         return []
@@ -680,22 +687,34 @@ def _method_in(member, holder_kind, line):
     unreadable file at zero, one member at a time: the shape this parser cannot read
     would leave no trace, and the next one would be found by a reader rather than by the
     tool.
+
+    The one member with a parameter list that is not a method is a nested record, and it
+    is told apart by the keyword *and the name it declares* — `record Row(...)` — rather
+    than by the keyword alone. `record` is a contextual keyword and a legal method name,
+    so looking only for the word dropped `void record(Deposit deposit)` from the interface
+    without a word said: a method this application could plausibly write, gone from the
+    page, and the module cheaper than the source makes it.
     """
     text = _without_annotations(member)
     opened = text.find("(")
     if opened < 0:
         return None
     before = text[:opened]
-    if "=" in before or _TYPE_KEYWORD.search(before):
+    if "=" in before or _TYPE.search(before):
         return None
     modifiers, rest = _modifiers_in(before)
     signature = _without_type_parameters(rest)
     name = _TRAILING_NAME.search(signature)
     if name is None:
         return None
+    closed = _after_balanced(text, opened)
     returns = _normalised(signature[:name.start()])
     if not returns:
         return None
+    # `int f()[]` declares the array after the parameters rather than on the type, the way
+    # `int xs[]` declares one after the name. Both spellings hand a caller the same array,
+    # and dropping the brackets here would hand them back the element type instead.
+    returns += _brackets_after(text[closed:])
     if not _reads_as_a_type(returns):
         raise ParseFailure(
             "a member this parser cannot read: %s on line %d hands back %r, which is not a "
@@ -704,21 +723,31 @@ def _method_in(member, holder_kind, line):
     return Method(
         name.group(1),
         _visibility(modifiers, holder_kind),
-        [written for written, _ in _declared_parameters(
-            text[opened + 1:_after_balanced(text, opened) - 1], line
+        [written for written, _, _ in _declared_parameters(
+            text[opened + 1:closed - 1], line
         )],
         returns,
         _type_parameters_in(rest),
     )
 
 
+def _brackets_after(text):
+    """The `[]` pairs written at the front of this text, as one string."""
+    found = _LEADING_BRACKETS.match(text)
+    return "[]" * (found.group(0).count("[") if found else 0)
+
+
 def _declared_parameters(text, line):
-    """The parameters written between two brackets, as (type, name).
+    """The parameters written between two brackets, as (type, name, varargs).
 
     A parameter this parser cannot read fails the file rather than being dropped. Two
     spellings of one parameter list — `take(int xs[])` and `take(int[] xs)` — used to cost
     a caller different amounts because the first was discarded here without a word, which
     is the parser losing part of an interface while the score still added up.
+
+    `varargs` says the parameter was written `int...` rather than `int`. It makes no
+    difference to what a caller hands over one at a time, and all the difference to a
+    record's accessor for it, which hands the array back.
     """
     declared = []
     for part in _split_on_commas(text):
@@ -730,7 +759,8 @@ def _declared_parameters(text, line):
         rest, brackets = _brackets_after_the_name(rest)
         name = _TRAILING_NAME.search(rest)
         # `String... names` hands over a String: the dots say how many, not what.
-        written = _normalised(rest[:name.start()] if name else "").rstrip(". ")
+        spelled = _normalised(rest[:name.start()] if name else "")
+        written = spelled.rstrip(". ")
         if name is None or not written or not _reads_as_a_type(written + brackets):
             raise ParseFailure(
                 "a parameter this parser cannot read: %r on line %d" % (part.strip(), line)
@@ -741,7 +771,7 @@ def _declared_parameters(text, line):
             # parameter on every method written that way.
             log.debug("receiver parameter read on line %d, which a caller never passes", line)
             continue
-        declared.append((written + brackets, name.group(1)))
+        declared.append((written + brackets, name.group(1), spelled.endswith("...")))
     return declared
 
 
