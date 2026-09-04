@@ -241,8 +241,8 @@ class Rules:
         # Logged for a module that is never scored too, and that is the case worth having
         # it for: the page shows such a module the name of the rule and nothing else, so
         # this is the only place a reader can check that the rule declined something real
-        # rather than something the parser lost. Every fault found on this branch so far
-        # has been a module whose interface was read wrongly and never priced.
+        # rather than something the parser lost. Three of the misread interfaces found on
+        # this branch were on records and enums, which the committed rules never price.
         log.debug(
             "interface read name=%s methods=%d parameters=%d typesToLearn=%d "
             "typesEveryCallerAlreadyKnows=%d cost=%s",
