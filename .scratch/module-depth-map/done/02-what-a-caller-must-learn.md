@@ -1138,6 +1138,52 @@ savingsAccountId=1 ... balance=7.34 reason=There is not enough in that savings a
 - `_the_name_in` recovers nothing from an array or parenthesised spelling, so
   `typesEveryCallerAlreadyKnows: ["String[]"]` is refused with the generic "letters, digits, _ and $"
   message rather than "write String instead". Refused loudly either way.
+- **A regression this branch introduced, loud, and left open deliberately.** A modifier written
+  flush against a type-parameter list fails the whole file. `javasource.py:536`
+  `_LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s")` requires whitespace after the modifier, so
+  `_modifiers_in` (`:917`) never strips it, the return type is read as `"static<T> T"`, and
+  `_method_in` raises at `:782`. Reproduce with one file under a scratch source root:
+
+      package shop;
+      public class Z {
+          static<T> T k(T t) { return t; }
+          public String ok() { return null; }
+      }
+
+  `javac` compiles it; the tool answers `modules []` and
+  `unparsed [{'reason': "a member this parser cannot read: k on line 3 hands back 'static<T> T',
+  which is not a type"}]`, and the module gets no card. I ran the same fixture through
+  `git archive ticket/01-modules-on-a-page scripts` and it reads `modules ['Z'], unparsed []`, so
+  unlike the two items below this one is **not** inherited — `_LEADING_WORD` and `_modifiers_in`
+  arrived in `678e35c`, this ticket's own first commit. `List<String>get()` and `String[]h()`,
+  also written without a space, parse fine; only modifier-before-`<` breaks.
+
+  I did not send the ticket back for it, and here is the reasoning so the next person can disagree
+  with it on the record. It is **loud**, which is the whole difference from the six faults that did
+  send this ticket back: the page paints the alarm band, the header reads `Files parsed 0 of 1 /
+  Files not parsed 1`, and `source.unparsed` names the file, the line and the reason — which is
+  precisely the spec's own remedy (user story 24, and "parsing is by targeted pattern matching over
+  the source, not a full language grammar ... and the reason unparseable files must be reported
+  rather than scored as empty"). It fails no acceptance criterion on this ticket. And it is
+  unreachable here: **0 occurrences** of a modifier flush against `<` anywhere in the repository,
+  and 102 of 102 `.java` files under `backend/src/{main,test}/java` parse.
+
+  What it does cost is a sentence: `README.md`'s "legal Java is never failed" now has a counterexample
+  this branch created. Either fix `_LEADING_WORD` to allow `<` as a boundary, or scope that claim to
+  the Java this repository writes. Whoever takes ticket 03 should pick one.
+
+  Two things to save that person time. First, the framing: at ticket/01 the parser read no members
+  at all — `_method_in`, `_reads_as_a_type` and `_member_headers` do not appear in its
+  `javasource.py`, and its module records carry no `interface` key — so nothing that worked broke.
+  The file-level outcome regressed from parsed to unparsed as a side effect of the member reading
+  this ticket added. Second, the fix looks like one line, and I checked rather than guessed: with
+  `_LEADING_WORD` widened to `([A-Za-z_$][\w$-]*)(?=[\s<])` — matching the word and consuming only
+  it — the fixture above reads `modules ['Z']`, `unparsed []`, `k(['T']) -> T` with `<T>` correctly
+  priced as a hole, cost 3, and `_type_parameters_in` needs no change. **The 233-test suite is green
+  both with and without that edit**, which is the real gap: no test names this shape, so whoever
+  fixes it has to write one first. I reverted the probe; the tree is clean and the analyser is
+  untouched.
+
 - **Not this branch, sixth round reported:** the deposit-of-zero, over-priced-claim,
   unknown-reward and unknown-account refusals leave no WARN from `io.dataroots.savingstreak` — only
   Spring's DEBUG `ExceptionHandlerExceptionResolver` lines — whereas `WithdrawalsService` does log
