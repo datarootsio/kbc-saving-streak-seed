@@ -183,6 +183,13 @@ class SourceOfKnownShapeTest(SourceTreeTest):
             "Shelf": ("shop.stock", A_MODULE_IN_ANOTHER_PACKAGE),
         }
 
+    def rendered(self, *sources, **elsewhere):
+        """These modules, and the page a browser would draw them from, as text."""
+        modules = self.modules(*sources, **elsewhere)
+        return modules, page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
     def reached(self, module):
         """What one module reaches, as (kind, name) pairs, in the order the fan draws them."""
         return [(entry["kind"], entry["name"]) for entry in module["reach"]["reaches"]]
@@ -369,6 +376,72 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             "calls zero, imported statically from it",
             modules["Till"]["reach"]["reaches"][0]["matched"],
         )
+
+    def test_a_member_imported_statically_and_never_called_reaches_nothing(self):
+        """The negative twin of the test above, and the one that fails on a name.
+
+        A module declares `of` and returns a constant. It also imports `Prices.of`
+        statically, the way a file left half-edited does. Nothing in its body calls
+        anything, so it reaches nothing — and the only reading that says otherwise is one
+        that mistakes the module's own declaration for a call, and then prints "calls of,
+        imported statically from it" about a body that does no such thing.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    public long of(long cents) { return cents; }\n"
+                     "    public long ring(long id) { return 1; }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertEqual(0, modules["Till"]["reach"]["count"])
+
+    def test_a_constructor_is_not_read_as_a_call_to_a_static_import_of_its_name(self):
+        """The same mistake, spelled with the one declaration named after the type."""
+        modules = self.modules(
+            ("Till", "import static shop.stock.Names.Till;\n\npublic class Till {\n"
+                     "    private final long cents;\n"
+                     "    public Till(long cents) { this.cents = cents; }\n"
+                     "    public long ring() { return cents; }\n}"),
+            Names=("shop.stock", "public class Names {\n"
+                                 "    public static long Till() { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_module_that_both_declares_a_name_and_calls_the_import_reports_a_floor(self):
+        """What the fix above costs, stated rather than left to be discovered.
+
+        A module declaring `of` and calling the statically imported `of` really does reach
+        `Prices`, and this tool does not say so: a declaration and a call are written the
+        same way here, and reach errs towards saying less about the source than the source
+        says rather than towards saying something the source does not.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    public long of(long cents) { return cents; }\n"
+                     "    public long ring(long id) { return of(id) + of(1); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_call_written_out_in_full_is_not_followed_and_the_page_says_so(self):
+        """A documented omission rather than a silent one: reach is a floor and says which.
+
+        `shop.till.Prices.zero()` is a call this reader does not follow — it reads the
+        name in front of the last dot, and there is a dotted path in front of that. The
+        page and the README both name the spelling, because a floor nobody can see the
+        edge of is not a floor a reader can trust.
+        """
+        modules, rendered = self.rendered(
+            ("Till", "public class Till {\n"
+                     "    public long ring(long id) { return shop.till.Prices.zero(); }\n}"),
+            ("Prices", "public class Prices {\n    public static long zero() { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertIn("written out in full", rendered)
 
     def test_a_name_is_followed_through_the_import_that_spells_it(self):
         """Two modules of one name, and the import decides which one is reached."""
@@ -681,12 +754,6 @@ class TheFanIsDrawnFromTheReachTest(SourceOfKnownShapeTest):
         r"\A(?P<when>.+?)\s*\?\s*(?P<then>.+?)\s*:\s*(?P<otherwise>.+?)\Z"
     )
 
-    def rendered(self, *sources, **elsewhere):
-        modules = self.modules(*sources, **elsewhere)
-        return modules, page.render(
-            self.document, graph.serialise(self.document)
-        ).decode("utf-8")
-
     def test_the_page_draws_one_line_and_one_foot_for_each_thing_reached(self):
         _, rendered = self.rendered(("Till", A_DEEP_MODULE), **self.collaborators())
         fan = rendered[rendered.index("function drawFan"):]
@@ -731,10 +798,50 @@ class TheFanIsDrawnFromTheReachTest(SourceOfKnownShapeTest):
             half = "then" if eval(shape.group("when"), {}, reached) else "otherwise"
             drawn[name] = eval(shape.group(half), {}, reached)
 
-        whole = self.shape(rendered)["width"]
+        shape_ = self.shape(rendered)
+        whole = shape_["width"] - 2 * shape_["foot"] - shape_["ink"]
         self.assertEqual(whole, drawn["Till"])
         self.assertAlmostEqual(whole * 2 / furthest, drawn["Counter"])
         self.assertEqual(0, drawn["Prices"])
+
+    def test_the_widest_fan_on_the_page_is_drawn_whole_rather_than_clipped(self):
+        """The card the scale is anchored to is the one a full-width span cuts in half.
+
+        Every other fan is narrower than the widest and lands well inside its card, so the
+        one card that can be clipped is the specimen — the fan every other fan on the page
+        is read against, and the one a reader looks at first. Its outermost feet are
+        circles drawn at the ends of its span, so the span has to stop a foot short of
+        each edge of the viewBox.
+        """
+        modules, rendered = self.rendered(
+            ("Till", A_DEEP_MODULE), ("Counter", A_PASS_THROUGH), **self.collaborators()
+        )
+        shape_ = self.shape(rendered)
+        furthest = self.document["scoring"]["widestReach"]
+        self.assertEqual(
+            furthest,
+            modules["Till"]["reach"]["count"],
+            "this fixture no longer holds the fan the scale comes from",
+        )
+
+        feet = self.feet(rendered, modules["Till"], furthest, shape_)
+
+        takes_up = shape_["foot"] + shape_["ink"] / 2.0
+        self.assertEqual(furthest, len(feet))
+        self.assertGreaterEqual(min(feet), takes_up)
+        self.assertLessEqual(max(feet), shape_["width"] - takes_up)
+
+    def test_a_fan_narrower_than_the_widest_is_still_centred_on_its_card(self):
+        """Insetting the span must not shift a fan off the middle of the bar above it."""
+        modules, rendered = self.rendered(
+            ("Till", A_DEEP_MODULE), ("Counter", A_PASS_THROUGH), **self.collaborators()
+        )
+        shape_ = self.shape(rendered)
+        furthest = self.document["scoring"]["widestReach"]
+
+        feet = self.feet(rendered, modules["Counter"], furthest, shape_)
+
+        self.assertAlmostEqual(shape_["width"] / 2, (min(feet) + max(feet)) / 2)
 
     def test_the_page_divides_by_nothing_when_no_module_reaches_anything(self):
         """A page of modules that coordinate nothing reaches the same expression with 0."""
@@ -754,6 +861,40 @@ class TheFanIsDrawnFromTheReachTest(SourceOfKnownShapeTest):
         self.assertFalse(eval(shape.group("when"), {}, reached))
         self.assertEqual(0, eval(shape.group("otherwise"), {}, reached))
 
+    def feet(self, rendered, module, furthest, shape_):
+        """Where the page puts each foot of one module's fan, by its own two expressions.
+
+        Both are lifted out of the rendered file as text and worked out here, for the
+        reason the class docstring gives: a geometry asserted against numbers written down
+        in this file would stay green through any change to the page that draws it.
+        """
+        reaches = module["reach"]["reaches"]
+        known = {
+            "module": AsJavaScriptReadsIt(module),
+            "furthest": furthest,
+            "SHAPE": AsJavaScriptReadsIt(shape_),
+            "reaches": AsJavaScriptReadsIt({"length": len(reaches)}),
+        }
+        span = self._A_SHARE_OF_THE_SCALE.match(
+            self._A_SPAN_IS_SET.findall(rendered)[0].strip()
+        )
+        half = "then" if eval(span.group("when"), {}, known) else "otherwise"
+        known["span"] = eval(span.group(half), {}, known)
+
+        written = re.search(r"var foot = (.+?);", rendered, re.S).group(1)
+        placed = self._A_SHARE_OF_THE_SCALE.match(
+            " ".join(written.split()).replace("===", "==")
+        )
+        self.assertIsNotNone(
+            placed, "the page places a foot in a way this test cannot read; read it"
+        )
+        drawn = []
+        for index in range(len(reaches)):
+            known["index"] = index
+            half = "then" if eval(placed.group("when"), {}, known) else "otherwise"
+            drawn.append(eval(placed.group(half), {}, known))
+        return drawn
+
     def shape(self, rendered):
         """The geometry the page draws every fan to, read out of the page that holds it."""
         written = re.search(r"var SHAPE = \{(.+?)\};", rendered).group(1)
@@ -761,3 +902,46 @@ class TheFanIsDrawnFromTheReachTest(SourceOfKnownShapeTest):
             part.split(":")[0].strip(): int(part.split(":")[1])
             for part in written.split(",")
         }
+
+
+class TheShapeIsDrawnInOnePassTest(SourceOfKnownShapeTest):
+    """The renderer walks the document once, so anything it throws on it never finishes.
+
+    A throw halfway down reads as a page that stopped early rather than as a page that
+    failed: every package section after the module that threw is simply absent, with
+    nothing saying why. The rule that follows is written over `drawInterface` in the page
+    and asserted here, because a rule kept only in a comment is one the next thing drawn
+    beside it can break silently — which is how the fan's own bar came to break it.
+    """
+
+    def body(self, rendered, name):
+        """One function of the page's script, from its opening line to its closing brace."""
+        found = rendered[rendered.index("function " + name):]
+        return found[:found.index("\n  }")]
+
+    def test_nothing_decides_an_exclusion_by_looking_at_the_cost_that_is_missing(self):
+        """A module with an exclusion but a cost, or a cost but none, is still drawable.
+
+        Cost is null exactly when `excludedBy` is set today, and a renderer that reads the
+        rule off `excludedBy` having decided on `cost === null` is one document away from
+        throwing. It costs nothing to branch on the fact that carries the exclusion.
+        """
+        _, rendered = self.rendered(("Till", A_DEEP_MODULE), **self.collaborators())
+
+        for name in ["drawShape", "drawInterface"]:
+            body = self.body(rendered, name)
+            self.assertIn("module.excludedBy", body, name)
+            self.assertNotIn("cost !== null", body, name)
+            self.assertNotIn("cost === null", body, name)
+
+    def test_the_bar_and_the_fan_are_drawn_for_a_module_no_rule_scores(self):
+        """The one shape both branches have to produce, on a module that has no cost."""
+        modules = self.modules(
+            ("Till", A_DEEP_MODULE),
+            ("Ledger", AN_ADAPTER.replace("ReceiptRepository", "Ledger")),
+            **self.collaborators()
+        )
+
+        self.assertIsNone(modules["Ledger"]["interface"]["cost"])
+        self.assertEqual("generated repository", modules["Ledger"]["excludedBy"]["rule"])
+        self.assertEqual(0, modules["Ledger"]["reach"]["count"])

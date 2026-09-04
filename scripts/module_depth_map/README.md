@@ -217,6 +217,24 @@ must learn. A collaborator handed in as an argument rather than held as a field,
 record this module loads and changes rather than creates, are coordination this tool
 cannot see; it leaves them out rather than guessing.
 
+Three spellings of a call are missed for the same reason, and the page names all three so
+that the edge of the floor can be seen rather than discovered:
+
+- a call written out in full — `io.dataroots.savingstreak.accounts.AccountsService.of(x)`
+  — because the name a call is read against is the one in front of the last dot, and this
+  one has a package path in front of it. "By name for a static call" above means the name
+  a file can spell after its imports, `AccountsService.of(x)`;
+- a call through something reached through something else — `orders.repository.save(x)` —
+  for the same reason: the field is not the name in front of the last dot;
+- a call to a statically imported member whose name the module also declares a method
+  for. A declaration is written the same way a call is, so counting it would credit a
+  module with reaching something it never called and print evidence saying so; the call
+  is dropped instead.
+
+Each of these leaves a fan shorter than the source, never longer. That is the direction
+this tool is willing to be wrong in: a number a reader can check and find understated is
+worth more than one they can check and find false.
+
 The three rules deciding what a reached thing *is* live in `scoring.json` beside the
 weights, each with the sentence it is argued for, which the page prints. Change what counts
 as an adapter and the fans change with it.

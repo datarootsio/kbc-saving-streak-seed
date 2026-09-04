@@ -5405,7 +5405,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "for the JDK or for a framework reaches nothing here and cannot raise its own score "
     + "by importing more of either. Nor is a collaborator handed in as an argument rather "
     + "than held, or a record this module loads and changes rather than keeps: neither is "
-    + "coordination this tool can see, and it does not guess at them.");
+    + "coordination this tool can see, and it does not guess at them. Three spellings of "
+    + "a call are missed the same way: a call written out in full, package and all "
+    + "(a.b.C.d()), a call through something reached through something else (a.b.c()), "
+    + "and a call to a statically imported member a module also declares a method for, "
+    + "which is read as the declaration it also is. Each leaves a fan shorter than the "
+    + "source, which is the direction this page is willing to be wrong in.");
 
   var named = add(rules, "ul");
   var because = {};
@@ -5509,32 +5514,44 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // on that caller's behalf, spread as wide as it reaches. A deep module is a short bar
   // over a wide fan; a bar as wide as its fan is a module coordinating a thing per method.
   // Both halves are drawn from the same document the numbers under them come from.
-  var SHAPE = {width: 200, height: 46, apex: 2, feet: 42};
+  //
+  // `foot` is the radius of the circle a fan line ends in and `ink` the width that circle
+  // is outlined with, so a foot takes up `foot + ink / 2` either side of where it is put.
+  // The outermost feet of the widest fan land on the ends of its span, so a span of the
+  // whole width has the browser slice them in half against the edges of the viewBox — and
+  // it does it on the one card the scale is anchored to, the specimen every other fan on
+  // the page is read against. The span is inset by exactly what a foot takes up instead.
+  var SHAPE = {width: 200, height: 46, apex: 2, feet: 42, foot: 2, ink: 1};
 
+  // Branching on the fact that carries the exclusion, not on the absent cost that follows
+  // from it, for the reason spelled out over `drawInterface` below: a module with one and
+  // not the other would throw here, and one throw ends the whole page.
   function drawShape(item, module) {
     var shape = add(item, "div", "shape");
-    var scored = module.interface.cost !== null;
-    var track = add(shape, "div", scored ? "bar" : "bar unscored");
-    if (scored) {
+    var excluded = module.excludedBy;
+    var track = add(shape, "div", excluded ? "bar unscored" : "bar");
+    if (excluded) {
+      track.title = "never scored — " + excluded.rule;
+    } else {
       track.title = "interface cost " + module.interface.cost;
       add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
-    } else {
-      track.title = "never scored — " + module.excludedBy.rule;
     }
     drawFan(shape, module);
   }
 
   // One line from under the middle of the bar out to each thing the module coordinates,
   // the whole fan as wide a share of the card as its reach is of the widest reach in the
-  // document. Two encodings of one number on purpose: the lines can be counted, and the
-  // spread can be compared across a page at a glance.
+  // document — the widest one spanning the card less a foot at either end, so that the
+  // fan the scale comes from is drawn whole rather than clipped. Two encodings of one
+  // number on purpose: the lines can be counted, and the spread can be compared across a
+  // page at a glance.
   function drawFan(shape, module) {
     var fan = draw(shape, "svg", "fan", {
       viewBox: "0 0 " + SHAPE.width + " " + SHAPE.height,
       preserveAspectRatio: "xMidYMid meet"
     });
     var reaches = module.reach.reaches;
-    var span = furthest > 0 ? SHAPE.width * module.reach.count / furthest : 0;
+    var span = furthest > 0 ? (SHAPE.width - 2 * SHAPE.foot - SHAPE.ink) * module.reach.count / furthest : 0;
     reaches.forEach(function (reached, index) {
       var foot = reaches.length === 1
         ? SHAPE.width / 2
@@ -5543,7 +5560,9 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       titled(draw(fan, "line", reached.kind, {
         x1: SHAPE.width / 2, y1: SHAPE.apex, x2: foot, y2: SHAPE.feet
       }), says);
-      titled(draw(fan, "circle", reached.kind, {cx: foot, cy: SHAPE.feet, r: 2}), says);
+      titled(draw(fan, "circle", reached.kind, {
+        cx: foot, cy: SHAPE.feet, r: SHAPE.foot
+      }), says);
     });
   }
 

@@ -430,7 +430,11 @@ class Rules:
         What is left out is left out in the same direction, so reach reads as a floor:
         a collaborator handed in as a parameter rather than held as a field, and a record
         this module loads and mutates rather than creates, are coordination this tool
-        cannot see and does not guess at.
+        cannot see and does not guess at. So are three spellings of a call — one written
+        out in full, one through something itself reached through something else, and a
+        statically imported member whose name the module also declares a method for. The
+        page names all three, because a floor whose edge a reader cannot see is not one
+        they can trust.
         """
         reached = {}
 
@@ -472,12 +476,35 @@ class Rules:
 
         # A member imported statically is written with no receiver in front of it, so the
         # only thing tying `asMoney(...)` to the module that declares it is the import.
+        #
+        # `called` is every name in the body with a call's brackets after it, and a
+        # module's own declarations are written that way too: a module declaring
+        # `long of(long cents)` carries `of` in `called` having called nothing at all.
+        # Read straight, that credits a module which merely imports a member and happens
+        # to declare a method of the same name with reaching the module the import came
+        # from — a fan line to a card it never calls, and an evidence string that is a
+        # false statement about the source. So a name this module declares is never read
+        # as a call to the import that shares its spelling.
+        #
+        # The cost of that is a module which both declares and calls one name, whose real
+        # call goes uncounted. Reach is a floor and this keeps it one: it errs towards
+        # saying less about the source than the source says, never towards saying
+        # something the source does not.
+        declares = {method.name for method in declared.methods} | {declared.name}
         for imported in imports:
-            if imported.member in declared.called:
-                target = resolve(imported.type.rsplit(".", 1)[-1])
-                if target is not None:
-                    note(target, self._what_is_reached(modules[target]),
-                         "calls %s, imported statically from it" % imported.member)
+            if imported.member not in declared.called:
+                continue
+            if imported.member in declares:
+                log.debug(
+                    "static import not read as a call name=%s member=%s from=%s, because "
+                    "this module declares that name itself and a declaration is not a call",
+                    declared.name, imported.member, imported.type,
+                )
+                continue
+            target = resolve(imported.type.rsplit(".", 1)[-1])
+            if target is not None:
+                note(target, self._what_is_reached(modules[target]),
+                     "calls %s, imported statically from it" % imported.member)
 
         for built in declared.constructed:
             target = resolve(built)
