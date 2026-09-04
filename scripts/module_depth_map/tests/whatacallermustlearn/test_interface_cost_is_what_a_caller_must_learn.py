@@ -7,8 +7,9 @@ writing changes meaning every time they save.
 """
 
 import json
+import re
 
-from ... import graph, scoring
+from ... import graph, page, scoring
 from ..support.sourcetrees import SourceTreeTest
 
 
@@ -592,6 +593,95 @@ class AnAnnotationsArgumentIsNeverReadAsABodyTest(SourceOfKnownShapeTest):
 
         self.assertEqual(["open", "ring"], sorted(methods))
         self.assertEqual(["String"], methods["ring"]["parameters"])
+
+
+class ACostCanBeAddedUpFromThePartsDrawnUnderItTest(SourceTreeTest):
+    """A number a reader cannot take apart is a number they cannot argue with.
+
+    The page draws a breakdown under each bar, and the whole claim of the page is that
+    the score above it can be disagreed with. The breakdown counted only the types this
+    application invented, so a reader who set `typeEveryCallerAlreadyKnows` to anything
+    but zero — one of the four weights the file exists to let them change — was shown
+    "1 method, 2 parameters, 0 types" under a cost of 6, three of which came from the
+    type it said there were none of. Two boxes above, the same page told them what that
+    kind of type costs.
+    """
+
+    def weighted(self, already_known, *sources):
+        """These modules, scored with a weight of `already_known` on a familiar type."""
+        with open(scoring.DEFAULT_CONFIGURATION, "rb") as handle:
+            configuration = json.loads(handle.read().decode("utf-8"))
+        configuration["interfaceCost"]["weights"]["typeEveryCallerAlreadyKnows"] = already_known
+        rules = scoring.load(self.tree("rules").raw("scoring.json", json.dumps(configuration)))
+
+        tree = self.tree("fixture")
+        for name, body in sources:
+            tree.java("shop.till", name, body)
+        self.document = graph.build([graph.java_root(tree.root)], rules)
+
+        self.assertEqual([], self.document["source"]["unparsed"])
+        return {module["name"]: module for module in self.document["modules"]}
+
+    def test_a_type_every_caller_knows_is_counted_in_the_cost_at_the_weight_given(self):
+        modules = self.weighted(
+            3, ("Till", "public class Till {\n    public int add(int a, int b) { return a + b; }\n}")
+        )
+        interface = modules["Till"]["interface"]
+
+        self.assertEqual(
+            [{"name": "int", "mustBeLearned": False}], interface["typesCrossingTheSeam"]
+        )
+        self.assertEqual(1 + 2 + 3, interface["cost"])
+
+    def test_every_cost_is_the_weighted_sum_of_the_counts_the_graph_publishes(self):
+        """The parts are read from the document and the weights from the file it names.
+
+        Nothing here restates what a weight is worth: a test holding its own copy of the
+        weights would go red when a reader edited the file, which is the opposite of the
+        property this whole branch is about.
+        """
+        modules = self.weighted(
+            3,
+            ("Till", "public class Till {\n"
+                     "    public Receipt ring(long id, String iban) { return null; }\n"
+                     "    public int add(int a, int b) { return a + b; }\n}"),
+            ("Shelf", "public interface Shelf {\n    void restock(Optional<Long> id);\n}"),
+        )
+        weights = self.document["scoring"]["weights"]
+
+        for name, module in modules.items():
+            interface = module["interface"]
+            crossing = interface["typesCrossingTheSeam"]
+            counted = {
+                "method": len(interface["methods"]),
+                "parameter": sum(len(method["parameters"]) for method in interface["methods"]),
+                "typeToLearn": sum(1 for type_ in crossing if type_["mustBeLearned"]),
+                "typeEveryCallerAlreadyKnows": sum(
+                    1 for type_ in crossing if not type_["mustBeLearned"]
+                ),
+            }
+            self.assertEqual(sorted(weights), sorted(counted), name)
+            self.assertEqual(
+                sum(weights[weight] * how_many for weight, how_many in counted.items()),
+                interface["cost"],
+                name,
+            )
+
+    def test_the_breakdown_the_page_draws_has_a_term_for_every_weight(self):
+        """The renderer runs in a browser this suite does not have, so what is checked
+        here is the one thing the rendered file can be asked: that every weight a cost is
+        added up from has a count drawn under the bar. A weight with no term is a part of
+        every total with nothing beneath it to account for.
+        """
+        self.weighted(
+            3, ("Till", "public class Till {\n    public int add(int a, int b) { return a + b; }\n}")
+        )
+        rendered = page.render(self.document, graph.serialise(self.document)).decode("utf-8")
+
+        self.assertEqual(
+            sorted(self.document["scoring"]["weights"]),
+            sorted(set(re.findall(r'weight: "(\w+)"', rendered))),
+        )
 
 
 class ARecordThatWritesAnAccessorOffersOneOfItTest(SourceOfKnownShapeTest):

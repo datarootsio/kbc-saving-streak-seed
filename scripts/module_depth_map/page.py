@@ -192,10 +192,11 @@ _SCRIPT = """
   add(rules, "p", null,
     "What a bar leaves out is part of the interface too, and is not measured: the "
     + "invariants a module states in prose, the order its calls have to be made in, "
-    + "what a type variable has to be, and the methods a module inherits rather than "
+    + "what a type variable has to be, the methods a module inherits rather than "
     + "declares \\u2014 this tool reads one file at a time and never opens a supertype "
-    + "it does not hold. A bar is a floor on what a caller must learn rather than the "
-    + "whole of it.");
+    + "it does not hold \\u2014 and the members of a type declared inside a module, "
+    + "which are named below it rather than counted. A bar is a floor on what a caller "
+    + "must learn rather than the whole of it.");
   add(rules, "p", null,
     document_.scoring.modulesNeverScored + " of " + document_.modules.length
     + " modules are drawn but never scored, each by a named rule in "
@@ -221,26 +222,64 @@ _SCRIPT = """
   // would throw for a module that had one without the other, and the renderer is one
   // pass: a throw abandons every package section after it, which reads as a page that
   // ends early rather than as a page that failed.
+  // One term per weight the configuration holds, in the order the breakdown reads them
+  // out. A cost is the weighted sum of exactly these counts, so a weight with no term
+  // here would be part of every total with nothing under it to account for: a module
+  // costing 6 read "1 method, 2 parameters, 0 types" while three of the six came from a
+  // type the breakdown said there were none of, on the same screen as the paragraph
+  // saying what that kind of type costs.
+  var breakdown = [
+    {
+      weight: "method",
+      one: "method",
+      many: "methods",
+      of: function (interface_) { return interface_.methods.length; }
+    },
+    {
+      weight: "parameter",
+      one: "parameter",
+      many: "parameters",
+      of: function (interface_) {
+        var counted = 0;
+        interface_.methods.forEach(function (method) { counted += method.parameters.length; });
+        return counted;
+      }
+    },
+    {
+      weight: "typeToLearn",
+      one: "type this application invented",
+      many: "types this application invented",
+      of: function (interface_) { return crossing(interface_, true); }
+    },
+    {
+      weight: "typeEveryCallerAlreadyKnows",
+      one: "type every caller already knows",
+      many: "types every caller already knows",
+      of: function (interface_) { return crossing(interface_, false); }
+    }
+  ];
+
+  function crossing(interface_, mustBeLearned) {
+    var counted = 0;
+    interface_.typesCrossingTheSeam.forEach(function (type) {
+      if (type.mustBeLearned === mustBeLearned) { counted += 1; }
+    });
+    return counted;
+  }
+
   function drawInterface(item, module) {
     if (module.excludedBy) {
       var never = add(item, "p", "unscored", "never scored \\u2014 " + module.excludedBy.rule);
       never.title = module.excludedBy.matched + ". " + because[module.excludedBy.rule];
       return;
     }
-    var parameters = 0;
-    module.interface.methods.forEach(function (method) { parameters += method.parameters.length; });
-    var toLearn = 0;
-    module.interface.typesCrossingTheSeam.forEach(function (type) {
-      if (type.mustBeLearned) { toLearn += 1; }
-    });
     var track = add(item, "div", "bar");
     track.title = "interface cost " + module.interface.cost;
     add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
-    add(item, "p", "cost",
-      module.interface.cost + " to learn: "
-      + count(module.interface.methods.length, "method", "methods") + ", "
-      + count(parameters, "parameter", "parameters") + ", "
-      + count(toLearn, "type", "types"));
+    var parts = breakdown.map(function (term) {
+      return count(term.of(module.interface), term.one, term.many);
+    });
+    add(item, "p", "cost", module.interface.cost + " to learn: " + parts.join(", "));
   }
 
   var byId = {};
