@@ -69,11 +69,67 @@ class Exclusion:
         """
         evidence = []
         for condition in [name for name in CONDITIONS if name in self.when]:
-            met, because = CONDITIONS[condition](self.when[condition], declared)
+            met, because = CONDITIONS[condition].met(self.when[condition], declared)
             if not met:
                 return None
             evidence.append(because)
         return ", ".join(evidence)
+
+
+# What a value written in the file has to be before any of it is applied. Each check
+# refuses rather than repairing: a name this tool cannot match, a list with nothing in
+# it where a rule needs a name, a shape it does not read at all — every one of them
+# would otherwise be a rule that looks like a judgement and does nothing.
+
+def _known_kinds(kinds, where):
+    unknown = [kind for kind in kinds if kind not in javasource.KINDS]
+    if unknown:
+        raise ConfigurationRefused(
+            "%s names %s, and a module is %s: a condition on any other kind could never "
+            "hold, and a rule that can never fire is not one anybody could argue with"
+            % (where, ", ".join(sorted(unknown)), " or ".join(javasource.KINDS))
+        )
+    return kinds
+
+
+def _strings(value, where, may_be_empty=False):
+    if not isinstance(value, list) or (not value and not may_be_empty):
+        raise ConfigurationRefused(
+            "%s is %s, and it has to be a list with something in it" % (where, _shape(value))
+        )
+    for entry in value:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ConfigurationRefused("%s holds %r, and every entry has to be a name" % (where, entry))
+    return list(value)
+
+
+def _simple_names(value, where, may_be_empty=False):
+    """Names to be matched against the source, refusing any that could never match one.
+
+    The parser records an annotation, a supertype and a module's own name by simple name,
+    so `org.springframework...SpringBootApplication` written here is a condition that can
+    never hold — and writing it is the natural mistake, because the qualified form is what
+    the *source* says and works there. Accepted quietly it is the worst kind of rule: the
+    file names an exclusion, the graph reports it excluding nothing, the module it was
+    written for is scored like anything else, and the run exits zero with nothing said.
+    """
+    names = _strings(value, where, may_be_empty)
+    qualified = [name for name in names if "." in name]
+    if qualified:
+        raise ConfigurationRefused(
+            "%s holds %s, and every name here is matched against a simple name the source "
+            "was read with: write %s instead"
+            % (
+                where,
+                ", ".join(sorted(qualified)),
+                ", ".join(sorted(name.rsplit(".", 1)[-1] for name in qualified)),
+            )
+        )
+    return names
+
+
+def _shape(value):
+    return "missing" if value is None else "%r" % (value,)
 
 
 def _is_of_kind(wanted, declared):
@@ -95,21 +151,40 @@ def _name_ends_with(wanted, declared):
     return bool(hit), "name ends with %s" % (hit[0] if hit else "")
 
 
-# Each condition a rule can be written with, and how it is read. A dictionary rather than
-# a chain of comparisons, because the last branch of a chain is whatever fell through it:
-# a fifth condition added to this list without a reader of its own would silently become
-# the fourth one, and every rule written with it would quietly match on suffixes instead.
-CONDITIONS = {
-    "kind": _is_of_kind,
-    "annotatedWith": _is_annotated_with,
-    "extendsOrImplements": _extends_or_implements,
-    "nameEndsWith": _name_ends_with,
-}
+class Condition:
+    """One condition a rule can be written with: how it is checked, and how it is read.
 
-# The conditions whose values are matched against a name the parser read from the source.
-# It records every one of those by its simple name, so a qualified name written here could
-# never match anything — see `_simple_names`.
-BY_SIMPLE_NAME = ("annotatedWith", "extendsOrImplements", "nameEndsWith")
+    Both halves live in one entry because both are what a fifth condition has to arrive
+    with. A table of readers with the checking done in a chain beside it is the same
+    fallthrough one step along: a condition with no branch of its own would be validated
+    by whatever the chain ended on, and every legal value written for it refused in a
+    message about something else.
+    """
+
+    def __init__(self, met, valid):
+        self.met = met
+        self.valid = valid
+
+
+def _java_kinds(value, where):
+    return _known_kinds(_strings(value, where), where)
+
+
+# Each condition a rule can be written with, in the order the evidence for an exclusion
+# reads. A dictionary rather than a chain of comparisons, because the last branch of a
+# chain is whatever fell through it: a fifth condition added without an entry of its own
+# would silently become the fourth one, and every rule written with it would quietly
+# match on suffixes instead.
+#
+# `_simple_names` is the check for every condition matched against a name the parser read
+# from the source: it records each of those by simple name, so a qualified name written
+# here could never match anything.
+CONDITIONS = {
+    "kind": Condition(_is_of_kind, _java_kinds),
+    "annotatedWith": Condition(_is_annotated_with, _simple_names),
+    "extendsOrImplements": Condition(_extends_or_implements, _simple_names),
+    "nameEndsWith": Condition(_name_ends_with, _simple_names),
+}
 
 
 class Rules:
@@ -163,14 +238,21 @@ class Rules:
                 self.weights["typeToLearn" if type_["mustBeLearned"] else "typeEveryCallerAlreadyKnows"]
                 for type_ in crossing
             )
-            log.debug(
-                "interface read name=%s methods=%d parameters=%d typesToLearn=%d cost=%d",
-                declared.name,
-                len(methods),
-                sum(len(method.parameters) for method in methods),
-                sum(1 for type_ in crossing if type_["mustBeLearned"]),
-                cost,
-            )
+        # Logged for a module that is never scored too, and that is the case worth having
+        # it for: the page shows such a module the name of the rule and nothing else, so
+        # this is the only place a reader can check that the rule declined something real
+        # rather than something the parser lost. Every fault found on this branch so far
+        # has been a module whose interface was read wrongly and never priced.
+        log.debug(
+            "interface read name=%s methods=%d parameters=%d typesToLearn=%d "
+            "typesEveryCallerAlreadyKnows=%d cost=%s",
+            declared.name,
+            len(methods),
+            sum(len(method.parameters) for method in methods),
+            sum(1 for type_ in crossing if type_["mustBeLearned"]),
+            sum(1 for type_ in crossing if not type_["mustBeLearned"]),
+            cost if scored else "none, never scored",
+        )
         return {
             "methods": [
                 {
@@ -237,7 +319,11 @@ def load(path=None):
     then cannot explain, a condition this tool does not understand that reads as "always
     true" and takes half the application off the scored list.
     """
-    path = path or DEFAULT_CONFIGURATION
+    # `is None` rather than falsy: `--scoring ""` is a path this tool cannot read, and
+    # answering it with the built-in file is the reading `ConfigurationRefused` calls the
+    # worst of both — an output that looks like a score somebody chose, while the file
+    # they chose it in was never opened.
+    path = DEFAULT_CONFIGURATION if path is None else path
     try:
         with open(path, "rb") as handle:
             document = json.loads(handle.read().decode("utf-8"))
@@ -283,8 +369,13 @@ def load(path=None):
             "interfaceCost.reachableFromOutside names %s, and a method is %s"
             % (", ".join(sorted(unknown)), " or ".join(VISIBILITIES))
         )
+    # Empty is allowed here and nowhere else: "charge a caller for every type they
+    # meet" is a position somebody can hold and argue for, while an empty list anywhere a
+    # rule is matched would be a condition that could never hold.
     known = _simple_names(
-        cost.get("typesEveryCallerAlreadyKnows"), "interfaceCost.typesEveryCallerAlreadyKnows"
+        cost.get("typesEveryCallerAlreadyKnows"),
+        "interfaceCost.typesEveryCallerAlreadyKnows",
+        may_be_empty=True,
     )
 
     exclusions = _exclusions(document.get("exclusions"))
@@ -328,24 +419,9 @@ def _exclusions(listed):
             )
         _only(when, CONDITIONS, "%s.when" % where)
         for condition in sorted(when):
-            field = "%s.when.%s" % (where, condition)
-            if condition in BY_SIMPLE_NAME:
-                _simple_names(when[condition], field)
-            else:
-                _known_kinds(_strings(when[condition], field), field)
+            CONDITIONS[condition].valid(when[condition], "%s.when.%s" % (where, condition))
         exclusions.append(Exclusion(entry["rule"], entry["because"], dict(when)))
     return exclusions
-
-
-def _known_kinds(kinds, where):
-    unknown = [kind for kind in kinds if kind not in javasource.KINDS]
-    if unknown:
-        raise ConfigurationRefused(
-            "%s names %s, and a module is %s: a condition on any other kind could never "
-            "hold, and a rule that can never fire is not one anybody could argue with"
-            % (where, ", ".join(sorted(unknown)), " or ".join(javasource.KINDS))
-        )
-    return kinds
 
 
 def _an_object(value, where):
@@ -360,43 +436,3 @@ def _only(document, allowed, where):
             "%s names %s, which this tool does not read: it would look like a rule and do "
             "nothing" % (where, ", ".join(unknown))
         )
-
-
-def _strings(value, where):
-    if not isinstance(value, list) or not value:
-        raise ConfigurationRefused(
-            "%s is %s, and it has to be a list with something in it" % (where, _shape(value))
-        )
-    for entry in value:
-        if not isinstance(entry, str) or not entry.strip():
-            raise ConfigurationRefused("%s holds %r, and every entry has to be a name" % (where, entry))
-    return list(value)
-
-
-def _simple_names(value, where):
-    """Names to be matched against the source, refusing any that could never match one.
-
-    The parser records an annotation, a supertype and a module's own name by simple name,
-    so `org.springframework...SpringBootApplication` written here is a condition that can
-    never hold — and writing it is the natural mistake, because the qualified form is what
-    the *source* says and works there. Accepted quietly it is the worst kind of rule: the
-    file names an exclusion, the graph reports it excluding nothing, the module it was
-    written for is scored like anything else, and the run exits zero with nothing said.
-    """
-    names = _strings(value, where)
-    qualified = [name for name in names if "." in name]
-    if qualified:
-        raise ConfigurationRefused(
-            "%s holds %s, and every name here is matched against a simple name the source "
-            "was read with: write %s instead"
-            % (
-                where,
-                ", ".join(sorted(qualified)),
-                ", ".join(sorted(name.rsplit(".", 1)[-1] for name in qualified)),
-            )
-        )
-    return names
-
-
-def _shape(value):
-    return "missing" if value is None else "%r" % (value,)

@@ -91,6 +91,31 @@ class TheRunSaysWhatItDidTest(SourceTreeTest):
             self.assertIn("line=", line)
             self.assertNotIn("ring()", line)
 
+    def test_the_interface_of_a_module_that_is_never_scored_is_reported_too(self):
+        """An excluded module is drawn with its interface, so the log has to hold one.
+
+        The page shows a never-scored module the name of its rule and nothing else, so
+        DEBUG is the only place a reader can check that the rule declined something real
+        rather than something the parser lost — which is exactly the blind spot the
+        record whose accessor was counted twice lived in. The line sat inside the branch
+        that prices an interface, so all thirty-six of them said only that they had been
+        excluded.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Receipt", "public record Receipt(long cents, String iban) {}")
+
+        with self.assertLogs("module_depth_map", level=logging.DEBUG) as logged:
+            self.assertEqual(0, self.run_over(tree.root))
+
+        read = [line for line in logged.output if "interface read" in line]
+        self.assertEqual(1, len(read), logged.output)
+        self.assertIn("name=Receipt", read[0])
+        self.assertIn("methods=2", read[0])
+        self.assertIn("cost=none", read[0])
+        self.assertIn(
+            "module excluded from scoring name=Receipt", "\n".join(logged.output)
+        )
+
     def test_a_refusal_says_why_at_the_level_this_repository_reserves_for_refusals(self):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             exit_code = self.run_over(os.path.join(self.scratch, "no-such-directory"))

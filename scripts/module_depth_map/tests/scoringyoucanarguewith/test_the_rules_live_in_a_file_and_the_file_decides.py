@@ -322,6 +322,73 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
         self.assertIn("simple name", "\n".join(logged.output))
 
 
+class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
+    """Every path through `load` ends in the file the reader named, or in a refusal.
+
+    Falling back to the built-in rules is the reading `ConfigurationRefused` calls the
+    worst of both: a page that looks like a score somebody chose, while the file they
+    chose it in was never opened.
+    """
+
+    def test_an_empty_path_is_a_file_this_tool_cannot_read_rather_than_no_file(self):
+        with self.assertRaises(scoring.ConfigurationRefused) as refused:
+            scoring.load("")
+
+        self.assertIn("could not be opened", refused.exception.reason)
+
+    def test_the_command_refuses_an_empty_scoring_path_rather_than_scoring_by_default(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", A_MODULE)
+        out = os.path.join(self.scratch, "out")
+
+        with self.assertLogs("module_depth_map.cli", level="WARNING") as logged:
+            code = cli.main(
+                [
+                    "--source", tree.root,
+                    "--graph", os.path.join(out, "graph.json"),
+                    "--page", os.path.join(out, "page.html"),
+                    "--scoring", "",
+                ]
+            )
+
+        self.assertEqual(4, code)
+        self.assertFalse(os.path.exists(out))
+        self.assertIn("refused to run", "\n".join(logged.output))
+
+    def test_the_file_may_say_that_a_caller_already_knows_nothing_at_all(self):
+        """An arguable position is not a misspelling, and the file has to take it.
+
+        Charging a caller for every type they meet, `String` and `int` included, is a
+        judgement somebody can hold and defend. An empty list is refused everywhere a
+        rule is matched on names, because there it could only ever be a condition that
+        never fires; here it fires on everything.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", A_MODULE)
+        cost = dict(self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows=[])
+
+        modules = self.modules(graph.java_root(tree.root), self.rules(interfaceCost=cost))
+
+        self.assertEqual(
+            [{"name": "Receipt", "mustBeLearned": True}, {"name": "long", "mustBeLearned": True}],
+            modules["Till"]["interface"]["typesCrossingTheSeam"],
+        )
+        self.assertEqual(1 + 1 + 2 + 2, modules["Till"]["interface"]["cost"])
+
+    def test_a_condition_a_rule_can_be_written_with_carries_its_own_two_halves(self):
+        """How it is checked and how the value is read, in one entry apiece.
+
+        The check used to be a chain beside the table: everything not matched on names
+        was validated as a list of Java kinds, so a fifth condition added with a reader
+        of its own and no entry in that chain would refuse every legal value it was
+        given, in a message about kinds. The table above it was made a dictionary to
+        close exactly this hazard one step earlier.
+        """
+        for name, condition in scoring.CONDITIONS.items():
+            self.assertTrue(callable(getattr(condition, "met", None)), name)
+            self.assertTrue(callable(getattr(condition, "valid", None)), name)
+
+
 class AnEnumConstantIsNotScoredAsAMethodTest(RulesFromAFileTest):
     """What the invented enum method cost, read through the file that decides scores.
 
