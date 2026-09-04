@@ -12,7 +12,7 @@ disagrees with a score can point at the rule that produced it.
 
 **Blocked by:** 01 (Modules on a page).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
 - [x] A method handing back a domain type costs a caller more than one handing back a primitive
@@ -993,3 +993,163 @@ the wording take the count the way the rest of the page does.
 `logs/02-what-a-caller-must-learn.review.6.browser.log`,
 `.committed.{light,dark}.{1024,1280}.png`, `.reweighted.{light,dark}.1280.png`,
 `.v1-schema.png`, `.tampered-cost.png`, `.app.png`, `.app.browser.log`.
+
+## Verified
+
+Reviewed on `ticket/02-what-a-caller-must-learn` (`git branch --show-current` confirmed), against
+`ticket/01-modules-on-a-page`. Attempt 7 is three commits — `ba54cae`, `9e65f6c`, `66f7aef` —
+touching only `scoring.py`, `page.py`, `scoring.json`, `README.md`, two test files and the
+regenerated `docs/`. Nothing outside `scripts/`, `docs/` and `.scratch/` changed on the whole
+branch; `git diff --name-only ticket/01-modules-on-a-page..ticket/02-what-a-caller-must-learn --
+backend frontend` is empty, checked rather than taken on trust.
+
+**All four faults from attempt 6 are closed, and each fix is guarded by a test that bites.**
+
+1. *A rule written the way the source spells it.* Nine hand-made configurations, each a copy of
+   `scoring.json` with one edit, run as `python3 scripts/module-depth-map.py --scoring <copy>
+   --graph <stale> --page <stale>`: `annotatedWith: ["@SpringBootApplication"]`,
+   `extendsOrImplements: ["JpaRepository<Deposit, Long>"]`, `nameEndsWith: ["Controller "]`,
+   `typesEveryCallerAlreadyKnows += "Optional<?>"`, `+= "Response Entity"`, the qualified
+   `org.springframework...SpringBootApplication`, `reachableFromOutside: []`,
+   `reachableFromOutside: ["public","protected","public"]` and a repeated `"String"`. **Every one
+   exits 4** with a WARNING naming the reason, e.g.
+
+       WARNING module_depth_map.cli refused to run: ... exclusions[2].when.annotatedWith holds
+       @SpringBootApplication, and every name here is matched against a simple name the source
+       was read with: write SpringBootApplication instead. Nothing is scored with a rule nobody wrote
+
+   and `interfaceCost.reachableFromOutside is empty, and a method no caller can reach is a method
+   nobody has to learn: every interface would read as empty and every bar on the page would be
+   nothing`. The stale `graph.json`/`page.html` are byte-unchanged and no `.writing` file is left in
+   any of the nine. Reverting `_A_SIMPLE_NAME` (`scoring.py:138`) to the old dot-only test reds 4
+   tests; removing the duplicate check in `_strings` reds 2. Every one of the 91 names the committed
+   graph publishes matches `_A_SIMPLE_NAME`, so the check is the mirror of what the parser records
+   rather than a second opinion.
+
+2. *Criterion 3 had no test.* `EveryBarIsDrawnOnOneScaleTest` now lifts the width expression out of
+   the rendered page and works it out against the document. Three mutations of `page.py:335`, each
+   reverted after: width hardcoded to `(50)` -> 3 failures + 1 error; `widest + 1` -> 2 failures;
+   `module.interface.methods.length` in place of `module.interface.cost` -> 2 failures + 1 error.
+   Driven as well: Playwright/chromium over `docs/module-depth-map.html`, light and dark, 1024 and
+   1280 (4 loads) — 71 cards, 35 bars, 36 never-scored labels, 0 cards with both or neither, one
+   shared track (235.41 px at 1280, 209.41 at 1024), worst deviation from `cost x track / widest`
+   **0.0000 px at 1280** and 0.0151 at 1024, `SavingsAccountController` (cost 31 = widest) fills
+   100.00 %, no sideways scroll, **0 console messages, 0 page errors, 0 failed requests**
+   (`logs/02-what-a-caller-must-learn.review.7.browser.log`). Screenshots read: both themes render
+   styled and legible.
+
+3. *"0 to learn" on constructor-only classes.* The page's list of what a bar leaves out now names
+   "the constructor a caller writes new against", and all four zero cards read `0 to learn: 0
+   methods, 0 parameters, 0 types to learn, 0 types every caller already knows — nothing this bar
+   counts, which is not the same as nothing to learn`. Read on the rendered page for `ClockRefused`,
+   `JobFailed`, `JobRefused` and `SchedulingIsOn`. Dropping the constructor from the omission list
+   reds 2 tests; disabling the zero-card branch reds 2.
+
+4. *"thirty of them" beside a count of 26.* Gone: 0 hits for "thirty" in `scoring.json`,
+   `docs/module-depth-map.json` and the rendered page; the bullet reads "…and ranking them beside
+   the modules that do hide something would bury the finding" over `data carrier — 26 modules`.
+
+The four smaller items are closed too: the README's field claim is now "10 fields with a value
+assigned to them (nine loggers and a `SecureRandom`)" — I ran at DEBUG and got exactly 56 `member
+not read as a method` lines splitting 43 constructors / 10 fields / 3 nested records, and the tenth
+field is `private static final SecureRandom RANDOM`; the README's exit-code bullet no longer lumps
+the partial-move path in with 2/3/4; `reachableFromOutside: []` gets its own refusal; a repeated
+entry in any list is refused.
+
+**Every acceptance criterion exercised.**
+
+- **1 and 2.** Fixture tree of my own: `Primitive.value() -> long` costs 1, `Domain.value() ->
+  Receipt` costs 3. A `Seam` class costs 11 = 4 methods + 5 parameters + 1 type to learn x 2 — the
+  `private` method excluded, `void` absent from the seam, and `int xs[]` and `int[] xs` both read
+  `int[]`. On the committed graph all 35 scored costs equal the weighted sum of the counts the graph
+  publishes: **0 disagreements**.
+- **3.** Above.
+- **4 and 8.** `scripts/module_depth_map/scoring.json`. Editing a copy only — `typeToLearn` 2 -> 7,
+  `typeEveryCallerAlreadyKnows` 0 -> 3, plus a rule of my own (`"reviewer 7 says so"`, `kind:
+  [class]` + `nameEndsWith: [Controller]`) — moved `widestInterface` 31 -> 68, the widest module
+  `SavingsAccountController` -> `RefusalsAsHttp`, `modulesScored` 35 -> 30, excluded five controllers
+  with `matched: "kind is class, name ends with Controller"`, and put my sentence verbatim on the
+  page (6 hits). `git status` clean throughout: not one line of the analyser edited. Driven in
+  chromium, the re-weighted page renders 30 bars, `AccountsService` reads "63 to learn: 11 methods,
+  13 parameters, 3 types to learn, 6 types every caller already knows" = 11+13+21+18, **0 breakdown
+  mismatch notes**, 0 console messages, 0 page errors.
+- **5, 6, 7.** 26 data carriers, 9 generated repositories, 1 entry point = 36 never scored; all 36
+  still drawn, marked, with their full `interface.methods` list and `methods[].cost: null`. A machine
+  check over all 71 modules: every module scored xor excluded, every exclusion names a rule the file
+  holds and the fact that matched, **0 problems**.
+- **9.** The scoring rules are established over temp fixture trees in `whatacallermustlearn`,
+  `whatisneverscored` and `scoringyoucanarguewith`; only `deterministicoutput` and `thisrepository`
+  read the application's source, and `thisrepository` asserts properties (every file parsed or
+  reported, weights read out of the document) rather than numbers. I added a
+  `backend/src/main/java/io/dataroots/savingstreak/package-info.java`: only the two committed-outputs
+  tests red, and regenerating `docs/` clears them — 233 OK. Removed again.
+
+**Checks, run myself.** `cd backend && ./mvnw test` exit 0, 113 tests, 0 failures. `cd frontend &&
+npm run typecheck` exit 0. `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests`
+**233 OK**. `python3 scripts/module-depth-map.py` leaves `git status` clean — the committed `docs/`
+are byte-identical to a fresh run. Three runs under differing `TZ`/`PYTHONHASHSEED`/`LC_ALL`, and a
+fourth from a different working directory with an absolute `--source`, are all byte-identical to each
+other and to committed `docs/`; 0 occurrences of `/Users/`, no `src=`/`href=` in the page, stdlib
+imports only, no `print` in the analyser.
+
+**Refusals and write paths, 21 in all.** 15 malformed configurations (unknown kind, empty `when`,
+unknown condition, duplicate rule name, blank rule name, missing `because`, negative / boolean /
+misspelled weight, unknown visibility, wrong schema, unknown top-level key, non-list
+`typesEveryCallerAlreadyKnows`, invalid JSON, `--scoring ""`) all exit 4 with a WARNING naming the
+reason; `exclusions: []` and `typesEveryCallerAlreadyKnows: []` are correctly accepted. No source
+directory -> exit 2. Write paths: a directory at a destination, `--graph X --page X`, and an
+unwritable parent for either output all exit 5 with a WARNING, stale files byte-unchanged, no
+`.writing` orphan. A forced partial landing (`chflags uchg page.html`) exits 5 and logs at ERROR with
+the exception attached — `the run wrote .../g.json and then could not write the rest: .../p.html
+could not be moved into place: [Errno 1] Operation not permitted` — with the stale page intact. No
+path ends the run on an uncaught traceback.
+
+**Parser probes.** A fixture holding the shapes earlier rounds found: a record overriding both its
+own accessors (`Coin` reads 2 methods, not 4), a record component annotated `@Values({"a","b"})`
+(`R` reads 4 methods and a real seam), an enum constant with a body followed by another constant
+(`Kind` reads only `label`, no phantom `B`), `sealed interface Payment extends Comparable<Payment>
+permits CardPayment, Repository` (**not** excluded as a generated repository), `@ interface` written
+as two tokens (kind `annotation`), `<T> T first(List<T> of)` (the type variable costs nothing),
+`int[] grid()[]` -> `int[][]`, and a text block containing the word `class`. All correct, 0 unparsed.
+
+**The application.** Untouched by this branch, driven anyway against the running instance on the
+throwaway database. Deposit 12.34 -> 201 with `INFO i.d.s.deposits.DepositsService : deposit accepted
+depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=12.34 pointsEarned=12`; withdrawal 5.00
+-> 201 with an allocation and `INFO i.d.s.deposits.WithdrawalsService : withdrawal accepted
+withdrawalId=1 ...`; claim -> 201 with `INFO i.d.savingstreak.rewards.RewardsService : claim issued
+redemptionId=1 savingsAccountId=1 reward=CHARITY_DONATION pointsSpent=10`. Five refusals: deposit 0
+-> 400, savings account 9999 -> 404, unknown reward -> 400, over-priced claim -> 400, over-large
+withdrawal -> 400 with `WARN i.d.s.deposits.WithdrawalsService : withdrawal rejected
+savingsAccountId=1 ... balance=7.34 reason=There is not enough in that savings account to move EUR
+9999.00. It holds EUR 7.34.` **0 ERROR lines** and no application stack trace in
+`logs/02-what-a-caller-must-learn.app.7.backend.log`; Vite at :5173 serves 200 with a clean log.
+
+### Notes for whoever picks this up next, none of them blocking
+
+- The page's reason for leaving the constructor out — "how a module is built is this framework's
+  business rather than a caller's" — reads loosely for the three classes that motivated it, since
+  `new JobFailed(what, cause)` is written by a caller. The clause immediately before it says so
+  ("the constructor a caller writes new against") and the zero card says the zero is not "nothing to
+  learn", so no number on the page is wrong; it is a wording preference.
+- With every weight in `scoring.json` set to 0 — legal, since only negative weights are refused —
+  all 35 scored cards read `0 to learn: 11 methods, 13 parameters, ... — nothing this bar counts`,
+  which sits oddly beside a breakdown listing what it did count. Degenerate configuration, on no
+  plausible page.
+- `_the_name_in` recovers nothing from an array or parenthesised spelling, so
+  `typesEveryCallerAlreadyKnows: ["String[]"]` is refused with the generic "letters, digits, _ and $"
+  message rather than "write String instead". Refused loudly either way.
+- **Not this branch, sixth round reported:** the deposit-of-zero, over-priced-claim,
+  unknown-reward and unknown-account refusals leave no WARN from `io.dataroots.savingstreak` — only
+  Spring's DEBUG `ExceptionHandlerExceptionResolver` lines — whereas `WithdrawalsService` does log
+  `withdrawal rejected ... reason=`. A gap against CLAUDE.md's "WARN on every refusal with its
+  reason", in application code this branch does not touch.
+- **Not this branch, inherited from 01:** `Object record = o; if (record instanceof String s) {}`
+  still gives the module a phantom nested type called `instanceof`. I ran the same fixture through
+  `git archive ticket/01-modules-on-a-page scripts` and got the identical result.
+
+### Artifacts
+
+`logs/02-what-a-caller-must-learn.review.7.browser.log`,
+`.committed.{light,dark}.{1024,1280}.png`, `.committed.full.png`,
+`.committed.bars.{light,dark}.png`, `.committed.zero.{light,dark}.png`,
+`.reweighted.{light,dark}.{1024,1280}.png`.
