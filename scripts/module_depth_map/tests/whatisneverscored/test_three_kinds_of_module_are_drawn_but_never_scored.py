@@ -125,6 +125,23 @@ class ARepositoryNobodyWroteAnImplementationForIsNeverScoredTest(SourceOfKnownSh
             self.excluded_by(("Shelf", "public interface Shelf {\n    void restock(long id);\n}")),
         )
 
+    def test_a_sealed_type_is_not_built_on_the_types_it_permits(self):
+        """`permits` names subtypes, and reading them as supertypes excluded the wrong thing.
+
+        The rule would then be named against a fact the source says the opposite of:
+        `Payment permits ... Repository` says Repository is built on Payment, not the
+        other way round. An exclusion whose evidence a reader can check and find wrong is
+        criterion seven inside out.
+        """
+        self.assertEqual(
+            {"Payment": None},
+            self.excluded_by(
+                ("Payment", "public sealed interface Payment extends Comparable<Payment>\n"
+                            "        permits CardPayment, Repository {\n"
+                            "    long cents();\n}")
+            ),
+        )
+
     def test_a_class_extending_a_repository_is_not_excluded_by_this_rule(self):
         """A class has an implementation in it, whatever it is built on."""
         self.assertEqual(

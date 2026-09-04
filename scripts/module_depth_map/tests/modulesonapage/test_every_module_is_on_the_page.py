@@ -35,6 +35,26 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
         self.assertEqual("class", till["kind"])
         self.assertEqual("shop/till/Till.java", till["path"])
 
+    def test_an_annotation_is_the_same_kind_written_as_one_token_or_two(self):
+        """`@ interface` is legal Java, and it read as a plain interface.
+
+        The kind is what a rule in the configuration file matches on and what the page
+        prints, so an annotation arriving as an interface is a rule that can never fire
+        on it and a card that says the wrong word — silently, on source the compiler is
+        perfectly happy with.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Marks", "public @ interface Marks {\n    String value();\n}")
+        tree.java("shop.till", "AlsoMarks", "public @interface AlsoMarks {\n    String value();\n}")
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["source"]["unparsed"])
+        self.assertEqual(
+            {"AlsoMarks": "annotation", "Marks": "annotation"},
+            {module["name"]: module["kind"] for module in document["modules"]},
+        )
+
     def test_a_type_declared_inside_another_is_named_on_the_module_that_holds_it(self):
         tree = self.tree("fixture")
         tree.java(

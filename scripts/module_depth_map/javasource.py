@@ -60,8 +60,12 @@ _ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)")
 # "Followed by the name it declares" is what also tells a nested record from a method
 # named `record`, which is why `_method_in` asks this pattern rather than a second one
 # looking for the keyword on its own.
+# `@interface` may be written `@ interface`, which the JLS allows and which the pattern
+# read as a plain interface: the module arrived as kind `interface`, so a rule written
+# about annotations could never fire on it and the page called it one.
 _TYPE = re.compile(
-    r"(?<![\w.$])(class|interface|enum|record|@interface)[ \t\r\n]+([A-Za-z_$][\w$]*)"
+    r"(?<![\w.$])(class|interface|enum|record|@[ \t\r\n]*interface)"
+    r"[ \t\r\n]+([A-Za-z_$][\w$]*)"
 )
 
 # `class`, `interface` and `enum` are reserved words: outside a class literal they can
@@ -69,7 +73,9 @@ _TYPE = re.compile(
 # this parser cannot read, and the file is failed by name rather than quietly shrunk.
 # `record` is left out on purpose — it is a contextual keyword and a legal identifier, so
 # an unmatched `record` is usually a variable rather than a missed module.
-_RESERVED_DECLARATION = re.compile(r"(?<![\w.$])@?(?:class|interface|enum)(?![\w$])")
+_RESERVED_DECLARATION = re.compile(
+    r"(?<![\w.$])(?:@[ \t\r\n]*)?(?:class|interface|enum)(?![\w$])"
+)
 
 # A file that declares no type but is still perfectly well formed. Failing these as
 # unreadable would paint the page's alarm band over a file with nothing wrong with it,
@@ -451,13 +457,11 @@ def _declared_types(masked, depths):
                 "a type declaration whose body this parser cannot find: %s on line %d"
                 % (match.group(2), line)
             )
+        # Never None here: `parse` has already refused a file whose braces do not
+        # balance, and the body was just found opening at `depth + 1`, so the depth has
+        # to come back down through `depth` before the end of the text.
         body_ends_at = _body_ends_at(depths, start, depth)
-        if body_ends_at is None:
-            raise ParseFailure(
-                "a type declaration whose body never closes: %s on line %d"
-                % (match.group(2), line)
-            )
-        kind = _KINDS[match.group(1)]
+        kind = _KINDS["".join(match.group(1).split())]
         # Between the name and the body: `extends`, `implements`, and a record's own
         # components. Everything a caller learns about this type without opening it.
         header = masked[match.end(2):body_starts_at]
@@ -495,7 +499,12 @@ def _declared_types(masked, depths):
 # and what it offers. Read here and weighed nowhere: this file says what the source says,
 # and the rules that decide what any of it costs live in a file of their own.
 
-_INHERITANCE = re.compile(r"(?<![\w.$])(?:extends|implements|permits)(?![\w$])")
+# The three words written between a type's name and its body. Two of them say what it
+# is built on; `permits` says the opposite — which types are allowed to build on *it* —
+# so it is matched to be stopped at rather than read. Leaving it out of the pattern
+# altogether would be worse than reading it: the names after it would run on into the
+# `implements` clause in front of them.
+_INHERITANCE = re.compile(r"(?<![\w.$])(extends|implements|permits)(?![\w$])")
 
 _MODIFIERS = frozenset(
     [
@@ -565,9 +574,20 @@ def _annotations_before(masked, start):
 
 
 def _supertypes_in(header):
-    """What this type is built on, by simple name: `extends X`, `implements Y, Z`."""
+    """What this type is built on, by simple name: `extends X`, `implements Y, Z`.
+
+    What a `sealed` type permits is not one of them. `sealed interface Payment extends
+    Comparable<Payment> permits CardPayment, Repository` is built on `Comparable` and on
+    nothing else — the rest are the types allowed to build on it — and reading them here
+    excluded `Payment` as a generated repository, naming a rule for a fact the source
+    says the opposite of. That is criterion seven inside out: the graph explaining an
+    exclusion with evidence a reader can check and find wrong.
+    """
     found = []
-    for clause in _INHERITANCE.split(_without_groups(header))[1:]:
+    parts = _INHERITANCE.split(_without_groups(header))
+    for keyword, clause in zip(parts[1::2], parts[2::2]):
+        if keyword == "permits":
+            continue
         for written in clause.split(","):
             name = written.strip().split(".")[-1]
             if name:
