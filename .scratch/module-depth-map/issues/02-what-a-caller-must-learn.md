@@ -12,16 +12,16 @@ disagrees with a score can point at the rule that produced it.
 
 **Blocked by:** 01 (Modules on a page).
 
-**Status:** needs-review
+**Status:** needs-info
 
-- [x] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
+- [ ] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
 - [x] A method handing back a domain type costs a caller more than one handing back a primitive
 - [x] Each module's bar width on the page is its interface cost, and comparable between modules
 - [x] Scoring weights and exclusion rules live in a configuration file beside the tool, not inside it
 - [x] Data carriers, generated repository interfaces and the entry point are excluded from scoring
 - [x] Excluded modules are still drawn in the graph and on the page, marked as excluded
 - [x] Every exclusion in the graph names the rule that caused it, and no module is excluded without one
-- [x] Changing a weight or an exclusion in the configuration file changes the output without any edit to the analyser
+- [ ] Changing a weight or an exclusion in the configuration file changes the output without any edit to the analyser
 - [x] Fixture source trees establish each scoring rule independently of the application's own code
 
 ## Review feedback - attempt 2
@@ -475,3 +475,270 @@ in this repository where the tool holds the file and declines to read it.
 `logs/02-what-a-caller-must-learn.review.4.browser.log`,
 `.light.1024.png` / `.light.1280.png` / `.dark.1024.png` / `.dark.1280.png`,
 `.bars.web.png` / `.bars.deposits.png`, `.app.png`, `.app.browser.log`.
+
+## Review feedback - attempt 5
+
+All three faults attempt 5 set out to close **are closed**, and so are all nine of the
+smaller items. I checked each one by hand and mutation-checked the three big ones; the
+list is under "Confirmed working" below and should not be redone. This is not a fifth
+round of the same finding.
+
+What sends it back is two things the page says that the source does not support. Both are
+live on the committed page today, both are in the same family the last three rounds have
+been about — a number or a label that is wrong with nothing said — and one of them is
+wording this attempt newly put under all 35 bars.
+
+### 1. `void` is counted as a type crossing the seam
+
+`scoring.py` `_types_crossing_the_seam` folds `method.returns` in unconditionally, so a
+method that hands nothing back still contributes a "type crossing the seam". `void` is
+not a type in Java and nothing crosses a seam when a method returns it.
+
+Live on the committed page: 9 modules carry `{"name": "void", "mustBeLearned": false}` in
+`typesCrossingTheSeam`, and `AccountsService`'s card reads **"7 types every caller already
+knows"** — one of those seven is `void`.
+
+It only stays harmless because the committed weight is 0, which means it breaks the moment
+a reader does the one thing `scoring.json` exists to let them do. Both of these are
+supported edits — the second is one the README explicitly blesses ("charging a caller for
+every type they meet is a position somebody can hold, not a misspelling"):
+
+    $ printf 'package shop;\npublic class A { public void f() {} }\n' > src/shop/A.java
+
+    # typeEveryCallerAlreadyKnows: 1
+    graph: cost 2      page: "2 to learn: 1 method, 0 parameters,
+                              0 types this application invented, 1 type every caller already knows"
+
+    # typesEveryCallerAlreadyKnows: []
+    graph: cost 3      page: "3 to learn: 1 method, 0 parameters,
+                              1 type this application invented, 0 types every caller already knows"
+
+A caller of `void f()` learns one method and no types. The tool charges them for a type,
+and in the second case tells them this application invented it.
+
+Reproduce: put that one class under a scratch source root, copy `scoring.json`, change the
+one weight, and run `python3 -m scripts.module_depth_map --source <root> --scoring <copy>
+--graph /tmp/g.json --page /tmp/p.html`.
+
+No test is named for this. `test_a_type_variable_the_module_introduces_costs_nothing`
+(`test_interface_cost_is_what_a_caller_must_learn.py:331`) happens to assert
+`["long", "void"]` as a seam, but it is named for type variables and pins the behaviour by
+accident; nothing exercises a non-zero `typeEveryCallerAlreadyKnows` against a `void`
+method. Whatever you decide — leave `void` out of the seam, or state on the page that it
+is in — a test named for the property has to say so.
+
+This is criterion 1: "every distinct type crossing the seam in a parameter or a return"
+is not what is counted.
+
+### 2. Four Spring types are labelled "this application invented", on the committed page
+
+`page.py:187` renders the `typeToLearn` weight as "when it is one this application
+invented", and commit `d478309` put the same words under **every scored card** ("3 types
+this application invented"). The rule behind `mustBeLearned` is only "not in
+`typesEveryCallerAlreadyKnows`", which is not the same claim.
+
+On the committed page, four of the 48 names charged at `typeToLearn` are declared nowhere
+in the source the tool read:
+
+    ClockConfiguration  cost 10   charged 2 each for ApplicationListener, ApplicationStartedEvent
+    RefusalsAsHttp      cost 28   charged 2 each for ProblemDetail, ResponseEntity
+
+`RefusalsAsHttp` is the second-widest bar on the page, and a reader is told this
+application invented two Spring types in it. That is a statement about the source a reader
+can check and find wrong — the same shape as criterion 7's promise inside out, and against
+the spec's central claim that a score can be argued with.
+
+Reproduce:
+
+    python3 -c "
+    import json; d=json.load(open('docs/module-depth-map.json'))
+    declared={m['name'] for m in d['modules']}|{n.split('.')[-1] for m in d['modules'] for n in m['nested']}
+    print(sorted({t['name'] for m in d['modules'] for t in m['interface']['typesCrossingTheSeam']
+                  if t['mustBeLearned']} - declared))"
+    ['ApplicationListener', 'ApplicationStartedEvent', 'ProblemDetail', 'ResponseEntity']
+
+Three ways out, all cheap: say what is true ("a type this tool was not told every caller
+knows"), or add the four names to `typesEveryCallerAlreadyKnows` and keep the wording, or
+decide `typeToLearn` means "declared in the source read" and make the parser answer that.
+The prose in `page.py`, the per-card term and `README.md` all carry the wording, so all
+three move together. Note the paragraph wording predates this branch's attempt 5
+(`678e35c`); the per-card term is new in `d478309`.
+
+Because a reader can only re-weight a score they can trust, and both faults above are
+produced by re-weighting or read straight off the page, criterion 8 is unticked too. The
+mechanism works — I verified it end to end below — but at `typeEveryCallerAlreadyKnows`
+anything other than 0 the output it produces is wrong.
+
+### Also wrong, and worth fixing while you are in here
+
+- **`--graph X --page X` destroys the previous run's file and then names the wrong one.**
+  Both outputs stage to `X.writing`; the page's bytes overwrite the graph's, the first
+  `os.replace` moves them into `X`, and the second fails `ENOENT`. Reproduced:
+
+      $ echo STALE > /tmp/same/both.json
+      $ python3 -m scripts.module_depth_map --source src \
+          --graph /tmp/same/both.json --page /tmp/same/both.json
+      ERROR ... the run wrote /tmp/same/both.json and then could not write the rest: ...
+      $ head -1 /tmp/same/both.json
+      <!doctype html>            # the PAGE, reported as the graph having landed
+
+  Exit 5 and an ERROR, so not silent — but misattributed, which is the fault `becfdd7` and
+  attempt 5's own `8036c92` were about. The pre-check loop at `cli.py:206` tests `isdir`
+  and not whether two destinations are the same path.
+- **A never-scored module publishes per-method costs.** `interface_of` emits
+  `"cost": self._cost_of(method)` regardless of `scored`, so the committed graph has
+  `SavingStreakApplication` with `interface.cost: null` beside `interface.methods[0].cost:
+  2`. The docstring says an unscored module's cost is "absent rather than zero, because it
+  was never counted, not counted to nothing" — the parts are counted and published. An
+  agent reading the graph (spec stories 33-34) can sum a score for a module the graph says
+  has none. `test_every_cost_is_a_whole_number_the_page_can_draw_a_bar_from` skips excluded
+  modules, so nothing covers it.
+- **A `package-info.java` reds the suite.** `test_this_repository_is_read_whole.py:30`
+  asserts `on_disk == parsed | reported`; such a file declares no type, so it is in neither
+  set. I added
+  `backend/src/main/java/io/dataroots/savingstreak/package-info.java` and ran the suite:
+  `AssertionError: Items in the first set but not the second:
+  'io/dataroots/savingstreak/package-info.java'`. The README names that file as one the
+  tool reads rather than reports, so a supported input is treated as a lost one.
+  (Regenerating `docs/` does not fix it — the file is in neither set either way.)
+- **The graph's `SCHEMA` is still `module-depth-map/1`** although the document gained a
+  top-level `scoring` object and `modules[].interface` / `modules[].excludedBy`.
+  `page.py:165` reads `document_.scoring.modulesScored` unguarded, so a genuine v1
+  document throws inside the one IIFE and renders a blank page rather than an error —
+  the failure mode `page.py`'s own comment about branching on `excludedBy` was written to
+  avoid. `scoring.load` refuses a configuration on an exact schema mismatch: the tool
+  versions its input contract and not its output.
+- **`_strings(..., may_be_empty=True)` still refuses a non-list with the wrong reason.**
+  `typesEveryCallerAlreadyKnows: "String"` is refused with "it has to be a list with
+  something in it", on the one field where emptiness is explicitly allowed.
+- **`_only(document, ...)` runs before the schema check** (`scoring.py:340` vs `:341`), so
+  a `module-depth-map-scoring/2` file that adds a key is refused with "names X, which this
+  tool does not read" instead of being told the tool is too old.
+- **`term.weight` in `page.py`'s breakdown is dead at runtime.** `breakdown.map` reads only
+  `of`, `one` and `many`; the "one term per weight" invariant is held up entirely by
+  `re.findall(r'weight: "(\w+)"', rendered)` over the rendered script text, so a term whose
+  `of()` counts the wrong thing still passes. Building the terms from
+  `Object.keys(document_.scoring.weights)` would make it structural. (Fault 1 above is
+  exactly a term counting the wrong thing and this test not noticing.)
+- **`scoring._named_types_in` re-implements how a Java type is spelled** — its own
+  `[<>,\[\]\s]+` split and keyword list — while `javasource` already owns `_A_TYPE`,
+  `_normalised`, `_without_groups` and `_split_on_commas`. `"final"` in its skip list is
+  already dead, because `_modifiers_in` strips modifiers long before a type reaches it.
+- **`graph.build`'s `rules = rules or scoring.load()`** is a second home for the `--scoring`
+  default and can raise `ConfigurationRefused` where `cli.main` guards only
+  `DuplicateModules` around `graph.build`.
+- **`write_together(*outputs)` is variadic and unpacked into two names**
+  (`written_graph, written_page = ...`), so a third output would end the run with a
+  `ValueError` traceback — against the comment six lines above it. Latent.
+
+### Confirmed working - do not redo this
+
+- **Fault 1 (record accessor counted twice) is fixed, and the fix bites.** Fixture
+  `record Coin(long cents, List<String> tags)` with both accessors written out, against
+  `Plain` without them, `data carrier` rule removed: both read `cost=2 methods=2`
+  (`cents -> long`, `tags -> List<String>`), and the DEBUG line
+  `record writes its own accessor for a component name=cents line=3` says so. A
+  `cents(int scale)` and a `static cents(String, int)` are still counted beside the
+  accessor (`Scaled cost=8 methods=3`). Mutating the dedup off reds 4 tests, three of them
+  in `ARecordThatWritesAnAccessorOffersOneOfItTest`. The claim about `69a7b49` is true: the
+  old test read methods into a dict keyed by name, which collapsed the repeat.
+- **Fault 2 (`write_together`) is fixed in both directions.** `--graph <plainfile>/sub/g.json`
+  → exit 5, `WARNING ... /…/sub/graph.json could not be written: [Errno 20] Not a
+  directory`, no traceback, nothing written. `--page <plainfile>/sub/p.html` with a good
+  `--graph` → the WARNING names **page.html**, and the stale `graph.json` still reads
+  `STALE`. A directory at either destination is refused before a byte is written; a forced
+  partial landing (`chflags uchg page.html`) logs at ERROR naming which file landed, exit
+  5; a `.writing` that cannot be opened is still registered and discarded. Mutating the
+  path back to `staged[-1][1]` reds 2 tests (1 error, 1 failure).
+- **Fault 3 (the breakdown) is fixed.** I rebuilt the page with
+  `typeEveryCallerAlreadyKnows: 3` and read it in Chromium: every one of the 30 bars'
+  four printed counts matches the document and their weighted sum matches the cost —
+  **0 mismatches**, and 0 mismatches on the committed page's 35 bars too.
+  `AccountsService` reads "51 to learn: 11 methods, 13 parameters, 3 types this
+  application invented, 7 types every caller already knows" = 11+13+6+21. Dropping the
+  already-known term reds 2 tests.
+- **All nine smaller items are closed.** `sealed interface Payment extends
+  Comparable<Payment> permits CardPayment, Repository` → `supertypes ['Comparable']`,
+  `excludedBy None` (was excluded as a generated repository). `@ interface A` → kind
+  `annotation`. `--scoring ""` → exit 4, "could not be opened: No such file or directory".
+  `typesEveryCallerAlreadyKnows: []` → exit 0, widest 31 → 44. `CONDITIONS` carries a
+  validator per condition (`BY_SIMPLE_NAME` and the `else` are gone). At DEBUG over the
+  backend: 71 `interface read` lines, **36 of them `cost=none, never scored`**, 36
+  exclusions, 56 `member not read as a method` — and that 56 splits 43 constructors / 10
+  fields / 3 nested records, exactly as the README claims. The "body never closes" branch
+  is now a comment. The page and README both name a nested type's members among what a bar
+  leaves out.
+- **Criterion 8's mechanism, by hand, twice.** `typeEveryCallerAlreadyKnows` 0 → 3 moved
+  `widestInterface` 31 → 51 and the page's own prose from "counts 0" to "counts 3". A rule
+  of my own invention (`"reviewer 5 says so"`, `kind: [class]` + `nameEndsWith:
+  [Controller]`) excluded 5 modules with `matched: "kind is class, name ends with
+  Controller"`, moved `modulesScored` 35 → 30, changed the widest module from
+  `SavingsAccountController` to `AccountsService`, and put my sentence verbatim on the page
+  and in the graph. `git status` clean throughout — I edited a copy, never the analyser.
+- **20 malformed configurations, every one a loud refusal.** Qualified `annotatedWith` and
+  qualified `typesEveryCallerAlreadyKnows`, unknown kind, empty `when`, unknown condition,
+  duplicate rule name, blank rule name, missing `because`, non-integer / boolean / negative
+  / misspelled weight, unknown visibility, empty `nameEndsWith`, empty `kind`, wrong schema,
+  unknown top-level key, invalid JSON, missing file, `--scoring ""`: all exit 4 with a
+  WARNING naming the reason, and the stale graph and page are byte-unchanged with no
+  `.writing` left.
+- **Criteria 2, 3, 5, 6, 7, 9.** `Domain.value() -> Receipt` costs 3 against
+  `Primitive.value() -> long` at 1. Playwright over the committed page and my re-weighted
+  one, light and dark, 1024 and 1280 (8 loads): 71 cards, 35 bars, 36 never-scored, 0 cards
+  with both or neither, one shared track (235.41 px at 1280, 209.41 at 1024), worst bar
+  deviation from `cost x track / widest` 0.0000 px at 1280 and 0.0151 at 1024,
+  `SavingsAccountController` (31 = widest) fills 100 %, no sideways scroll, **0 console
+  messages, 0 page errors, 0 failed requests**. Screenshots read: both themes render styled
+  and legible. Every one of the 71 modules is scored xor excluded, every exclusion names a
+  rule the file holds and the fact that matched. Fixture trees carry every scoring rule;
+  only the determinism and `thisrepository` suites touch the application's source.
+- **Parser probes: ~90 shapes of legal Java, no new misread found.** Records (accessor
+  overridden, compact and canonical constructors, generic components, varargs components
+  with and without a written accessor, a static factory sharing a component's name, an
+  annotated component whose argument holds braces, nested and generic records),
+  `sealed`/`non-sealed`/`permits` over several lines and with qualified names, annotation
+  types (`@interface`, `@ interface`, `@` on its own line, array members with `default`,
+  nested ones), interface `private`/`static`/`default` methods, enum constants with bodies
+  followed by more constants and with array arguments, fields initialised with lambdas /
+  anonymous classes / nested array initialisers, static and instance initialisers, switch
+  expressions and pattern matching, `<T extends Comparable<T> & Runnable>`,
+  `List<String>[]`, `int[][]`, `int f()[]`, `int xs[]`, receiver parameters, `throws`,
+  class literals, text blocks holding `class` and an escaped `\"""`, `extends Map<String,
+  Long>`, `@JsonSubTypes({@Type(A.class)})` (reports `JsonSubTypes` only). I also ran the
+  tool over `backend/src/test/java` — 31 files it has never seen — 31 parsed, 0 unparsed,
+  and 0 methods with a keyword for a name or an unspellable type. Unreadable files are all
+  named with a line and a reason and land in `source.unparsed`.
+- **Determinism and the committed outputs.** Three runs under differing
+  `TZ`/`PYTHONHASHSEED`/`LC_ALL` are byte-identical to each other and to committed
+  `docs/module-depth-map.json` and `.html`; 0 occurrences of `/Users/`, no `src=`/`href=`
+  in the page, stdlib imports only.
+- **Checks.** `cd backend && ./mvnw test` exit 0, 113 tests, 0 failures.
+  `cd frontend && npm run typecheck` clean (node v24.16.0).
+  `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` 205 OK.
+
+### Not this ticket
+
+- **The application is untouched by this branch.** `git diff --name-only
+  ticket/01-modules-on-a-page..HEAD -- backend frontend` is empty; I checked rather than
+  took the claim. Driven anyway against the running instance: deposit 12.34 → 201 (`INFO
+  i.d.s.deposits.DepositsService : deposit accepted depositId=1 savingsAccountId=1
+  fromCurrentAccountId=1 amount=12.34 pointsEarned=12`), withdrawal 5.00 → 201 with an
+  allocation, claim → 201 (`INFO i.d.savingstreak.rewards.RewardsService : claim issued
+  redemptionId=1 ... pointsSpent=10`), and four refusals: deposit 0 → 400, savings account
+  9999 → 404, over-priced claim → 400, unknown reward → 400. No ERROR and no stack trace
+  anywhere in `logs/02-what-a-caller-must-learn.app.5.backend.log`. The Vite page at :5173
+  renders with 0 page errors.
+- **Refusals still leave no WARN from `io.dataroots.savingstreak`** for the deposit, claim
+  and unknown-reward paths — only Spring's DEBUG `ExceptionHandlerExceptionResolver` lines
+  — whereas `WithdrawalsService` does log `withdrawal rejected ... reason=`. Pre-existing,
+  fourth review round to report it, a gap against CLAUDE.md's "WARN on every refusal with
+  its reason", and nothing this branch touches.
+- **`record` as a local variable name** still gives a phantom nested type called
+  `instanceof` (`Object record = o; if (record instanceof String s) {}`). `_TYPE`'s
+  `record` alternative is unchanged from ticket/01 in substance, so this is 01's.
+
+### Artifacts
+
+`logs/02-what-a-caller-must-learn.review.5.browser.log`,
+`.module-depth-map.{light,dark}.{1024,1280}.png`, `.mine.{light,dark}.{1024,1280}.png`
+(the re-weighted page with my own rule), `.app.png`, `.app.browser.log`.
