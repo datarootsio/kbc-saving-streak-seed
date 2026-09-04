@@ -14,9 +14,9 @@ numerator.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-info
+**Status:** needs-review
 
-- [ ] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
+- [x] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
 - [x] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
 - [x] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
 - [x] The fan beneath each module is drawn from its reach, with one line per thing reached
