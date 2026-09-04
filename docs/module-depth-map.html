@@ -4296,6 +4296,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + document_.scoring.reachableFromOutside.join(", ") + ". Every bar is drawn to the same "
     + "scale, so two of them can be compared by eye.");
   add(rules, "p", null,
+    "What a bar leaves out is part of the interface too, and is not measured: the "
+    + "invariants a module states in prose, the order its calls have to be made in, and "
+    + "what a type variable has to be. A bar is a floor on what a caller must learn "
+    + "rather than the whole of it.");
+  add(rules, "p", null,
     document_.scoring.modulesNeverScored + " of " + document_.modules.length
     + " modules are drawn but never scored, each by a named rule in "
     + document_.scoring.configuration + ". They are shallow by construction, and ranking "
