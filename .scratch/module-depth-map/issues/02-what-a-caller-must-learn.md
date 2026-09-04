@@ -12,16 +12,16 @@ disagrees with a score can point at the rule that produced it.
 
 **Blocked by:** 01 (Modules on a page).
 
-**Status:** needs-review
+**Status:** needs-info
 
 - [x] Interface cost counts every method reachable from outside the module, every parameter of those methods, and every distinct type crossing the seam in a parameter or a return
 - [x] A method handing back a domain type costs a caller more than one handing back a primitive
-- [x] Each module's bar width on the page is its interface cost, and comparable between modules
+- [ ] Each module's bar width on the page is its interface cost, and comparable between modules
 - [x] Scoring weights and exclusion rules live in a configuration file beside the tool, not inside it
 - [x] Data carriers, generated repository interfaces and the entry point are excluded from scoring
 - [x] Excluded modules are still drawn in the graph and on the page, marked as excluded
 - [x] Every exclusion in the graph names the rule that caused it, and no module is excluded without one
-- [x] Changing a weight or an exclusion in the configuration file changes the output without any edit to the analyser
+- [ ] Changing a weight or an exclusion in the configuration file changes the output without any edit to the analyser
 - [x] Fixture source trees establish each scoring rule independently of the application's own code
 
 ## Review feedback - attempt 2
@@ -742,3 +742,254 @@ anything other than 0 the output it produces is wrong.
 `logs/02-what-a-caller-must-learn.review.5.browser.log`,
 `.module-depth-map.{light,dark}.{1024,1280}.png`, `.mine.{light,dark}.{1024,1280}.png`
 (the re-weighted page with my own rule), `.app.png`, `.app.browser.log`.
+
+## Review feedback - attempt 6
+
+Both faults attempt 5 set out to close **are closed**, and so are all ten of the smaller
+items. I checked every one by hand and mutation-checked the two big ones; the list is under
+"Confirmed working" below and should not be redone. This round is not the same finding again.
+
+What sends it back is four things, and the first is the one that matters. It is the same
+shape as attempt-2's defect 3 — *a rule the file names silently excludes nothing* — reopened
+one character away from where that fix stopped, in code this branch wrote.
+
+### 1. A rule written the way the source spells it silently matches nothing
+
+`scoring.py` `_simple_names` (~line 123) refuses a name **only if it contains a dot**. Its own
+docstring names the failure mode it exists to prevent: *"the file names an exclusion, the
+graph reports it excluding nothing, the module it was written for is scored like anything
+else, and the run exits zero with nothing said."* That is exactly what every other
+unmatchable spelling still does. The parser stores a bare simple name, so anything else is
+dead on arrival:
+
+    "exclusions[1].when.extendsOrImplements": ["JpaRepository<Deposit, Long>"]
+      -> exit 0, no warning. `generated repository` matches 0 modules (was 9).
+         modulesNeverScored 36 -> 27; nine repository interfaces are scored like anything else.
+
+    "exclusions[2].when.annotatedWith": ["@SpringBootApplication"]
+      -> exit 0, no warning. `entry point` matches 0 modules (was 1).
+         The entry point is scored like anything else — attempt-2 defect 3, verbatim.
+
+    "nameEndsWith": ["Controller "]                    -> matches 0, exit 0, nothing said
+    typesEveryCallerAlreadyKnows += "Optional<?>"      -> matches 0, exit 0, nothing said
+    typesEveryCallerAlreadyKnows += "Response Entity"  -> matches 0, exit 0, nothing said
+
+Reproduce: copy `scripts/module_depth_map/scoring.json`, make one of those edits, run
+`python3 scripts/module-depth-map.py --scoring <copy> --graph /tmp/g.json --page /tmp/p.html`
+and read `scoring.modulesNeverScored` in the graph.
+
+The control still works — `["org.springframework.boot.autoconfigure.SpringBootApplication"]`
+is refused with a message telling you to write the simple name — which is what makes this
+worse rather than better: the file teaches a reader that it checks these names, and then
+takes the two spellings a reader is *most* likely to reach for. `@SpringBootApplication` and
+`extends JpaRepository<Deposit, Long>` are how the source writes them, so copying from the
+source is the natural mistake, exactly as the qualified name was.
+
+Criterion 8 is unticked for this. The mechanism works — I verified re-weighting and a rule of
+my own invention end to end below — but an exclusion edit that quietly does nothing is not a
+configuration file a reader can argue with, which is the whole claim of the page.
+
+Fix in-idiom: require a Java simple name (`[A-Za-z_$][\w$]*`, and `[\w$]+` for
+`nameEndsWith`) rather than merely a dot-free string. A test named for the property has to
+say so — `@SpringBootApplication` and `JpaRepository<Deposit, Long>` are the two cases to
+name.
+
+### 2. Criterion 3 has no test, and the golden files cannot supply one
+
+Nothing in the 217 tests asserts that a bar's width is drawn from its cost. Every
+`widestInterface` assertion is on the graph document
+(`tests/whatacallermustlearn/test_interface_cost_is_what_a_caller_must_learn.py:491, 504,
+515, 521, 837`); the renderer's arithmetic is unguarded, and
+`TheCommittedOutputsAreWhatAFreshRunWrites` compares `docs/` against a *fresh run*, so it
+catches staleness and never wrongness. Reproduced:
+
+    # page.py:332
+    -   add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
+    +   add(track, "span").style.width = (50) + "%";
+
+    $ python3 scripts/module-depth-map.py --log-level ERROR
+    $ python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests
+    Ran 217 tests in 1.455s
+    OK
+    $ grep -c 'style.width = (50)' docs/module-depth-map.html
+    1
+
+Every bar identical, the committed page regenerated and committed-outputs green, and the page
+still saying "Every bar is drawn to the same scale, so two of them can be compared by eye".
+The one criterion whose whole point is the picture is the one nothing establishes.
+
+The suite already has the idiom for this — `re.findall(r'weight: "(\w+)"', rendered)` over
+the rendered script text in the breakdown test — so a regex assertion that the width
+expression is built from `module.interface.cost` and `widest` is cheap. I have left criterion
+3 unticked for that reason and not because the behaviour is wrong: I drove the committed page
+and every bar is correct today (worst deviation 0.0000 px at 1280).
+
+### 3. Three cards say "0 to learn" for classes whose only interface is a constructor
+
+`ClockRefused`, `JobFailed` and `JobRefused` each declare exactly one package-private
+constructor and nothing else. On the committed page each draws an empty bar and reads:
+
+    0 to learn: 0 methods, 0 parameters, 0 types to learn, 0 types every caller already knows
+
+A caller writing `throw new JobFailed(what, cause)` has to learn that constructor and the two
+types crossing it. The page tells them there is nothing to learn, and gives them no way to
+find out otherwise: `page.py:213-220` lists five things a bar leaves out — prose invariants,
+call order, type-variable bounds, inherited methods, nested members — and **constructors are
+not among them**. The word "constructor" does not appear anywhere on the rendered page.
+
+`javasource.py:736-739` drops constructors deliberately and `README.md` discloses it, which
+is the right decision; the page is where the number is, and this branch is where that
+omission list was written (`678e35c`, extended twice since). This is user story 36 and the
+spec's precedent for prose invariants: the tool cannot measure it, so the page says so.
+(`SchedulingIsOn`'s 0 is genuinely correct — it declares nothing at all.)
+
+Either add constructors to that list, or say on a zero-cost card that the zero means "nothing
+this bar counts", so a reader can tell it from an empty class.
+
+### 4. The page prints two different counts of the same set, in one line
+
+`scoring.json:59` — the `data carrier` rule's `because` — ends "...and **thirty of them**
+ranked beside the modules that do hide something would bury the finding." The graph computes
+26, and `page.py:232-234` renders the count and the wording together. Live on the committed
+page:
+
+    data carrier — 26 modules — A record or an enum carries values across a seam and hides
+    nothing behind them. Its interface is its content, so a score would only say how many
+    fields it has, and thirty of them ranked beside the modules that do hide something
+    would bury the finding.
+
+The same sentence is in the `title` tooltip of all 26 data-carrier cards. Say "them", or let
+the wording take the count the way the rest of the page does.
+
+### Smaller, worth fixing while you are in here
+
+- **`README.md:61-62` says "10 logger fields"; nine of them are Loggers.** The tenth field
+  declined is `private static final SecureRandom RANDOM = new SecureRandom()`
+  (`rewards/Redemption.java:34`). The sentence invites a reader to
+  `grep "member not read as a method"` and check, and it is wrong when they do. The 56 and
+  the 43 constructors and the 3 nested records are all right.
+- **`README.md:76-80` contradicts `README.md:90-91`.** The first lumps exit 5 in with 2, 3
+  and 4 — "all stop the run with the reason logged as a **warning** ... **Nothing is
+  written** on any of those paths." Neither half holds for the partial-move case that
+  `OutputsUnwritten.landed` exists for: the first `os.replace` succeeds, the second fails,
+  one file has landed and `cli.py:131-140` logs at **ERROR**. I drove it (`chflags uchg
+  page.html`) and that is what happens. The later bullet describes it correctly. Scope the
+  first claim to 2/3/4 and to exit 5's pre-write refusals.
+- **`reachableFromOutside: []` is refused with the wrong reason.** It routes through
+  `_strings`, whose empty-list message is "a rule with no name to match on could never fire"
+  — but a visibility list is not a rule. `_strings`'s own docstring is about this hazard.
+- **`reachableFromOutside: ["public", "public"]` is accepted** and collapses into a
+  frozenset. Harmless, listed for completeness.
+
+### Confirmed working - do not redo this
+
+- **Fault 1 (`void`) is closed.** The review's own repro, `public class A { public void f()
+  {} }`, costs **1** under the committed weights, under `typeEveryCallerAlreadyKnows: 1` and
+  under `typesEveryCallerAlreadyKnows: []` (was 1 / 2 / 3), with an empty
+  `typesCrossingTheSeam` in all three. **0 modules** in the committed graph carry `void` in a
+  seam (was 9); `AccountsService` reads "6 types every caller already knows" (was 7).
+  Mutating the filter off reds **22 tests**, four named for the property. Moving `void` off
+  `typesEveryCallerAlreadyKnows` into `javasource.NOTHING_RETURNED` is the right call and I
+  would not change it: it is a Java fact, not a judgement, and an entry that can never fire
+  is the shape this tool refuses everywhere else.
+- **Fault 2 (the invented-type wording) is closed.** `grep "this application invented"` on
+  the built page is one hit and it is a JS comment; the rendered page has **0**. What
+  replaced it is true and checkable: "...a type is one to learn because the list does not
+  hold it and for no other reason — not because anything here found out where it was
+  declared." Same correction in `README.md` and `scoring.py`'s docstring; the per-card term
+  is "types to learn".
+- **All ten smaller items are closed.** `--graph X --page X` refused before a byte is
+  written, exit 5, WARNING, stale file byte-unchanged, no `.writing` — and `--page X --graph
+  ./X` too. `write_together` answers a dict keyed by path. An unscored module's
+  `methods[].cost` is `null` (0 of 36 publish one; mutating it back reds a test named for
+  it). A `package-info.java` added to the backend now reds only the two committed-outputs
+  tests, and regenerating `docs/` clears them — 217 OK; the attempt-5 claim that regenerating
+  does not fix it is now false. `graph.SCHEMA` is `module-depth-map/2` and the page checks it
+  first: a hand-made v1 document draws a styled banner, 0 cards, **no throw**.
+  `typesEveryCallerAlreadyKnows: "String"` is refused for being a non-list. The schema is
+  read before the unknown keys. The breakdown is built from
+  `Object.keys(document_.scoring.weights)` and reconciled on the card: a document with
+  `AccountsService`'s cost tampered to 99 reads "...— but these counts come to 30, so this
+  page is counting something the score did not", and the other 70 cards still draw.
+  `names_in` lives in `javasource`. `graph.build(roots, rules)` requires its rules.
+- **Criteria 1, 2, 5, 6, 7, 9 hold.** All 35 scored modules' costs equal the weighted sum of
+  the counts the graph publishes — **0 disagreements**; every published method is reachable;
+  every `mustBeLearned` agrees with the list. A sweep of **378 generated classes** (6
+  modifier spellings x 9 return types x 7 parameter lists) parsed 378/378 with 0
+  disagreements on visibility, method count, parameter count, void-in-seam or cost. `Domain.
+  value() -> Receipt` costs 3 against `Primitive.value() -> long` at 1. 26 data carriers, 9
+  generated repositories, 1 entry point; all 36 still drawn, marked, with a full
+  `interface.methods` list and an `interface read ... cost=none, never scored` DEBUG line
+  each. Every module is scored xor excluded; every exclusion names a rule the document holds
+  and the fact that matched; **0 unnamed**. The three scoring suites drive `graph.build` over
+  fixture trees; only `deterministicoutput` and `thisrepository` touch the application's
+  source, and `test_this_repository_is_read_whole` reads its weights out of the document.
+- **Criterion 8's mechanism, by hand.** `typeToLearn` 2 -> 9 plus a rule of my own
+  (`"reviewer 6 says so"`, `kind: [class]` + `nameEndsWith: [Service]`): `widestInterface`
+  31 -> 84, widest module `SavingsAccountController` -> `RefusalsAsHttp`, `modulesScored`
+  35 -> 29, six modules excluded naming my rule with `matched: "kind is class, name ends with
+  Service"`, my sentence verbatim on the page. Driven in chromium: 29 bars, every card's four
+  counts agree with the document (`RefusalsAsHttp` "84 to learn: 6 methods, 6 parameters, 8
+  types to learn, 0 types every caller already knows" = 6+6+72), 0 mismatch notes, 0 console
+  messages, 0 page errors. `git status` clean throughout. It is fault 1 above, not the
+  mechanism, that unticks the criterion.
+- **19 malformed configurations, every one a loud refusal** (exit 4, WARNING naming the
+  reason, stale outputs byte-unchanged, no `.writing`), and `exclusions: []` and
+  `typesEveryCallerAlreadyKnows: []` both correctly accepted. Write paths: a directory at
+  either destination -> 5; `--graph <plainfile>/sub/g.json` -> 5 naming **g.json**; `--page
+  <plainfile>/sub/p.html` -> 5 naming **p.html** with the stale graph intact; a forced
+  partial landing -> 5 and ERROR with the exception naming which file landed. No source
+  directory -> 2. **No path ends the run on a bare traceback.**
+- **Criterion 3's behaviour, driven.** Playwright over the committed page, light and dark,
+  1024 and 1280: 71 cards, 35 bars, 36 never-scored, 0 with both or neither, one shared track
+  (235.41 px at 1280, 209.41 at 1024), worst deviation from `cost x track / widest` **0.0000
+  px** at 1280 and 0.0151 at 1024, widest fills 100%, no sideways scroll, **0 console
+  messages, 0 page errors, 0 failed requests**. Screenshots read: both themes styled and
+  legible.
+- **Determinism.** Three runs under differing `TZ`/`PYTHONHASHSEED`/`LC_ALL` are
+  byte-identical to each other and to committed `docs/`. So is a run from a **different
+  working directory with an absolute `--source`**: `source.roots` still reads
+  `backend/src/main/java`, and the output holds 0 occurrences of `/Users/`. No `src=`/`href=`
+  in the page; stdlib imports only; no `print` in the analyser. At DEBUG: 71 `interface
+  read`, 36 never scored, 36 exclusions, 56 `member not read as a method`, 0 warnings.
+- **~40 further parser probes, all correct**, plus the tool over `backend/src/test/java` (31
+  files it has never seen): 31 modules, 0 unparsed, no keyword-named method, no unspellable
+  type. An unclosed block comment is a loud failure with its line and paints the alarm band.
+- **Checks.** `cd backend && ./mvnw test` exit 0, 113 tests, 0 failures. `cd frontend && npm
+  run typecheck` exit 0 (node v24.16.0). `python3 -m unittest discover -t scripts -s
+  scripts/module_depth_map/tests` **217 OK**. Committed `docs/` byte-identical to a fresh run.
+
+### Not this ticket
+
+- **`record` as an ordinary identifier still gives a phantom nested type.**
+  `Object record = o; if (record instanceof String s) { g(s); }` gives the module
+  `nested: ['instanceof']` of kind `record`, silently, and two variants fail the whole file.
+  I ran the same fixture through ticket/01's analyser (`git archive
+  ticket/01-modules-on-a-page scripts`) and got the **identical** `nested: ['instanceof']`,
+  so this is 01's, as attempts 4 and 5 also concluded.
+- **`Foo . class` written with spaces fails the file.** `return A . class . getName();` gives
+  `a type declaration this parser cannot read: class on line 4`. It is loud — named with its
+  line, in `source.unparsed`, alarm band on the page — and byte-for-byte the same under
+  ticket/01's analyser, so it is 01's too. It does dent the README's "legal Java is never
+  failed"; nobody writes it.
+- **The application is untouched by this branch.** `git diff --name-only
+  ticket/01-modules-on-a-page..ticket/02-what-a-caller-must-learn -- backend frontend` is
+  empty; I checked rather than took the claim. Driven anyway: deposit 12.34 -> 201 (`INFO
+  i.d.s.deposits.DepositsService : deposit accepted depositId=1 savingsAccountId=1
+  fromCurrentAccountId=1 amount=12.34 pointsEarned=12`), withdrawal 5.00 -> 201 with an
+  allocation, claim -> 201 (`INFO i.d.savingstreak.rewards.RewardsService : claim issued
+  redemptionId=1 ... pointsSpent=10`), and five refusals: deposit 0 -> 400, savings account
+  9999 -> 404, over-large withdrawal -> 400, over-priced claim -> 400, unknown reward -> 400.
+  No ERROR and no stack trace anywhere in
+  `logs/02-what-a-caller-must-learn.app.6.backend.log`. Vite at :5173 renders with 0 page
+  errors.
+- **Refusals still leave no WARN from `io.dataroots.savingstreak`** on the deposit, claim and
+  unknown-reward paths — only Spring's DEBUG `ExceptionHandlerExceptionResolver` lines —
+  whereas `WithdrawalsService` does log `withdrawal rejected ... reason=`. Pre-existing,
+  fifth review round to report it, a gap against CLAUDE.md, and nothing this branch touches.
+
+### Artifacts
+
+`logs/02-what-a-caller-must-learn.review.6.browser.log`,
+`.committed.{light,dark}.{1024,1280}.png`, `.reweighted.{light,dark}.1280.png`,
+`.v1-schema.png`, `.tampered-cost.png`, `.app.png`, `.app.browser.log`.
