@@ -7,7 +7,7 @@ change in the output always meaning a change in the code is the whole point.
 import os
 import re
 
-from ... import cli, graph, page
+from ... import cli, graph, page, scoring
 from ..support.sourcetrees import BACKEND_SOURCE, SourceTree, SourceTreeTest, bytes_of
 
 
@@ -23,16 +23,16 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
     def test_the_graph_document_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = graph.serialise(graph.build([graph.java_root(tree.root)]))
-        second = graph.serialise(graph.build([graph.java_root(tree.root)]))
+        first = graph.serialise(graph.build([graph.java_root(tree.root)], scoring.load()))
+        second = graph.serialise(graph.build([graph.java_root(tree.root)], scoring.load()))
 
         self.assertEqual(first, second)
 
     def test_the_page_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = _rendered(graph.build([graph.java_root(tree.root)]))
-        second = _rendered(graph.build([graph.java_root(tree.root)]))
+        first = _rendered(graph.build([graph.java_root(tree.root)], scoring.load()))
+        second = _rendered(graph.build([graph.java_root(tree.root)], scoring.load()))
 
         self.assertEqual(first, second)
 
@@ -55,7 +55,7 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
         tree.java("shop.till", "Ant", "public class Ant {}")
         tree.java("shop.aisle", "Middle", "public class Middle {}")
 
-        document = graph.build([graph.java_root(tree.root)])
+        document = graph.build([graph.java_root(tree.root)], scoring.load())
 
         self.assertEqual(
             ["shop.aisle.Middle", "shop.till.Ant", "shop.till.Zebra"],
@@ -81,7 +81,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
     def written(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {}")
-        document = graph.build([graph.java_root(tree.root)])
+        document = graph.build([graph.java_root(tree.root)], scoring.load())
         return tree, graph.serialise(document).decode("utf-8"), _rendered(document).decode("utf-8")
 
     def test_neither_output_names_a_directory_on_this_machine(self):
@@ -98,7 +98,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         self.assertIn('"fixture"', written_graph)
 
     def test_this_repository_is_named_by_its_own_layout_rather_than_its_location(self):
-        document = graph.build([graph.java_root(BACKEND_SOURCE)])
+        document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
 
         self.assertEqual(["backend/src/main/java"], document["source"]["roots"])
 
@@ -132,7 +132,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         for root in (clone, worktree):
             SourceTree(root).java("shop.till", "Till", "public class Till {}")
 
-        written = [graph.serialise(graph.build([graph.java_root(r)])) for r in (clone, worktree)]
+        written = [graph.serialise(graph.build([graph.java_root(r)], scoring.load())) for r in (clone, worktree)]
 
         self.assertEqual(written[0], written[1])
 

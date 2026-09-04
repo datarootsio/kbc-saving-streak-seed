@@ -254,6 +254,46 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         self.assertEqual([], os.listdir(os.path.join(out, "page.html")))
         self.assertIn("is a directory", "\n".join(logged.output))
 
+    def test_two_outputs_sent_to_one_file_are_refused_before_anything_is_written(self):
+        """One destination cannot hold two documents, and trying destroyed the old one.
+
+        Both outputs stage beside the same path, so the page's bytes replaced the graph's
+        in the one `.writing` file, the first move put *the page* where the graph belongs,
+        and the second failed with the file already gone. The run then reported the graph
+        as the output that landed. Exit 5 and an ERROR, so not silent — but the previous
+        run's file was replaced by a document that is not the one named, which is the
+        misattribution this function exists to make impossible.
+        """
+        tree = self.a_module()
+        out = self.a_previous_run()
+        both = os.path.join(out, "graph.json")
+
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = cli.main(["--source", tree.root, "--graph", both, "--page", both])
+
+        self.assertEqual(5, code)
+        self.assertEqual(b"the previous run's graph.json", bytes_of(both))
+        self.assertEqual(["graph.json", "page.html"], sorted(os.listdir(out)))
+        said = "\n".join(logged.output)
+        self.assertIn("are the same file", said)
+        self.assertNotIn("Traceback", said)
+
+    def test_one_output_written_two_ways_is_the_same_destination(self):
+        """`docs/graph.json` and `docs/./graph.json` are one file to everything but a string."""
+        tree = self.a_module()
+        out = self.a_previous_run()
+
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = cli.main(
+                ["--source", tree.root,
+                 "--graph", os.path.join(out, "graph.json"),
+                 "--page", os.path.join(out, ".", "graph.json")]
+            )
+
+        self.assertEqual(5, code)
+        self.assertEqual(b"the previous run's graph.json", bytes_of(os.path.join(out, "graph.json")))
+        self.assertIn("are the same file", "\n".join(logged.output))
+
     def test_a_move_that_fails_anyway_says_which_file_landed_and_which_did_not(self):
         """Two renames are not one step, and the run has to say so when the second fails.
 

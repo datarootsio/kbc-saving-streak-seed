@@ -119,9 +119,7 @@ def main(argv=None):
     try:
         serialised = graph.serialise(document)
         rendered = page.render(document, serialised)
-        written_graph, written_page = write_together(
-            (arguments.graph, serialised), (arguments.page, rendered)
-        )
+        written = write_together((arguments.graph, serialised), (arguments.page, rendered))
     except OSError as failed:
         log.error(
             "the run could not turn the graph it built into files: %s. Nothing was "
@@ -150,8 +148,8 @@ def main(argv=None):
     log.info(
         "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
         "scored=%d neverScored=%d",
-        written_graph,
-        written_page,
+        written[arguments.graph],
+        written[arguments.page],
         document["source"]["filesParsed"],
         document["source"]["filesUnparsed"],
         len(document["modules"]),
@@ -173,6 +171,11 @@ def main(argv=None):
 def write_together(*outputs):
     """Write every one of these (path, bytes) where they belong, and say what happened.
 
+    Answers how many bytes landed at each path, keyed by the path asked for rather than
+    by position. Unpacking the answer into one name per output made a third output an
+    end to the run with a `ValueError` — a traceback, out of the one function written to
+    make a traceback impossible.
+
     Each is written beside where it belongs and then moved into place. Rendering both to
     bytes before writing either is not enough on its own: the second `open` fails on a
     read-only directory or a full disk just as readily as the render does, and a graph
@@ -185,10 +188,14 @@ def write_together(*outputs):
     misattributed one:
 
     - every way a move can fail that this tool can see coming is checked before a single
-      byte is written. A destination that is already a directory is the one such way, and
-      the only one the `open` below does not catch first: `page.html.writing` opens
-      perfectly well next to a directory called `page.html`, and the move then fails
-      after the graph has landed.
+      byte is written. A destination that is already a directory is one such way, and the
+      only one the `open` below does not catch first: `page.html.writing` opens perfectly
+      well next to a directory called `page.html`, and the move then fails after the
+      graph has landed. Two outputs sent to one destination is the other, and it is worse
+      than a failure: both stage to the same `.writing` file, so the second's bytes are
+      the first's by the time anything is moved, the previous run's file is replaced by a
+      document that is not the one named, and the run then reports the wrong output as
+      the one that landed.
     - a failure while staging names the output that failed, taken from the arguments
       rather than from what had been staged when it happened. Reading the path out of
       `staged` said the wrong file when a later output was the one that could not be
@@ -208,6 +215,19 @@ def write_together(*outputs):
             raise OutputsUnwritten(
                 "%s is a directory, and a file cannot be moved onto one" % path
             )
+
+    # `realpath`, so that two spellings of one file — `docs/g.json` and `./docs/g.json`,
+    # or a path through a symlinked directory — are the same destination here as they
+    # are to the filesystem.
+    destinations = {}
+    for path, _ in outputs:
+        whole = os.path.realpath(path)
+        if whole in destinations:
+            raise OutputsUnwritten(
+                "%s and %s are the same file, and the run has two different documents to "
+                "put there" % (destinations[whole], path)
+            )
+        destinations[whole] = path
 
     staged = []
     for path, content in outputs:
@@ -236,7 +256,7 @@ def write_together(*outputs):
             ) from unmovable
         landed.append(path)
         log.debug("wrote path=%s bytes=%d", path, size)
-    return [size for _, _, size in staged]
+    return {path: size for _, path, size in staged}
 
 
 def _discard_all(staged):

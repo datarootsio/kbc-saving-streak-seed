@@ -49,8 +49,7 @@
       "float",
       "int",
       "long",
-      "short",
-      "void"
+      "short"
     ]
   },
 

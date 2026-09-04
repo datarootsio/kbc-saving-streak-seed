@@ -21,7 +21,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        document = graph.build([graph.java_root(tree.root)])
+        document = graph.build([graph.java_root(tree.root)], scoring.load())
 
         self.assertEqual([], document["source"]["unparsed"])
         return {module["name"]: module for module in document["modules"]}
@@ -328,7 +328,7 @@ class ATypeVariableIsNotATypeAnybodyLearnsTest(SourceOfKnownShapeTest):
         )["Shelf"]
 
         self.assertEqual(
-            ["long", "void"], [t["name"] for t in module["interface"]["typesCrossingTheSeam"]]
+            ["long"], [t["name"] for t in module["interface"]["typesCrossingTheSeam"]]
         )
         self.assertEqual(4, module["interface"]["cost"])
 
@@ -375,6 +375,90 @@ class ATypeVariableIsNotATypeAnybodyLearnsTest(SourceOfKnownShapeTest):
         )
 
 
+class AMethodThatHandsNothingBackCrossesNoSeamTest(SourceOfKnownShapeTest):
+    """`void` is where Java writes a return type. It is not one, and nothing crosses there.
+
+    A caller of `public void ring()` learns one method and no types at all. Folded in with
+    the returns that really are types, it was counted as one — invisible only because the
+    weight a familiar type carries is zero in the committed file, and wrong at every other
+    value. Nine modules on the committed page published a type called `void`, and
+    `AccountsService`'s card read "7 types every caller already knows" with `void` among
+    the seven.
+
+    Both edits below are the ones the configuration file exists to invite, and both are
+    where the fault showed: at a non-zero weight a caller is charged for a type they never
+    meet, and with the familiar list emptied they are told there is a type here to go and
+    learn.
+    """
+
+    HANDS_BACK_NOTHING = ("Till", "public class Till {\n    public void ring() {}\n}")
+
+    def scored_with(self, source, **interface_cost):
+        """One module, scored with these `interfaceCost` fields replaced.
+
+        `weights` is merged rather than replaced, so a test moves one weight and leaves
+        the other three where the file put them.
+        """
+        with open(scoring.DEFAULT_CONFIGURATION, "rb") as handle:
+            configuration = json.loads(handle.read().decode("utf-8"))
+        cost = configuration["interfaceCost"]
+        cost["weights"] = dict(cost["weights"], **interface_cost.pop("weights", {}))
+        cost.update(interface_cost)
+        rules = scoring.load(self.tree("rules").raw("scoring.json", json.dumps(configuration)))
+
+        name, body = source
+        tree = self.tree("fixture")
+        tree.java("shop.till", name, body)
+        document = graph.build([graph.java_root(tree.root)], rules)
+
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["name"]: module for module in document["modules"]}[name]
+
+    def test_a_method_handing_nothing_back_puts_no_type_across_the_seam(self):
+        module = self.modules(self.HANDS_BACK_NOTHING)["Till"]
+
+        self.assertEqual([], module["interface"]["typesCrossingTheSeam"])
+        self.assertEqual(1, module["interface"]["cost"])
+
+    def test_paying_for_a_familiar_type_does_not_pay_for_handing_nothing_back(self):
+        module = self.scored_with(
+            self.HANDS_BACK_NOTHING, weights={"typeEveryCallerAlreadyKnows": 1}
+        )
+
+        self.assertEqual([], module["interface"]["typesCrossingTheSeam"])
+        self.assertEqual(1, module["interface"]["cost"])
+
+    def test_charging_for_every_type_a_caller_meets_still_charges_for_none_here(self):
+        """The edit the README blesses: no type is taken for granted, and there is no type."""
+        module = self.scored_with(self.HANDS_BACK_NOTHING, typesEveryCallerAlreadyKnows=[])
+
+        self.assertEqual([], module["interface"]["typesCrossingTheSeam"])
+        self.assertEqual(1, module["interface"]["cost"])
+
+    def test_a_method_handing_back_nothing_still_puts_its_parameters_across(self):
+        """Only the return is nothing. What the caller passes in is unaffected."""
+        module = self.modules(
+            ("Till", "public class Till {\n    public void ring(Receipt it) {}\n}")
+        )["Till"]
+
+        self.assertEqual(
+            [{"name": "Receipt", "mustBeLearned": True}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+
+    def test_the_boxed_void_a_method_can_hand_back_is_a_type_like_any_other(self):
+        """`Void` is a class a caller can be handed, and is not the word Java writes for
+        nothing. Filtering the word rather than the return would take this with it.
+        """
+        module = self.modules(
+            ("Till", "public class Till {\n    public Void ring() { return null; }\n}")
+        )["Till"]
+
+        self.assertEqual(
+            [{"name": "Void", "mustBeLearned": False}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+
 class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
     """Two bars mean something side by side, and the scale they share is in the graph.
 
@@ -392,7 +476,7 @@ class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
         tree = self.tree("fixture")
         for name, body in sources:
             tree.java("shop.till", name, body)
-        self.document = graph.build([graph.java_root(tree.root)])
+        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
 

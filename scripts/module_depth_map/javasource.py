@@ -79,8 +79,15 @@ _RESERVED_DECLARATION = re.compile(
 
 # A file that declares no type but is still perfectly well formed. Failing these as
 # unreadable would paint the page's alarm band over a file with nothing wrong with it,
-# and an alarm that cries wolf stops being read.
-_DESCRIPTORS = ("package-info.java", "module-info.java")
+# and an alarm that cries wolf stops being read. Named here rather than written into the
+# two places that care, because "read and yet not a module" is a third answer beside
+# parsed and reported, and anything counting source files has to know all three.
+DECLARES_NO_TYPE = ("package-info.java", "module-info.java")
+
+# What Java writes where a return type goes when a method hands nothing back. It is not
+# a type and there is nothing to learn about it: a caller of `public void f()` meets one
+# method and no types at all.
+NOTHING_RETURNED = "void"
 
 _KINDS = {
     "class": "class",
@@ -395,7 +402,7 @@ def parse(text, path):
     types = _declared_types(masked, depths)
     package = _PACKAGE.search(masked)
 
-    if path.rsplit("/", 1)[-1] in _DESCRIPTORS:
+    if path.rsplit("/", 1)[-1] in DECLARES_NO_TYPE:
         log.debug("read package descriptor path=%s declaring no module", path)
         return ParsedFile(package.group(1) if package else "", types, lines)
 
@@ -1069,3 +1076,34 @@ def _normalised(written):
         tidy = tidy.replace(" " + bracket, bracket)
     tidy = tidy.replace("< ", "<").replace("[ ", "[")
     return re.sub(r",\s*", ", ", tidy).strip()
+
+
+def names_in(written):
+    """Every type name inside a type as it was written, generics and arrays taken apart.
+
+    `List<Optional<Customer>>` is `List`, `Optional` and `Customer`, and `java.util.List`
+    is `List`: a package prefix is not a second thing to learn, and a wildcard is not a
+    type at all.
+
+    It lives here rather than beside whatever wants the names, because it is the mirror
+    of `_A_TYPE` — the punctuation split on is exactly the punctuation that pattern lets
+    a type be spelled with, and the words skipped are the only ones `<? extends Receipt>`
+    can put where a name goes. Anywhere else it would be a second, drifting account of
+    how Java spells a type.
+    """
+    found = []
+    for word in re.split(_INSIDE_A_TYPE, written):
+        simple = word.rstrip(".").split(".")[-1]
+        if simple and simple not in _NOT_A_NAME:
+            found.append(simple)
+    return found
+
+
+# The punctuation a type is carried in: `_A_TYPE` allows exactly these around the names,
+# so splitting on them leaves the names and nothing else.
+_INSIDE_A_TYPE = re.compile(r"[<>,\[\]\s]+")
+
+# The words a type can hold that do not name one. A modifier is not among them: they are
+# off long before a type reaches here, so listing one would be a line nothing could ever
+# reach and a reader could not tell from a rule that mattered.
+_NOT_A_NAME = ("?", "extends", "super")

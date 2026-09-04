@@ -9,9 +9,16 @@ Interface cost is everything a caller has to learn before they can use a module
 correctly: each method they can reach, each parameter of each of those methods, and each
 distinct type that crosses the seam in a parameter or a return. Types are counted once
 per module however many methods hand them over — learning `RecordedDeposit` twice is
-still learning it once — and a type every Java caller already knows is weighted apart
-from one this application invented, which is why a method handing back a domain type
+still learning it once — and a type the file lists under `typesEveryCallerAlreadyKnows`
+is weighted apart from one it does not, which is why a method handing back a domain type
 costs more than one handing back a primitive.
+
+That list is the whole of the distinction, and `mustBeLearned` says no more than "this
+name is not on it". It is not a claim about where the type was declared: the tool reads
+one source tree and never resolves a name, so `ProblemDetail` is charged at
+`typeToLearn` for the same reason `Receipt` is — nobody told it otherwise. Wording that
+said "a type this application invented" made the graph assert something about the source
+that a reader could check and find wrong.
 
 Three kinds of thing are drawn but never scored, each by a rule the file names: values
 that only carry data across a seam, repository interfaces whose implementation is
@@ -24,7 +31,6 @@ it, so "why was this ignored?" always has an answer a reader can point at.
 import json
 import logging
 import os
-import re
 
 from . import javasource
 
@@ -93,9 +99,20 @@ def _known_kinds(kinds, where):
 
 
 def _strings(value, where, may_be_empty=False):
-    if not isinstance(value, list) or (not value and not may_be_empty):
+    """A list of names, refused by what is actually wrong with it.
+
+    The two faults are two messages. One name written on its own where the list belongs
+    is not an empty list, and answering it with "it has to be a list with something in
+    it" — on the one field where nothing in it is allowed — sends its author to fix the
+    half this tool is perfectly happy with.
+    """
+    if not isinstance(value, list):
         raise ConfigurationRefused(
-            "%s is %s, and it has to be a list with something in it" % (where, _shape(value))
+            "%s is %s, and it has to be a list of names" % (where, _shape(value))
+        )
+    if not value and not may_be_empty:
+        raise ConfigurationRefused(
+            "%s is empty, and a rule with no name to match on could never fire" % where
         )
     for entry in value:
         if not isinstance(entry, str) or not entry.strip():
@@ -225,7 +242,10 @@ class Rules:
         The methods and the types are recorded whether or not the module is scored — an
         excluded module is drawn with its interface visible, so a reader can see what the
         rule decided not to measure — but the cost of an unscored one is absent rather
-        than zero, because it was never counted, not counted to nothing.
+        than zero, because it was never counted, not counted to nothing. Absent all the
+        way down: a per-method cost published under a module whose own cost is `null` is
+        a score for a module the same document says has none, and an agent reading the
+        graph could add those parts up into a number nobody ever decided to give it.
         """
         methods = sorted(
             (method for method in declared.methods if method.visibility in self.reachable_from_outside),
@@ -260,7 +280,7 @@ class Rules:
                     "visibility": method.visibility,
                     "parameters": list(method.parameters),
                     "returns": method.returns,
-                    "cost": self._cost_of(method),
+                    "cost": self._cost_of(method) if scored else None,
                 }
                 for method in methods
             ],
@@ -281,34 +301,27 @@ class Rules:
         A type variable is not one of them. `<T> T first(List<T> of)` hands back whatever
         the caller passed in, and charging them for learning `T` would price the letter
         rather than a type — the module's own `<T>` and each method's are both left out.
+
+        Neither is `void`, and not because of a weight: a method that hands nothing back
+        has nothing crossing the seam on the way out, so there is no type there for any
+        weight to price. Java writes it where a return type goes, which is how it got
+        counted — nine modules on the committed page carried it, and a caller of
+        `public void f()` was charged for one type where they meet none.
         """
         names = set()
         for method in methods:
             variables = set(of_the_module) | set(method.type_parameters)
-            for written in list(method.parameters) + [method.returns]:
+            crossing = list(method.parameters)
+            if method.returns != javasource.NOTHING_RETURNED:
+                crossing.append(method.returns)
+            for written in crossing:
                 names.update(
-                    name for name in _named_types_in(written) if name not in variables
+                    name for name in javasource.names_in(written) if name not in variables
                 )
         return [
             {"name": name, "mustBeLearned": name not in self.already_known}
             for name in sorted(names)
         ]
-
-
-def _named_types_in(written):
-    """The type names inside a type as it was written, generics and arrays taken apart.
-
-    `List<Optional<Customer>>` is `List`, `Optional` and `Customer`, and
-    `java.util.List` is `List`: a package prefix is not a second thing to learn, and a
-    wildcard is not a type at all.
-    """
-    found = []
-    for word in re.split(r"[<>,\[\]\s]+", written):
-        simple = word.rstrip(".").split(".")[-1]
-        if not simple or simple in ("?", "extends", "super", "final"):
-            continue
-        found.append(simple)
-    return found
 
 
 def load(path=None):
@@ -337,11 +350,15 @@ def load(path=None):
         raise ConfigurationRefused("not valid JSON: %s" % broken)
 
     _an_object(document, "the configuration")
-    _only(document, ("schema", "interfaceCost", "exclusions"), "the configuration")
+    # The schema first, and then what the document names. A file written for a later
+    # schema will hold keys this tool has never heard of, and answering it with "names X,
+    # which this tool does not read" sends its author to delete a key their own tool
+    # needs, when what they have to be told is that this tool is the old one.
     if document.get("schema") != SCHEMA:
         raise ConfigurationRefused(
             "schema is %r, and this tool reads %r" % (document.get("schema"), SCHEMA)
         )
+    _only(document, ("schema", "interfaceCost", "exclusions"), "the configuration")
 
     cost = document.get("interfaceCost")
     _an_object(cost, "interfaceCost")

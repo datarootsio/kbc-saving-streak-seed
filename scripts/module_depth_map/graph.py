@@ -13,11 +13,17 @@ import json
 import logging
 import os
 
-from . import javasource, scoring
+from . import javasource
 
 log = logging.getLogger("module_depth_map.graph")
 
-SCHEMA = "module-depth-map/1"
+# The shape this document promises to have, and the version a reader checks before
+# trusting a key is there. It moved to /2 when the document grew a top-level `scoring`
+# object and gave every module an `interface` and an `excludedBy`: a v1 reader looking
+# for what it was promised finds none of them. The tool refuses a *configuration* whose
+# schema it does not know, so versioning what it writes as well is the same promise kept
+# in the other direction.
+SCHEMA = "module-depth-map/2"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -148,7 +154,7 @@ def _files_under(root):
     return found, unreadable
 
 
-def build(roots, rules=None):
+def build(roots, rules):
     """Read every source file under these roots and return the graph document.
 
     A file that cannot be read is named in the document and logged, never counted as a
@@ -158,8 +164,12 @@ def build(roots, rules=None):
     What each module's interface costs a caller, and which modules are drawn but never
     scored, are decided by `rules` — read from a file beside the tool rather than written
     into it, so that changing what counts is a diff on that file and not on this one.
+
+    `rules` is asked for rather than defaulted. Falling back to `scoring.load()` here put
+    a second home for the `--scoring` default behind the one the command line already
+    has, and made a `ConfigurationRefused` come out of the call the caller guards for
+    duplicate module ids — the one failure this function is documented to raise.
     """
-    rules = rules or scoring.load()
     modules = []
     unparsed = []
     seen = 0

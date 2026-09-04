@@ -6,7 +6,7 @@ thing worth asserting is that nothing was quietly dropped.
 
 import os
 
-from ... import graph
+from ... import graph, javasource, scoring
 from ..support.sourcetrees import BACKEND_SOURCE, SourceTreeTest
 
 
@@ -14,9 +14,17 @@ class ThisRepositoryIsReadWholeTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)])
+        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
 
-    def test_every_source_file_is_either_parsed_or_reported_as_unparseable(self):
+    def test_every_source_file_is_either_read_or_reported_as_unparseable(self):
+        """Nothing under the source root goes missing without the document saying so.
+
+        Three answers, not two. A file the tool reads and finds no module in is the third,
+        and `package-info.java` is the one Java defines for it: it appears under no module
+        and in no failure, and asking for two answers made adding one red this suite for a
+        file the README names as read rather than reported. The set of such files is the
+        parser's own, so this test cannot drift from what the tool actually skips.
+        """
         on_disk = set()
         for directory, _, names in os.walk(BACKEND_SOURCE):
             for name in names:
@@ -26,8 +34,12 @@ class ThisRepositoryIsReadWholeTest(SourceTreeTest):
 
         reported = {entry["path"] for entry in self.document["source"]["unparsed"]}
         parsed = {module["path"] for module in self.document["modules"]}
+        declaring_nothing = {
+            path for path in on_disk
+            if path.rsplit("/", 1)[-1] in javasource.DECLARES_NO_TYPE
+        }
 
-        self.assertEqual(on_disk, parsed | reported)
+        self.assertEqual(on_disk, parsed | reported | declaring_nothing)
         self.assertEqual(len(on_disk), self.document["source"]["filesSeen"])
 
     def test_the_whole_of_this_backend_can_be_read(self):
@@ -71,7 +83,7 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)])
+        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
 
     def test_every_module_is_either_scored_or_excluded_and_never_both(self):
         for module in self.document["modules"]:

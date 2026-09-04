@@ -10,7 +10,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "main",
             "parameters": [
               "String[]"
@@ -23,10 +23,6 @@
           {
             "mustBeLearned": false,
             "name": "String"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -202,10 +198,6 @@
           {
             "mustBeLearned": false,
             "name": "long"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -280,10 +272,6 @@
           {
             "mustBeLearned": false,
             "name": "boolean"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -306,7 +294,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findByCustomerId",
             "parameters": [
               "Long"
@@ -315,7 +303,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "findHolderIdById",
             "parameters": [
               "long"
@@ -414,14 +402,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "currentAccounts",
             "parameters": [],
             "returns": "List<CurrentAccount>",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "savingsAccounts",
             "parameters": [],
             "returns": "List<SavingsAccount>",
@@ -462,7 +450,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findByContactDetailsIgnoreCase",
             "parameters": [
               "String"
@@ -515,10 +503,6 @@
           {
             "mustBeLearned": false,
             "name": "String"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -571,7 +555,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findByCustomerId",
             "parameters": [
               "Long"
@@ -580,7 +564,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "findHolderIdById",
             "parameters": [
               "long"
@@ -589,7 +573,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "findOwnerNameById",
             "parameters": [
               "long"
@@ -756,12 +740,7 @@
             "visibility": "public"
           }
         ],
-        "typesCrossingTheSeam": [
-          {
-            "mustBeLearned": false,
-            "name": "void"
-          }
-        ]
+        "typesCrossingTheSeam": []
       },
       "kind": "class",
       "language": "java",
@@ -842,14 +821,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "movedForwardByDays",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "now",
             "parameters": [],
             "returns": "Instant",
@@ -949,10 +928,6 @@
           {
             "mustBeLearned": false,
             "name": "long"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -1071,10 +1046,6 @@
           {
             "mustBeLearned": false,
             "name": "Long"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -1129,7 +1100,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findBySavingsAccountId",
             "parameters": [
               "long"
@@ -1138,7 +1109,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "findBySavingsAccountIdOrderByDepositedAtAscIdAsc",
             "parameters": [
               "long"
@@ -1147,7 +1118,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "findBySavingsAccountIdOrderByDepositedAtDescIdDesc",
             "parameters": [
               "long"
@@ -1156,7 +1127,7 @@
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "giveEveryDepositWhatRemainsOfIt",
             "parameters": [],
             "returns": "int",
@@ -1205,12 +1176,7 @@
             "visibility": "public"
           }
         ],
-        "typesCrossingTheSeam": [
-          {
-            "mustBeLearned": false,
-            "name": "void"
-          }
-        ]
+        "typesCrossingTheSeam": []
       },
       "kind": "class",
       "language": "java",
@@ -1295,28 +1261,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "depositedAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "pointsEarned",
             "parameters": [],
             "returns": "long",
@@ -1361,35 +1327,35 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "allocations",
             "parameters": [],
             "returns": "List<RecordedWithdrawalAllocation>",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "withdrawnAt",
             "parameters": [],
             "returns": "Instant",
@@ -1442,14 +1408,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "depositId",
             "parameters": [],
             "returns": "long",
@@ -1590,7 +1556,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findByWithdrawalIdOrderByIdAsc",
             "parameters": [
               "long"
@@ -1665,7 +1631,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findBySavingsAccountIdOrderByWithdrawnAtDescIdDesc",
             "parameters": [
               "long"
@@ -1763,28 +1729,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "name",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "ranAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "tookMillis",
             "parameters": [],
             "returns": "long",
@@ -1825,21 +1791,21 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "name",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "schedule",
             "parameters": [],
             "returns": "String",
@@ -1942,10 +1908,6 @@
           {
             "mustBeLearned": false,
             "name": "String"
-          },
-          {
-            "mustBeLearned": false,
-            "name": "void"
           }
         ]
       },
@@ -2046,7 +2008,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 3,
+            "cost": null,
             "name": "earnedBy",
             "parameters": [
               "PointsReason",
@@ -2056,7 +2018,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "remainingPointsOf",
             "parameters": [
               "long"
@@ -2065,7 +2027,7 @@
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "unspentOldestFirst",
             "parameters": [
               "long"
@@ -2233,35 +2195,35 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "claimedAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "pointsSpent",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "reward",
             "parameters": [],
             "returns": "Reward",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "voucherCode",
             "parameters": [],
             "returns": "String",
@@ -2368,7 +2330,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 2,
+            "cost": null,
             "name": "findBySavingsAccountIdOrderByClaimedAtDescIdDesc",
             "parameters": [
               "long"
@@ -2411,35 +2373,35 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "code",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "costInPoints",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "description",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "title",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "voucherPrefix",
             "parameters": [],
             "returns": "String",
@@ -2569,7 +2531,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "days",
             "parameters": [],
             "returns": "Long",
@@ -2602,7 +2564,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "reward",
             "parameters": [],
             "returns": "String",
@@ -2635,28 +2597,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "claimedAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "code",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "ClaimedReward"
@@ -2665,21 +2627,21 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "pointsSpent",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "title",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "voucherCode",
             "parameters": [],
             "returns": "String",
@@ -2732,21 +2694,21 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "movedForwardByDays",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "now",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "HowFarTheClockHasMoved"
@@ -2793,14 +2755,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "currentAccounts",
             "parameters": [],
             "returns": "List<CurrentAccountResponse>",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "savingsAccounts",
             "parameters": [],
             "returns": "List<SavingsAccountResponse>",
@@ -2908,28 +2870,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "contactDetails",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "name",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "Customer"
@@ -2976,14 +2938,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "fromCurrentAccountId",
             "parameters": [],
             "returns": "Long",
@@ -3020,28 +2982,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "depositedAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "RecordedDeposit"
@@ -3050,7 +3012,7 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "pointsEarned",
             "parameters": [],
             "returns": "long",
@@ -3197,21 +3159,21 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "name",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "AJobThatRan"
@@ -3220,14 +3182,14 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "ranAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "tookMillis",
             "parameters": [],
             "returns": "long",
@@ -3415,28 +3377,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "code",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "costInPoints",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "description",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "Reward"
@@ -3445,7 +3407,7 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "title",
             "parameters": [],
             "returns": "String",
@@ -3611,28 +3573,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "customerName",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "moneyBalance",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "pointsBalance",
             "parameters": [],
             "returns": "long",
@@ -3677,21 +3639,21 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "name",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "AScheduledJob"
@@ -3700,7 +3662,7 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "schedule",
             "parameters": [],
             "returns": "String",
@@ -3741,7 +3703,7 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "contactDetails",
             "parameters": [],
             "returns": "String",
@@ -3774,14 +3736,14 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "Long",
@@ -3818,28 +3780,28 @@
         "cost": null,
         "methods": [
           {
-            "cost": 1,
+            "cost": null,
             "name": "allocations",
             "parameters": [],
             "returns": "List<RecordedWithdrawalAllocation>",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "id",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           },
           {
-            "cost": 2,
+            "cost": null,
             "name": "of",
             "parameters": [
               "RecordedWithdrawal"
@@ -3848,14 +3810,14 @@
             "visibility": "package-private"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           },
           {
-            "cost": 1,
+            "cost": null,
             "name": "withdrawnAt",
             "parameters": [],
             "returns": "Instant",
@@ -4020,7 +3982,7 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/1",
+  "schema": "module-depth-map/2",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "exclusions": [
@@ -4087,8 +4049,7 @@
       "float",
       "int",
       "long",
-      "short",
-      "void"
+      "short"
     ],
     "weights": {
       "method": 1,

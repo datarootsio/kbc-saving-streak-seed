@@ -44,6 +44,12 @@ class RulesFromAFileTest(SourceTreeTest):
         cost["weights"] = dict(cost["weights"], **changes)
         return self.rules(interfaceCost=cost)
 
+    def refusal_for(self, **changes):
+        """The reason the tool gave for refusing its own configuration, changed like this."""
+        with self.assertRaises(scoring.ConfigurationRefused) as refused:
+            scoring.load(self.rules(**changes))
+        return refused.exception.reason
+
     def source(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", A_MODULE)
@@ -218,11 +224,6 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
     name, so the qualified form matched nothing, excluded nothing, and said nothing.
     """
 
-    def refusal_for(self, **changes):
-        with self.assertRaises(scoring.ConfigurationRefused) as refused:
-            scoring.load(self.rules(**changes))
-        return refused.exception.reason
-
     def with_a_rule(self, when):
         return {
             "exclusions": [
@@ -374,6 +375,35 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
             modules["Till"]["interface"]["typesCrossingTheSeam"],
         )
         self.assertEqual(1 + 1 + 2 + 2, modules["Till"]["interface"]["cost"])
+
+    def test_a_name_written_where_a_list_belongs_is_refused_for_being_a_name(self):
+        """The refusal has to name the fault the author actually has.
+
+        `typesEveryCallerAlreadyKnows: "String"` is not an empty list — and it is the one
+        field where an empty list is allowed. Answering it with "it has to be a list with
+        something in it" sends its author to add names to a list they did not write,
+        while the tool is perfectly happy with the number of names they meant.
+        """
+        cost = dict(self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows="String")
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("list of names", reason)
+        self.assertNotIn("something in it", reason)
+
+    def test_a_file_written_for_a_later_schema_is_told_this_tool_is_the_old_one(self):
+        """A newer file holds keys this tool has never heard of, and that is not its fault.
+
+        Reading the unknown keys first refused it with "names X, which this tool does not
+        read", which sends its author to delete a key their own tool needs. The schema is
+        the field that says which of the two is behind, so it is the field read first.
+        """
+        reason = self.refusal_for(schema="module-depth-map-scoring/2", somethingNew={})
+
+        self.assertIn("schema", reason)
+        self.assertIn(scoring.SCHEMA, reason)
+        self.assertNotIn("does not read", reason)
 
     def test_a_condition_a_rule_can_be_written_with_carries_its_own_two_halves(self):
         """How it is checked and how the value is read, in one entry apiece.

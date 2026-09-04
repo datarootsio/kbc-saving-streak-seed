@@ -8,6 +8,8 @@ package and no count, so everything a reader sees came out of the document.
 
 import logging
 
+from . import graph
+
 log = logging.getLogger("module_depth_map.page")
 
 GRAPH_ELEMENT_ID = "module-depth-map-graph"
@@ -140,6 +142,21 @@ _SCRIPT = """
     return element;
   }
 
+  // The shape this renderer reads, checked before anything is read out of it. A document
+  // of an older shape has no `scoring` object, and reaching into one would throw halfway
+  // down a single pass — which a reader sees as a page that stopped early or never
+  // started, not as a page that could not be drawn. Said out loud instead.
+  if (document_.schema !== "GRAPH_SCHEMA") {
+    var wrong = add(root, "div", "unread");
+    add(wrong, "h2", null, "This page cannot draw the document it carries");
+    add(wrong, "p", null,
+      "The document carried inside this file says its shape is "
+      + document_.schema + ", and this page draws GRAPH_SCHEMA. Nothing below is drawn: "
+      + "half a document, drawn as though it were whole, is the one thing a reader "
+      + "cannot check.");
+    return;
+  }
+
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
   add(head, "p", "lede",
@@ -183,10 +200,14 @@ _SCRIPT = """
     "Each bar is the cost of a module's interface: everything a caller has to learn before "
     + "they can use it correctly. A method they can reach counts "
     + document_.scoring.weights.method + ", each of its parameters counts "
-    + document_.scoring.weights.parameter + ", each distinct type crossing the seam counts "
-    + document_.scoring.weights.typeToLearn + " when it is one this application invented and "
-    + document_.scoring.weights.typeEveryCallerAlreadyKnows + " when every caller already "
-    + "knows it. Reachable means "
+    + document_.scoring.weights.parameter + ", and each distinct type crossing the seam "
+    + "counts " + document_.scoring.weights.typeToLearn + " unless "
+    + document_.scoring.configuration + " lists its name under "
+    + "typesEveryCallerAlreadyKnows, which counts "
+    + document_.scoring.weights.typeEveryCallerAlreadyKnows + ". That list is the whole of "
+    + "the difference: this tool reads one source tree and never resolves a name, so a "
+    + "type is one to learn because the list does not hold it and for no other reason \u2014 "
+    + "not because anything here found out where it was declared. Reachable means "
     + document_.scoring.reachableFromOutside.join(", ") + ". Every bar is drawn to the same "
     + "scale, so two of them can be compared by eye.");
   add(rules, "p", null,
@@ -217,13 +238,20 @@ _SCRIPT = """
   // that two bars are comparable against a number a reader can find in the graph.
   var widest = document_.scoring.widestInterface;
 
-  // One term per weight the configuration holds, in the order the breakdown reads them
-  // out. A cost is the weighted sum of exactly these counts, so a weight with no term
-  // here would be part of every total with nothing under it to account for: a module
-  // costing 6 read "1 method, 2 parameters, 0 types" while three of the six came from a
-  // type the breakdown said there were none of, on the same screen as the paragraph
-  // saying what that kind of type costs.
-  var breakdown = [
+  // One term per weight, taken from the weights the document holds rather than from a
+  // list written here. A cost is the weighted sum of exactly these counts, so a weight
+  // with no term would be part of every total with nothing under it to account for: a
+  // module costing 6 read "1 method, 2 parameters, 0 types" while three of the six came
+  // from a type the breakdown said there were none of, on the same screen as the
+  // paragraph saying what that kind of type costs. Reading the weights out of the
+  // document is what makes that impossible rather than merely tested for: a weight this
+  // page has no term for arrives on the card as a term saying so.
+  //
+  // "A type to learn" is all `mustBeLearned` means, and all it can mean: the flag says
+  // the name is not on the configuration's list of types every caller already knows.
+  // These two terms said "this application invented" instead, of names — ProblemDetail,
+  // ApplicationListener — this application did not invent and this tool never looked for.
+  var terms = [
     {
       weight: "method",
       one: "method",
@@ -242,8 +270,8 @@ _SCRIPT = """
     },
     {
       weight: "typeToLearn",
-      one: "type this application invented",
-      many: "types this application invented",
+      one: "type to learn",
+      many: "types to learn",
       of: function (interface_) { return crossing(interface_, true); }
     },
     {
@@ -262,6 +290,30 @@ _SCRIPT = """
     return counted;
   }
 
+  var termFor = {};
+  terms.forEach(function (term) { termFor[term.weight] = term; });
+
+  // The order the counts read in, which is not the order the document happens to list
+  // the weights in. A weight with no place here goes last rather than nowhere.
+  var reads = ["method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows"];
+  function place(weight) {
+    var at = reads.indexOf(weight);
+    return at < 0 ? reads.length : at;
+  }
+
+  var breakdown = Object.keys(document_.scoring.weights)
+    .sort(function (left, right) {
+      return place(left) - place(right) || (left < right ? -1 : left > right ? 1 : 0);
+    })
+    .map(function (weight) {
+      return termFor[weight] || {
+        weight: weight,
+        one: "part costed as " + weight + ", which this page cannot count",
+        many: "parts costed as " + weight + ", which this page cannot count",
+        of: function () { return 0; }
+      };
+    });
+
   // Branching on the fact that carries the exclusion, not on the absent cost that
   // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
   // would throw for a module that had one without the other, and the renderer is one
@@ -276,10 +328,24 @@ _SCRIPT = """
     var track = add(item, "div", "bar");
     track.title = "interface cost " + module.interface.cost;
     add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
-    var parts = breakdown.map(function (term) {
-      return count(term.of(module.interface), term.one, term.many);
+    var parts = [];
+    var added = 0;
+    breakdown.forEach(function (term) {
+      var howMany = term.of(module.interface);
+      parts.push(count(howMany, term.one, term.many));
+      added += howMany * document_.scoring.weights[term.weight];
     });
-    add(item, "p", "cost", module.interface.cost + " to learn: " + parts.join(", "));
+    var reading = add(item, "p", "cost",
+      module.interface.cost + " to learn: " + parts.join(", "));
+    // The breakdown is the argument for the number above it, so it has to come to that
+    // number. A term counting the wrong thing is invisible in a total and obvious here,
+    // and the whole claim of the page is that a score can be argued with — which a
+    // reader cannot do with parts that do not add up and nothing saying so.
+    if (added !== module.interface.cost) {
+      reading.appendChild(document.createTextNode(
+        " \u2014 but these counts come to " + added
+        + ", so this page is counting something the score did not"));
+    }
   }
 
   var byId = {};
@@ -339,7 +405,11 @@ def render(document, serialised):
             '<script id="' + GRAPH_ELEMENT_ID + '" type="application/json">',
             embedded,
             "</script>",
-            "<script>" + _SCRIPT.replace("GRAPH_ELEMENT_ID", GRAPH_ELEMENT_ID) + "</script>",
+            "<script>"
+            + _SCRIPT.replace("GRAPH_ELEMENT_ID", GRAPH_ELEMENT_ID).replace(
+                "GRAPH_SCHEMA", graph.SCHEMA
+            )
+            + "</script>",
             "</body>",
             "</html>",
             "",

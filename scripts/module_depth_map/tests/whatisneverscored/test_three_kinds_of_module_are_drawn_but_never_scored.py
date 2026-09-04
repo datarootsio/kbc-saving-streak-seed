@@ -20,7 +20,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        self.document = graph.build([graph.java_root(tree.root)])
+        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -265,6 +265,24 @@ class AnExcludedModuleIsStillDrawnTest(SourceOfKnownShapeTest):
         self.assertIsNone(modules["Tills"]["interface"]["cost"])
         self.assertIsNone(modules["ShopApplication"]["interface"]["cost"])
         self.assertEqual(4, modules["Till"]["interface"]["cost"])
+
+    def test_a_module_that_was_never_scored_publishes_no_score_for_its_methods_either(self):
+        """Absent all the way down, or the absence at the top is only a presentation.
+
+        `interface.cost` was null beside `interface.methods[0].cost: 2`, so the graph — the
+        machine-readable output the spec exists to give an agent — carried the parts of a
+        score for a module the same document says has none, ready to be added up into a
+        number nobody decided to give it. The methods themselves stay: what the rule
+        declined to measure is exactly what a reader is meant to be able to see.
+        """
+        modules = self.source()
+
+        for name in ("Receipt", "Tills", "ShopApplication"):
+            for method in modules[name]["interface"]["methods"]:
+                self.assertIsNone(method["cost"], "%s.%s" % (name, method["name"]))
+        self.assertEqual(
+            [2], [method["cost"] for method in modules["Till"]["interface"]["methods"]]
+        )
 
     def test_an_excluded_module_still_shows_what_the_rule_declined_to_measure(self):
         """The interface is read either way, so a reader can see what was not scored."""
