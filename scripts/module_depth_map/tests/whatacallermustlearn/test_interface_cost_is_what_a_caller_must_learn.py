@@ -640,11 +640,10 @@ class ARecordThatWritesAnAccessorOffersOneOfItTest(SourceOfKnownShapeTest):
     WRITES_NEITHER = ("Plain", "public record Plain(long cents, List<String> tags) {}")
 
     def test_the_accessor_a_record_writes_is_the_one_its_component_gives_it(self):
-        methods = self.methods_of(*self.WRITES_THEM)
+        methods = self.modules(self.WRITES_THEM)["Coin"]["interface"]["methods"]
 
-        self.assertEqual(["cents", "tags"], sorted(methods))
-        self.assertEqual("long", methods["cents"]["returns"])
-        self.assertEqual("List<String>", methods["tags"]["returns"])
+        self.assertEqual(["cents", "tags"], [method["name"] for method in methods])
+        self.assertEqual(["long", "List<String>"], [method["returns"] for method in methods])
 
     def test_writing_an_accessor_out_costs_a_caller_what_leaving_it_out_costs(self):
         modules = self.scored(self.WRITES_THEM, self.WRITES_NEITHER)
