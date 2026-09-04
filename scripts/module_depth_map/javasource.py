@@ -694,23 +694,30 @@ def _method_in(member, holder_kind, line):
     so looking only for the word dropped `void record(Deposit deposit)` from the interface
     without a word said: a method this application could plausibly write, gone from the
     page, and the module cheaper than the source makes it.
+
+    Every such decision leaves a line, because it is the one the page cannot show being
+    wrong: a member declined here is a method missing from an interface, and a missing
+    method reads as a module that asks less of its caller. `_declined` says which member
+    and why.
     """
     text = _without_annotations(member)
     opened = text.find("(")
     if opened < 0:
         return None
     before = text[:opened]
-    if "=" in before or _TYPE.search(before):
-        return None
+    if "=" in before:
+        return _declined(member, line, "a value is assigned to it, so it is a field")
+    if _TYPE.search(before):
+        return _declined(member, line, "a declaration keyword names a type in it")
     modifiers, rest = _modifiers_in(before)
     signature = _without_type_parameters(rest)
     name = _TRAILING_NAME.search(signature)
     if name is None:
-        return None
+        return _declined(member, line, "nothing before the brackets reads as a name")
     closed = _after_balanced(text, opened)
     returns = _normalised(signature[:name.start()])
     if not returns:
-        return None
+        return _declined(member, line, "it hands nothing back, so it is a constructor")
     # `int f()[]` declares the array after the parameters rather than on the type, the way
     # `int xs[]` declares one after the name. Both spellings hand a caller the same array,
     # and dropping the brackets here would hand them back the element type instead.
@@ -729,6 +736,35 @@ def _method_in(member, holder_kind, line):
         returns,
         _type_parameters_in(rest),
     )
+
+
+def _declined(member, line, reason):
+    """Say that a member with a parameter list is not a method, and why, and answer None.
+
+    This is the one decision in the file that cannot fail loudly. A member that reads
+    like a method and is not one might be a field, a constructor or a nested record —
+    or it might be a method this parser has just lost, which is how an interface arrives
+    quietly cheaper than the source makes it, and how both shapes found on this branch
+    got in. Nothing here can tell the difference, so it leaves a line instead: grep
+    "member not read as a method" at DEBUG and every one of these is there to be argued
+    with, at a line a reader can go and open.
+
+    Only members with a parameter list reach here. A field or an initialiser has none, is
+    the commonest thing in a body, and was never a candidate for being a method.
+    """
+    log.debug(
+        "member not read as a method line=%d reason=%s member=%s",
+        line,
+        reason,
+        _one_line(member),
+    )
+    return None
+
+
+def _one_line(member):
+    """A member's own text on one line, short enough to sit in a log line."""
+    tidy = " ".join(member.split())
+    return tidy if len(tidy) <= 120 else tidy[:117] + "..."
 
 
 def _brackets_after(text):

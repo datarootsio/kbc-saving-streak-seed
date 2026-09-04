@@ -60,6 +60,37 @@ class TheRunSaysWhatItDidTest(SourceTreeTest):
         self.addCleanup(setattr, root, "handlers", handlers)
         self.addCleanup(root.setLevel, level)
 
+    def test_every_member_not_read_as_a_method_says_which_one_and_why(self):
+        """The one decision here that cannot fail loudly, so it leaves a line instead.
+
+        A member with a parameter list is either a method or one of three things that
+        read like one, and the parser cannot prove which. When it decides "not a method"
+        it is either right or it has just lost part of an interface — twice now it had —
+        so a reader at DEBUG gets the member, the line and the reason, and can argue.
+        """
+        tree = self.tree("fixture")
+        tree.java(
+            "shop.till", "Till",
+            "public class Till {\n"
+            "    private static final String NAME = String.valueOf(1);\n"
+            "    record Row(long id) {}\n"
+            "    public Till(long id) {}\n"
+            "    public void ring() {}\n"
+            "}",
+        )
+
+        with self.assertLogs("module_depth_map", level=logging.DEBUG) as logged:
+            self.assertEqual(0, self.run_over(tree.root))
+
+        declined = [line for line in logged.output if "member not read as a method" in line]
+        self.assertEqual(3, len(declined), logged.output)
+        self.assertIn("so it is a field", " ".join(declined))
+        self.assertIn("names a type in it", " ".join(declined))
+        self.assertIn("so it is a constructor", " ".join(declined))
+        for line in declined:
+            self.assertIn("line=", line)
+            self.assertNotIn("ring()", line)
+
     def test_a_refusal_says_why_at_the_level_this_repository_reserves_for_refusals(self):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             exit_code = self.run_over(os.path.join(self.scratch, "no-such-directory"))
