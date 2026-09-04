@@ -271,6 +271,104 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("write List, String instead", reason)
 
+    def test_an_annotation_written_the_way_the_source_writes_it_is_refused(self):
+        """`@SpringBootApplication` is how the entry point is marked, and it matched nothing.
+
+        The dot was the whole of this check once, and the `@` a reader copies along with
+        the name went straight through: exit 0, no warning, `entry point` reported as
+        excluding nothing, and the entry point scored like anything else.
+        """
+        reason = self.refusal_for(
+            **self.with_a_rule({"annotatedWith": ["@SpringBootApplication"]})
+        )
+
+        self.assertIn("annotatedWith", reason)
+        self.assertIn("simple name", reason)
+        self.assertIn("write SpringBootApplication instead", reason)
+
+    def test_a_supertype_written_with_the_arguments_the_source_gives_it_is_refused(self):
+        """`extends JpaRepository<Deposit, Long>` is how all nine of them are written."""
+        reason = self.refusal_for(
+            **self.with_a_rule(
+                {"kind": ["interface"], "extendsOrImplements": ["JpaRepository<Deposit, Long>"]}
+            )
+        )
+
+        self.assertIn("extendsOrImplements", reason)
+        self.assertIn("write JpaRepository instead", reason)
+
+    def test_a_suffix_with_a_space_after_it_is_refused_because_no_name_ends_in_one(self):
+        reason = self.refusal_for(**self.with_a_rule({"nameEndsWith": ["Controller "]}))
+
+        self.assertIn("nameEndsWith", reason)
+        self.assertIn("write Controller instead", reason)
+
+    def test_a_familiar_type_written_with_the_shape_it_is_carried_in_is_refused(self):
+        """`Optional<?>` is one type as a caller reads it and no name as the parser does."""
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows=["Optional<?>", "String"],
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("write Optional instead", reason)
+
+    def test_a_name_nothing_can_be_recovered_from_is_refused_by_what_a_name_is(self):
+        """There is no form to suggest for `Response Entity`, so the refusal says the rule."""
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows=["Response Entity"],
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("Response Entity", reason)
+        self.assertIn("letters, digits, _ and $", reason)
+
+    def test_every_name_the_committed_rules_match_on_is_one_this_tool_would_accept(self):
+        """The control on the control: the file shipped here is written the matchable way."""
+        rules = scoring.load()
+
+        for exclusion in rules.exclusions:
+            for condition in ("annotatedWith", "extendsOrImplements"):
+                for name in exclusion.when.get(condition, []):
+                    self.assertRegex(name, r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z", exclusion.rule)
+        for name in rules.already_known:
+            self.assertRegex(name, r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z")
+
+    def test_a_name_written_twice_in_one_list_is_refused_rather_than_read_once(self):
+        """Every one of these lists is matched as a set, so the second entry does nothing."""
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows=["String", "Long", "String"],
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("String more than once", reason)
+
+    def test_a_suffix_that_could_not_be_a_whole_name_is_still_a_suffix(self):
+        """`nameEndsWith` matches the end of a name, so it does not have to start one.
+
+        `Till2` is a legal class name and `nameEndsWith: ["2"]` is a rule somebody can
+        write and mean. Checking a suffix as though it were a whole name would refuse it
+        for a reason Java does not have — the same fault as accepting one nothing can
+        match, pointed the other way.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till2", "public class Till2 {\n    public void ring() {}\n}")
+
+        modules = self.modules(
+            graph.java_root(tree.root), self.rules(**self.with_a_rule({"nameEndsWith": ["2"]}))
+        )
+
+        self.assertEqual("the rule under test", modules["Till2"]["excludedBy"]["rule"])
+        self.assertEqual("name ends with 2", modules["Till2"]["excludedBy"]["matched"])
+
     def test_a_kind_this_tool_never_reports_is_refused(self):
         reason = self.refusal_for(**self.with_a_rule({"kind": ["struct"]}))
 
@@ -391,6 +489,33 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("list of names", reason)
         self.assertNotIn("something in it", reason)
+
+    def test_no_visibility_reachable_at_all_is_refused_for_what_it_would_do(self):
+        """A visibility list is not a rule, so it cannot be refused as one.
+
+        `reachableFromOutside: []` used to be answered with "a rule with no name to match
+        on could never fire", which is a sentence about something else entirely: this
+        list names no rule and matches no name. What it would actually do is price every
+        interface in the application at nothing, and that is what the refusal has to say.
+        """
+        cost = dict(self.as_committed["interfaceCost"], reachableFromOutside=[])
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("reachableFromOutside", reason)
+        self.assertNotIn("could never fire", reason)
+        self.assertIn("every bar on the page would be nothing", reason)
+
+    def test_a_visibility_written_twice_is_refused_rather_than_collapsed(self):
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            reachableFromOutside=["public", "protected", "public"],
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("reachableFromOutside", reason)
+        self.assertIn("public more than once", reason)
 
     def test_a_file_written_for_a_later_schema_is_told_this_tool_is_the_old_one(self):
         """A newer file holds keys this tool has never heard of, and that is not its fault.

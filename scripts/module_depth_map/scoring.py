@@ -31,6 +31,7 @@ it, so "why was this ignored?" always has an answer a reader can point at.
 import json
 import logging
 import os
+import re
 
 from . import javasource
 
@@ -101,10 +102,12 @@ def _known_kinds(kinds, where):
 def _strings(value, where, may_be_empty=False):
     """A list of names, refused by what is actually wrong with it.
 
-    The two faults are two messages. One name written on its own where the list belongs
-    is not an empty list, and answering it with "it has to be a list with something in
-    it" — on the one field where nothing in it is allowed — sends its author to fix the
-    half this tool is perfectly happy with.
+    The faults here are separate messages. One name written on its own where the list
+    belongs is not an empty list, and answering it with "it has to be a list with
+    something in it" — on the one field where nothing in it is allowed — sends its author
+    to fix the half this tool is perfectly happy with. A name written twice is the same
+    hazard one step smaller: the second entry reads like a decision somebody made and is
+    a no-op, because every one of these lists is matched as a set.
     """
     if not isinstance(value, list):
         raise ConfigurationRefused(
@@ -117,32 +120,89 @@ def _strings(value, where, may_be_empty=False):
     for entry in value:
         if not isinstance(entry, str) or not entry.strip():
             raise ConfigurationRefused("%s holds %r, and every entry has to be a name" % (where, entry))
+    repeated = sorted({entry for entry in value if value.count(entry) > 1})
+    if repeated:
+        raise ConfigurationRefused(
+            "%s holds %s more than once, and every list here is matched as a set: the "
+            "second one reads like a decision and does nothing"
+            % (where, ", ".join(repeated))
+        )
     return list(value)
 
 
-def _simple_names(value, where, may_be_empty=False):
-    """Names to be matched against the source, refusing any that could never match one.
+# What the parser actually recorded, and therefore the only spelling a rule can be matched
+# against. `names_in` hands back one simple name at a time — a package prefix taken off,
+# generics and arrays taken apart — and a module, an annotation and a supertype are each
+# recorded the same way, so these two patterns are the mirror of that and not a second
+# opinion about how Java spells a name.
+_A_SIMPLE_NAME = re.compile(r"(?:[^\W\d]|\$)[\w$]*\Z")
+_THE_END_OF_A_NAME = re.compile(r"[\w$]+\Z")
 
-    The parser records an annotation, a supertype and a module's own name by simple name,
-    so `org.springframework...SpringBootApplication` written here is a condition that can
-    never hold — and writing it is the natural mistake, because the qualified form is what
-    the *source* says and works there. Accepted quietly it is the worst kind of rule: the
-    file names an exclusion, the graph reports it excluding nothing, the module it was
-    written for is scored like anything else, and the run exits zero with nothing said.
+
+def _the_name_in(written):
+    """The simple name an unmatchable entry was most likely meant to be, or itself.
+
+    Every spelling stripped here is one the *source* uses and this tool does not record:
+    the `@` an annotation is written with, the arguments a supertype is parameterised
+    with, the package a type is qualified by. Recovering it is what lets the refusal say
+    "write JpaRepository instead" rather than only that something is wrong.
     """
-    names = _strings(value, where, may_be_empty)
-    qualified = [name for name in names if "." in name]
-    if qualified:
-        raise ConfigurationRefused(
-            "%s holds %s, and every name here is matched against a simple name the source "
-            "was read with: write %s instead"
-            % (
-                where,
-                ", ".join(sorted(qualified)),
-                ", ".join(sorted(name.rsplit(".", 1)[-1] for name in qualified)),
-            )
-        )
-    return names
+    name = written.strip()
+    if name.startswith("@"):
+        name = name[1:].strip()
+    name = name.split("<", 1)[0].strip()
+    return name.rsplit(".", 1)[-1].strip()
+
+
+def _matchable(names, where, shape, against):
+    """Names refused unless the source could actually be spelled with one of them.
+
+    A dot was once the whole of this check, and everything else a reader is likely to
+    reach for went through: `@SpringBootApplication` and `JpaRepository<Deposit, Long>`
+    are how the *source* writes the two rules this file ships with, so copying from the
+    source is the natural mistake exactly as the qualified name was. Accepted quietly it
+    is the worst kind of rule — the file names an exclusion, the graph reports it
+    excluding nothing, the module it was written for is scored like anything else, and
+    the run exits zero with nothing said.
+    """
+    unmatchable = [name for name in names if not shape.match(name)]
+    if not unmatchable:
+        return names
+    meant = [_the_name_in(name) for name in unmatchable]
+    advice = (
+        "write %s instead" % ", ".join(sorted(set(meant)))
+        if all(shape.match(name) for name in meant)
+        else "one written here is letters, digits, _ and $, and nothing around them"
+    )
+    raise ConfigurationRefused(
+        "%s holds %s, and every name here is matched against %s: %s"
+        % (where, ", ".join(sorted(set(unmatchable))), against, advice)
+    )
+
+
+def _simple_names(value, where, may_be_empty=False):
+    """Names matched against a whole name the parser read from the source."""
+    return _matchable(
+        _strings(value, where, may_be_empty),
+        where,
+        _A_SIMPLE_NAME,
+        "a simple name the source was read with",
+    )
+
+
+def _name_endings(value, where):
+    """Suffixes matched against the end of a module's own name.
+
+    A suffix is not a whole name — `Service` is the point of writing one — so it is
+    checked against what a name may end in rather than against what a name may be. It is
+    still the same refusal: `Controller ` with a space after it ends no module's name.
+    """
+    return _matchable(
+        _strings(value, where),
+        where,
+        _THE_END_OF_A_NAME,
+        "the end of a simple name the source was read with",
+    )
 
 
 def _shape(value):
@@ -194,13 +254,15 @@ def _java_kinds(value, where):
 # match on suffixes instead.
 #
 # `_simple_names` is the check for every condition matched against a name the parser read
-# from the source: it records each of those by simple name, so a qualified name written
-# here could never match anything.
+# from the source: it records each of those by simple name, so anything the source spells
+# a name with and this tool does not record — a package prefix, an `@`, a supertype's type
+# arguments — could never match anything. `nameEndsWith` matches part of such a name, so
+# it is checked against what a name may end in instead.
 CONDITIONS = {
     "kind": Condition(_is_of_kind, _java_kinds),
     "annotatedWith": Condition(_is_annotated_with, _simple_names),
     "extendsOrImplements": Condition(_extends_or_implements, _simple_names),
-    "nameEndsWith": Condition(_name_ends_with, _simple_names),
+    "nameEndsWith": Condition(_name_ends_with, _name_endings),
 }
 
 
@@ -379,7 +441,18 @@ def load(path=None):
                 "for widening its interface" % (name, weights[name])
             )
 
-    reachable = _strings(cost.get("reachableFromOutside"), "interfaceCost.reachableFromOutside")
+    # Its own two refusals rather than the ones a list of names gets: a visibility is not
+    # a rule, so "a rule with no name to match on could never fire" answers an empty list
+    # here with a sentence about something else.
+    reachable = _strings(
+        cost.get("reachableFromOutside"), "interfaceCost.reachableFromOutside", may_be_empty=True
+    )
+    if not reachable:
+        raise ConfigurationRefused(
+            "interfaceCost.reachableFromOutside is empty, and a method no caller can reach "
+            "is a method nobody has to learn: every interface would read as empty and every "
+            "bar on the page would be nothing"
+        )
     unknown = [visibility for visibility in reachable if visibility not in VISIBILITIES]
     if unknown:
         raise ConfigurationRefused(

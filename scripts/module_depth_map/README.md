@@ -65,11 +65,16 @@ Run its tests with the standard library's own runner, also from the repository r
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
   is edited, and no rule name or weight is written into it to fall back on. Every name a
   rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
-  because that is how the parser records what it read; a qualified name, or a kind the
-  parser never reports, is refused rather than accepted as a rule that could never fire.
-  So is an empty list of names for a rule to match on, and `--scoring ""`. The one list
-  that may be empty is `typesEveryCallerAlreadyKnows`: charging a caller for every type
-  they meet is a position somebody can hold, not a misspelling.
+  because that is how the parser records what it read. Anything the *source* puts around
+  such a name and this tool never records is refused rather than accepted as a rule that
+  could never fire: the `@` on an annotation, a supertype's type arguments, a package
+  prefix, a stray space. `"@SpringBootApplication"` and `"JpaRepository<Deposit, Long>"`
+  are how the source writes the two rules shipped here, so they are the natural mistake,
+  and the refusal names the form that does work. So is a kind the parser never reports, an
+  empty list of names for a rule to match on, a name written twice in one list, and
+  `--scoring ""`. The one list that may be empty is `typesEveryCallerAlreadyKnows`:
+  charging a caller for every type they meet is a position somebody can hold, not a
+  misspelling.
 - **Nothing is excluded without a named rule.** Each excluded module carries the rule that
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
