@@ -601,14 +601,12 @@ def _member_headers(masked, kind, body_starts_at, body_ends_at):
 
     Every member's body is stepped over whole, so nothing written inside a method — a
     call that reads like a declaration, a local class, a lambda — is ever taken for part
-    of the type's interface. The separator that follows a stepped-over body is stepped
-    over with it, because a member whose text begins with the comma or the semicolon
-    ending the member before it is not the member it looks like.
+    of the type's interface.
 
-    An enum's constants are not members and are skipped as a block. They are written in
-    the same place as members, they may carry arguments and a body of their own, and
-    reading one as a member is how `B("y")` became a package-private method returning a
-    comma.
+    An enum's constants are not members, and are skipped as the block they are. They are
+    written in the same place as members, they may carry arguments and a body of their
+    own, and reading one as a member is how `B("y")` became a package-private method
+    whose return type was the comma in front of it.
     """
     headers = []
     start = body_starts_at + 1
@@ -624,7 +622,7 @@ def _member_headers(masked, kind, body_starts_at, body_ends_at):
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
             headers.append(_header(masked, start, position))
-            position = _past_separator(masked, _after_balanced(masked, position, "{", "}"))
+            position = _after_balanced(masked, position, "{", "}")
             start = position
             continue
         elif parens == 0 and character == ";":
@@ -667,13 +665,6 @@ def _after_enum_constants(masked, start, body_ends_at):
             return position + 1
         position += 1
     return body_ends_at
-
-
-def _past_separator(masked, position):
-    """Just past the `,` or `;` that closes off a member whose body was stepped over."""
-    while position < len(masked) and masked[position] in " \t\r\n":
-        position += 1
-    return position + 1 if position < len(masked) and masked[position] in ",;" else position
 
 
 def _method_in(member, holder_kind, line):
