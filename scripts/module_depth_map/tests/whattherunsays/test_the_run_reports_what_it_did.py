@@ -167,7 +167,42 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         self.assertEqual(
             ["graph.json", "not-a-directory", "page.html"], sorted(os.listdir(out))
         )
-        self.assertIn("could not be written", "\n".join(logged.output))
+        # The output that failed, not the one that staged perfectly well: a refusal
+        # naming the file a reader can still open is a refusal pointing them at the
+        # wrong file to go and fix.
+        said = "\n".join(logged.output)
+        self.assertIn("page.html could not be written", said)
+        self.assertNotIn("graph.json could not be written", said)
+        self.assertNotIn("Traceback", said)
+
+    def test_a_graph_whose_directory_cannot_be_made_is_refused_by_name(self):
+        """The first output failing is the same refusal as the second one failing.
+
+        `os.makedirs` runs before anything is staged, so the failure arrived with nothing
+        written and nothing to name it with — an `IndexError` out of the run, no warning,
+        no exit 5, and a traceback naming a line of `cli.py` instead of the file a reader
+        would have to go and make room for.
+        """
+        tree = self.a_module()
+        out = self.a_previous_run()
+        blocker = os.path.join(out, "not-a-directory")
+        with open(blocker, "w", encoding="utf-8") as handle:
+            handle.write("a file, so nothing can be written underneath it")
+
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = cli.main(
+                ["--source", tree.root, "--graph", os.path.join(blocker, "graph.json"),
+                 "--page", os.path.join(out, "page.html")]
+            )
+
+        self.assertEqual(5, code)
+        said = "\n".join(logged.output)
+        self.assertIn("graph.json could not be written", said)
+        self.assertNotIn("Traceback", said)
+        self.assertEqual(b"the previous run's page.html", bytes_of(os.path.join(out, "page.html")))
+        self.assertEqual(
+            ["graph.json", "not-a-directory", "page.html"], sorted(os.listdir(out))
+        )
 
     def test_a_page_whose_path_is_a_directory_leaves_the_graph_as_it_was(self):
         """The way a *move* fails after both files have been written whole.

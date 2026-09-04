@@ -171,7 +171,7 @@ def main(argv=None):
 
 
 def write_together(*outputs):
-    """Write every one of these (path, bytes) where they belong, or write none of them.
+    """Write every one of these (path, bytes) where they belong, and say what happened.
 
     Each is written beside where it belongs and then moved into place. Rendering both to
     bytes before writing either is not enough on its own: the second `open` fails on a
@@ -181,13 +181,19 @@ def write_together(*outputs):
 
     The moves are what is left, and two moves are not one step: there is no way to rename
     two files at once, so "both or neither" cannot be promised outright and is not
-    promised here. What is promised is that no failure is a silent or a partial one:
+    promised here. What is promised is that no failure is a silent, a partial or a
+    misattributed one:
 
     - every way a move can fail that this tool can see coming is checked before a single
       byte is written. A destination that is already a directory is the one such way, and
       the only one the `open` below does not catch first: `page.html.writing` opens
       perfectly well next to a directory called `page.html`, and the move then fails
       after the graph has landed.
+    - a failure while staging names the output that failed, taken from the arguments
+      rather than from what had been staged when it happened. Reading the path out of
+      `staged` said the wrong file when a later output was the one that could not be
+      written, and had nothing to read at all — an `IndexError` out of the run, which is
+      the traceback the paragraph below promises never to end on — when it was the first.
     - a move that fails anyway raises with the paths that did land, so the run can say
       which of the two files a reader is now looking at and which one is the old one.
       Silence there is the failure this whole function exists to prevent, and a traceback
@@ -204,8 +210,8 @@ def write_together(*outputs):
             )
 
     staged = []
-    try:
-        for path, content in outputs:
+    for path, content in outputs:
+        try:
             directory = os.path.dirname(path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
@@ -213,11 +219,11 @@ def write_together(*outputs):
             staged.append((beside, path, len(content)))
             with open(beside, "wb") as handle:
                 handle.write(content)
-    except OSError as unwritable:
-        _discard_all(staged)
-        raise OutputsUnwritten(
-            "%s could not be written: %s" % (staged[-1][1], unwritable)
-        ) from unwritable
+        except OSError as unwritable:
+            _discard_all(staged)
+            raise OutputsUnwritten(
+                "%s could not be written: %s" % (path, unwritable)
+            ) from unwritable
 
     landed = []
     for index, (beside, path, size) in enumerate(staged):
