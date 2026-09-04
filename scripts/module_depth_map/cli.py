@@ -10,7 +10,7 @@ import logging
 import os
 import sys
 
-from . import graph, page
+from . import graph, page, scoring
 
 log = logging.getLogger("module_depth_map.cli")
 
@@ -32,6 +32,12 @@ def parser():
     )
     it.add_argument("--graph", default=DEFAULT_GRAPH, metavar="FILE", help="where to write the graph document")
     it.add_argument("--page", default=DEFAULT_PAGE, metavar="FILE", help="where to write the page")
+    it.add_argument(
+        "--scoring",
+        default=scoring.DEFAULT_CONFIGURATION,
+        metavar="FILE",
+        help="the scoring weights and exclusion rules to apply (default the file beside the tool)",
+    )
     it.add_argument(
         "--log-level",
         default="INFO",
@@ -59,9 +65,26 @@ def main(argv=None):
         log.warning("refused to run: no such source directory %s", ", ".join(missing))
         return 2
 
-    log.info("run started sources=%s graph=%s page=%s", ",".join(sources), arguments.graph, arguments.page)
+    log.info(
+        "run started sources=%s graph=%s page=%s scoring=%s",
+        ",".join(sources),
+        arguments.graph,
+        arguments.page,
+        arguments.scoring,
+    )
     try:
-        document = graph.build([graph.java_root(directory) for directory in sources])
+        rules = scoring.load(arguments.scoring)
+    except scoring.ConfigurationRefused as refused:
+        log.warning(
+            "refused to run: the scoring rules in %s cannot be used: %s. Nothing is scored "
+            "with a rule nobody wrote",
+            arguments.scoring,
+            refused.reason,
+        )
+        return 4
+
+    try:
+        document = graph.build([graph.java_root(directory) for directory in sources], rules)
     except graph.DuplicateModules as clash:
         log.warning(
             "refused to run: %d module id(s) are declared more than once (%s), and a page "
@@ -79,12 +102,15 @@ def main(argv=None):
     written_graph = write(arguments.graph, serialised)
     written_page = write(arguments.page, rendered)
     log.info(
-        "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d",
+        "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
+        "scored=%d neverScored=%d",
         written_graph,
         written_page,
         document["source"]["filesParsed"],
         document["source"]["filesUnparsed"],
         len(document["modules"]),
+        document["scoring"]["modulesScored"],
+        document["scoring"]["modulesNeverScored"],
     )
 
     if document["source"]["filesUnparsed"]:

@@ -1,7 +1,35 @@
 {
   "modules": [
     {
+      "excludedBy": {
+        "matched": "annotated with SpringBootApplication",
+        "rule": "entry point"
+      },
       "id": "io.dataroots.savingstreak.SavingStreakApplication",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "main",
+            "parameters": [
+              "String[]"
+            ],
+            "returns": "void",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 12,
@@ -12,7 +40,16 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is enum",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.accounts.AccountPairing",
+      "interface": {
+        "cost": null,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "enum",
       "language": "java",
       "lines": 22,
@@ -23,7 +60,155 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.AccountsService",
+      "interface": {
+        "cost": 30,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "accountsOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<CustomerAccounts>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "balanceOfCurrentAccount",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<BigDecimal>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "customerIdentifiedBy",
+            "parameters": [
+              "String"
+            ],
+            "returns": "Optional<Customer>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "customers",
+            "parameters": [],
+            "returns": "List<Customer>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "name": "depositInto",
+            "parameters": [
+              "long",
+              "BigDecimal"
+            ],
+            "returns": "void",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "noSuchCurrentAccount",
+            "parameters": [
+              "long"
+            ],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "noSuchSavingsAccount",
+            "parameters": [
+              "long"
+            ],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "ownerNameOfSavingsAccount",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<String>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "name": "pairingFor",
+            "parameters": [
+              "long",
+              "long"
+            ],
+            "returns": "AccountPairing",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "savingsAccountExists",
+            "parameters": [
+              "long"
+            ],
+            "returns": "boolean",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "name": "withdrawFrom",
+            "parameters": [
+              "long",
+              "BigDecimal"
+            ],
+            "returns": "boolean",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "AccountPairing"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Customer"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "CustomerAccounts"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Optional"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "boolean"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 180,
@@ -34,7 +219,74 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.CurrentAccount",
+      "interface": {
+        "cost": 7,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "deposit",
+            "parameters": [
+              "BigDecimal"
+            ],
+            "returns": "void",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getBalance",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "getIban",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "getId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "withdraw",
+            "parameters": [
+              "BigDecimal"
+            ],
+            "returns": "boolean",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "boolean"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 82,
@@ -45,7 +297,56 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findByCustomerId",
+            "parameters": [
+              "Long"
+            ],
+            "returns": "List<CurrentAccount>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "findHolderIdById",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<Long>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "CurrentAccount"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Optional"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 22,
@@ -56,7 +357,44 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.Customer",
+      "interface": {
+        "cost": 3,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getContactDetails",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "getId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "getName",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 49,
@@ -67,7 +405,44 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.accounts.CustomerAccounts",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "currentAccounts",
+            "parameters": [],
+            "returns": "List<CurrentAccount>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "savingsAccounts",
+            "parameters": [],
+            "returns": "List<SavingsAccount>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "CurrentAccount"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccount"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 11,
@@ -78,7 +453,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.accounts.CustomerRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findByContactDetailsIgnoreCase",
+            "parameters": [
+              "String"
+            ],
+            "returns": "Optional<Customer>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Customer"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Optional"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 18,
@@ -89,7 +496,32 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.DemoData",
+      "interface": {
+        "cost": 2,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "run",
+            "parameters": [
+              "String"
+            ],
+            "returns": "void",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 60,
@@ -100,7 +532,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.SavingsAccount",
+      "interface": {
+        "cost": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 38,
@@ -111,7 +562,69 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findByCustomerId",
+            "parameters": [
+              "Long"
+            ],
+            "returns": "List<SavingsAccount>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "findHolderIdById",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<Long>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "findOwnerNameById",
+            "parameters": [
+              "long"
+            ],
+            "returns": "Optional<String>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Optional"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccount"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 21,
@@ -122,7 +635,54 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
+      "interface": {
+        "cost": 10,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "applicationClock",
+            "parameters": [],
+            "returns": "Clock",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "movableApplicationClock",
+            "parameters": [],
+            "returns": "MovableClock",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "theClockInUse",
+            "parameters": [
+              "Clock"
+            ],
+            "returns": "ApplicationListener<ApplicationStartedEvent>",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ApplicationListener"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ApplicationStartedEvent"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Clock"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "MovableClock"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 77,
@@ -133,7 +693,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockOffset",
+      "interface": {
+        "cost": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getMovedForwardByDays",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 41,
@@ -144,7 +723,16 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
+      "interface": {
+        "cost": null,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "interface",
       "language": "java",
       "lines": 7,
@@ -155,7 +743,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockOnStartUp",
+      "interface": {
+        "cost": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "afterSingletonsInstantiated",
+            "parameters": [],
+            "returns": "void",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 67,
@@ -166,7 +773,13 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockRefused",
+      "interface": {
+        "cost": 0,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "class",
       "language": "java",
       "lines": 15,
@@ -177,7 +790,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockService",
+      "interface": {
+        "cost": 5,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "advanceBy",
+            "parameters": [
+              "long"
+            ],
+            "returns": "HowFarTheClockHasMoved",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "howFarItHasMoved",
+            "parameters": [],
+            "returns": "HowFarTheClockHasMoved",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "HowFarTheClockHasMoved"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 113,
@@ -188,7 +833,40 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "movedForwardByDays",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "now",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 13,
@@ -199,7 +877,85 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.MovableClock",
+      "interface": {
+        "cost": 8,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getZone",
+            "parameters": [],
+            "returns": "ZoneId",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "instant",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "moveForwardTo",
+            "parameters": [
+              "long"
+            ],
+            "returns": "void",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "movedForwardByDays",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "toString",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "withZone",
+            "parameters": [
+              "ZoneId"
+            ],
+            "returns": "Clock",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Clock"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "ZoneId"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 89,
@@ -210,7 +966,46 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.AmountOfMoney",
+      "interface": {
+        "cost": 5,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "asMoney",
+            "parameters": [
+              "BigDecimal"
+            ],
+            "returns": "String",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 3,
+            "name": "whyItIsNotOne",
+            "parameters": [
+              "String",
+              "BigDecimal"
+            ],
+            "returns": "Optional<String>",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Optional"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 63,
@@ -221,7 +1016,68 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.Deposit",
+      "interface": {
+        "cost": 6,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getAmount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getDepositedAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getRemainingAmount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "reduceBy",
+            "parameters": [
+              "BigDecimal"
+            ],
+            "returns": "void",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 92,
@@ -232,7 +1088,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositRefused",
+      "interface": {
+        "cost": 3,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "kind",
+            "parameters": [],
+            "returns": "Kind",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Kind"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 42,
@@ -245,7 +1120,68 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.deposits.DepositRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findBySavingsAccountId",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<Deposit>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "findBySavingsAccountIdOrderByDepositedAtAscIdAsc",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<Deposit>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "findBySavingsAccountIdOrderByDepositedAtDescIdDesc",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<Deposit>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "giveEveryDepositWhatRemainsOfIt",
+            "parameters": [],
+            "returns": "int",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Deposit"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "int"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 46,
@@ -256,7 +1192,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
+      "interface": {
+        "cost": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "afterSingletonsInstantiated",
+            "parameters": [],
+            "returns": "void",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 58,
@@ -267,7 +1222,60 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsService",
+      "interface": {
+        "cost": 10,
+        "methods": [
+          {
+            "cost": 4,
+            "name": "deposit",
+            "parameters": [
+              "long",
+              "long",
+              "BigDecimal"
+            ],
+            "returns": "RecordedDeposit",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "depositsInto",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<RecordedDeposit>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "moneyBalanceOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedDeposit"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 212,
@@ -278,7 +1286,62 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.deposits.RecordedDeposit",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "depositedAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "pointsEarned",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 11,
@@ -289,7 +1352,77 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "allocations",
+            "parameters": [],
+            "returns": "List<RecordedWithdrawalAllocation>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "toCurrentAccountId",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "withdrawnAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawalAllocation"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 10,
@@ -300,7 +1433,40 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "depositId",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 7,
@@ -311,7 +1477,59 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.Withdrawal",
+      "interface": {
+        "cost": 4,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getAmount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getDestinationCurrentAccountId",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getWithdrawnAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 39,
@@ -322,7 +1540,37 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
+      "interface": {
+        "cost": 2,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "getAmount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getDepositId",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 34,
@@ -333,7 +1581,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findByWithdrawalIdOrderByIdAsc",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<WithdrawalAllocation>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "WithdrawalAllocation"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 11,
@@ -344,7 +1624,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+      "interface": {
+        "cost": 3,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "kind",
+            "parameters": [],
+            "returns": "Kind",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Kind"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 16,
@@ -357,7 +1656,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findBySavingsAccountIdOrderByWithdrawnAtDescIdDesc",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<Withdrawal>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Withdrawal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 11,
@@ -368,7 +1699,51 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+      "interface": {
+        "cost": 8,
+        "methods": [
+          {
+            "cost": 4,
+            "name": "withdraw",
+            "parameters": [
+              "long",
+              "long",
+              "BigDecimal"
+            ],
+            "returns": "RecordedWithdrawal",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "withdrawalsFrom",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<RecordedWithdrawal>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 149,
@@ -379,7 +1754,58 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.jobs.AJobThatRan",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "definedBy",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "name",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "ranAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "tookMillis",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 14,
@@ -390,7 +1816,43 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.jobs.AScheduledJob",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "definedBy",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "name",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "schedule",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 12,
@@ -401,7 +1863,13 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.JobFailed",
+      "interface": {
+        "cost": 0,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "class",
       "language": "java",
       "lines": 16,
@@ -412,7 +1880,13 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.JobRefused",
+      "interface": {
+        "cost": 0,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "class",
       "language": "java",
       "lines": 16,
@@ -423,7 +1897,58 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
+      "interface": {
+        "cost": 8,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "runNow",
+            "parameters": [
+              "String"
+            ],
+            "returns": "AJobThatRan",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "sayWhichJobsAreScheduled",
+            "parameters": [],
+            "returns": "void",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "whatCanBeRun",
+            "parameters": [],
+            "returns": "List<AScheduledJob>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "AJobThatRan"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "AScheduledJob"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "void"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 284,
@@ -436,7 +1961,13 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.SchedulingIsOn",
+      "interface": {
+        "cost": 0,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "class",
       "language": "java",
       "lines": 23,
@@ -447,7 +1978,55 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.points.PointsCredit",
+      "interface": {
+        "cost": 10,
+        "methods": [
+          {
+            "cost": 5,
+            "name": "baseAccrualFor",
+            "parameters": [
+              "long",
+              "long",
+              "long",
+              "Instant"
+            ],
+            "returns": "PointsCredit",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "getRemainingPoints",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "take",
+            "parameters": [
+              "long"
+            ],
+            "returns": "long",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "PointsCredit"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 81,
@@ -458,7 +2037,74 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.points.PointsCreditRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 3,
+            "name": "earnedBy",
+            "parameters": [
+              "PointsReason",
+              "Collection<Long>"
+            ],
+            "returns": "List<EarnedPoints>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "remainingPointsOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "unspentOldestFirst",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<PointsCredit>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Collection"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "EarnedPoints"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "PointsCredit"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "PointsReason"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 52,
@@ -471,7 +2117,16 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is enum",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.points.PointsReason",
+      "interface": {
+        "cost": null,
+        "methods": [],
+        "typesCrossingTheSeam": []
+      },
       "kind": "enum",
       "language": "java",
       "lines": 6,
@@ -482,7 +2137,83 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.points.PointsService",
+      "interface": {
+        "cost": 12,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "balanceOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "basePointsEarnedBy",
+            "parameters": [
+              "Collection<Long>"
+            ],
+            "returns": "Map<Long, Long>",
+            "visibility": "public"
+          },
+          {
+            "cost": 5,
+            "name": "creditBasePointsFor",
+            "parameters": [
+              "long",
+              "long",
+              "BigDecimal",
+              "Instant"
+            ],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "name": "spend",
+            "parameters": [
+              "long",
+              "long"
+            ],
+            "returns": "boolean",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Collection"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Map"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "boolean"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 119,
@@ -493,7 +2224,73 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.rewards.ClaimedReward",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "claimedAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "pointsSpent",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "reward",
+            "parameters": [],
+            "returns": "Reward",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "voucherCode",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 13,
@@ -504,7 +2301,54 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.Redemption",
+      "interface": {
+        "cost": 12,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "asClaimed",
+            "parameters": [],
+            "returns": "ClaimedReward",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 5,
+            "name": "issue",
+            "parameters": [
+              "long",
+              "Reward",
+              "long",
+              "Instant"
+            ],
+            "returns": "Redemption",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedReward"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Redemption"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 92,
@@ -515,7 +2359,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is interface, extends or implements JpaRepository",
+        "rule": "generated repository"
+      },
       "id": "io.dataroots.savingstreak.rewards.RedemptionRepository",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "findBySavingsAccountIdOrderByClaimedAtDescIdDesc",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<Redemption>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Redemption"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "interface",
       "language": "java",
       "lines": 15,
@@ -526,7 +2402,61 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is enum",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.rewards.Reward",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "code",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "costInPoints",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "description",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "title",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "voucherPrefix",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "enum",
       "language": "java",
       "lines": 61,
@@ -537,7 +2467,26 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardRefused",
+      "interface": {
+        "cost": 3,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "kind",
+            "parameters": [],
+            "returns": "Kind",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Kind"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 35,
@@ -550,7 +2499,57 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardsService",
+      "interface": {
+        "cost": 10,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "catalogue",
+            "parameters": [],
+            "returns": "List<Reward>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "name": "claim",
+            "parameters": [
+              "long",
+              "Reward"
+            ],
+            "returns": "ClaimedReward",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "claimedIn",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<ClaimedReward>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedReward"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 101,
@@ -561,7 +2560,29 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.AdvanceClockRequest",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "days",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 12,
@@ -572,7 +2593,29 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.ClaimRequest",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "reward",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 12,
@@ -583,7 +2626,93 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.ClaimedRewardResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "claimedAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "code",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "ClaimedReward"
+            ],
+            "returns": "ClaimedRewardResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "pointsSpent",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "title",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "voucherCode",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedReward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedRewardResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 24,
@@ -594,7 +2723,57 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.ClockResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "movedForwardByDays",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "now",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "HowFarTheClockHasMoved"
+            ],
+            "returns": "ClockResponse",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClockResponse"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "HowFarTheClockHasMoved"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 16,
@@ -605,7 +2784,44 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.CustomerAccountsResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "currentAccounts",
+            "parameters": [],
+            "returns": "List<CurrentAccountResponse>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "savingsAccounts",
+            "parameters": [],
+            "returns": "List<SavingsAccountResponse>",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "CurrentAccountResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccountResponse"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 36,
@@ -619,7 +2835,60 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.CustomerController",
+      "interface": {
+        "cost": 11,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "accountsOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "CustomerAccountsResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "customers",
+            "parameters": [],
+            "returns": "List<CustomerResponse>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "signIn",
+            "parameters": [
+              "SignInRequest"
+            ],
+            "returns": "CustomerResponse",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "CustomerAccountsResponse"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "CustomerResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SignInRequest"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 101,
@@ -630,7 +2899,64 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.CustomerResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "contactDetails",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "name",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "Customer"
+            ],
+            "returns": "CustomerResponse",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Customer"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "CustomerResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 14,
@@ -641,7 +2967,40 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.DepositRequest",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "fromCurrentAccountId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 13,
@@ -652,7 +3011,79 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.DepositResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "depositedAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "RecordedDeposit"
+            ],
+            "returns": "DepositResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "pointsEarned",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "DepositResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedDeposit"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 15,
@@ -663,7 +3094,39 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.DevelopmentClockController",
+      "interface": {
+        "cost": 7,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "advance",
+            "parameters": [
+              "AdvanceClockRequest"
+            ],
+            "returns": "ClockResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "where",
+            "parameters": [],
+            "returns": "ClockResponse",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "AdvanceClockRequest"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ClockResponse"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 51,
@@ -674,7 +3137,47 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.DevelopmentJobsController",
+      "interface": {
+        "cost": 7,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "jobs",
+            "parameters": [],
+            "returns": "List<ScheduledJobResponse>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "run",
+            "parameters": [
+              "String"
+            ],
+            "returns": "JobRunResponse",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "JobRunResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ScheduledJobResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 53,
@@ -685,7 +3188,75 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.JobRunResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "definedBy",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "name",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "AJobThatRan"
+            ],
+            "returns": "JobRunResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "ranAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "tookMillis",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "AJobThatRan"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "JobRunResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 16,
@@ -696,7 +3267,101 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.RefusalsAsHttp",
+      "interface": {
+        "cost": 28,
+        "methods": [
+          {
+            "cost": 2,
+            "name": "clockRefused",
+            "parameters": [
+              "ClockRefused"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "depositRefused",
+            "parameters": [
+              "DepositRefused"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "jobFailed",
+            "parameters": [
+              "JobFailed"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "jobRefused",
+            "parameters": [
+              "JobRefused"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "rewardRefused",
+            "parameters": [
+              "RewardRefused"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "withdrawalRefused",
+            "parameters": [
+              "WithdrawalRefused"
+            ],
+            "returns": "ResponseEntity<ProblemDetail>",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClockRefused"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "DepositRefused"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "JobFailed"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "JobRefused"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ProblemDetail"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ResponseEntity"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RewardRefused"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "WithdrawalRefused"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 109,
@@ -707,7 +3372,30 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.RewardController",
+      "interface": {
+        "cost": 3,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "catalogue",
+            "parameters": [],
+            "returns": "List<RewardResponse>",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RewardResponse"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 28,
@@ -718,7 +3406,71 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.RewardResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "code",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "costInPoints",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "description",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "Reward"
+            ],
+            "returns": "RewardResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "title",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RewardResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 18,
@@ -729,7 +3481,117 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.SavingsAccountController",
+      "interface": {
+        "cost": 31,
+        "methods": [
+          {
+            "cost": 3,
+            "name": "claim",
+            "parameters": [
+              "long",
+              "ClaimRequest"
+            ],
+            "returns": "ClaimedRewardResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "claimedOutOf",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<ClaimedRewardResponse>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 3,
+            "name": "deposit",
+            "parameters": [
+              "long",
+              "DepositRequest"
+            ],
+            "returns": "DepositResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "depositsInto",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<DepositResponse>",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "savingsAccount",
+            "parameters": [
+              "long"
+            ],
+            "returns": "SavingsAccountResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 3,
+            "name": "withdraw",
+            "parameters": [
+              "long",
+              "WithdrawalRequest"
+            ],
+            "returns": "WithdrawalResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 2,
+            "name": "withdrawalsFrom",
+            "parameters": [
+              "long"
+            ],
+            "returns": "List<WithdrawalResponse>",
+            "visibility": "package-private"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "ClaimRequest"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedRewardResponse"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "DepositRequest"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "DepositResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccountResponse"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "WithdrawalRequest"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "WithdrawalResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "class",
       "language": "java",
       "lines": 185,
@@ -740,7 +3602,62 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.SavingsAccountResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "customerName",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "moneyBalance",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "pointsBalance",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 11,
@@ -751,7 +3668,60 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.ScheduledJobResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "definedBy",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "name",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "AScheduledJob"
+            ],
+            "returns": "ScheduledJobResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "schedule",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": true,
+            "name": "AScheduledJob"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ScheduledJobResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 14,
@@ -762,7 +3732,29 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.SignInRequest",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "contactDetails",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 8,
@@ -773,7 +3765,40 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.WithdrawalRequest",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "String",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "toCurrentAccountId",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "String"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 5,
@@ -784,7 +3809,94 @@
       "root": "backend/src/main/java"
     },
     {
+      "excludedBy": {
+        "matched": "kind is record",
+        "rule": "data carrier"
+      },
       "id": "io.dataroots.savingstreak.web.WithdrawalResponse",
+      "interface": {
+        "cost": null,
+        "methods": [
+          {
+            "cost": 1,
+            "name": "allocations",
+            "parameters": [],
+            "returns": "List<RecordedWithdrawalAllocation>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "amount",
+            "parameters": [],
+            "returns": "BigDecimal",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "id",
+            "parameters": [],
+            "returns": "Long",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "name": "of",
+            "parameters": [
+              "RecordedWithdrawal"
+            ],
+            "returns": "WithdrawalResponse",
+            "visibility": "package-private"
+          },
+          {
+            "cost": 1,
+            "name": "toCurrentAccountId",
+            "parameters": [],
+            "returns": "long",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "name": "withdrawnAt",
+            "parameters": [],
+            "returns": "Instant",
+            "visibility": "public"
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "BigDecimal"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Instant"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "List"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Long"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawalAllocation"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "WithdrawalResponse"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "long"
+          }
+        ]
+      },
       "kind": "record",
       "language": "java",
       "lines": 18,
@@ -909,6 +4021,82 @@
     }
   ],
   "schema": "module-depth-map/1",
+  "scoring": {
+    "configuration": "scripts/module_depth_map/scoring.json",
+    "exclusions": [
+      {
+        "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and thirty of them ranked beside the modules that do hide something would bury the finding.",
+        "modulesExcluded": 26,
+        "rule": "data carrier"
+      },
+      {
+        "because": "A Spring Data repository interface has no implementation written in this repository: the query is derived from the method name and the code is generated at run time. Scoring it would measure a naming convention rather than anything anybody wrote.",
+        "modulesExcluded": 9,
+        "rule": "generated repository"
+      },
+      {
+        "because": "The application's entry point exists to be started, not to be called. Its one method has the signature the platform dictates, and no module inside the application ever learns it.",
+        "modulesExcluded": 1,
+        "rule": "entry point"
+      }
+    ],
+    "modulesNeverScored": 36,
+    "modulesScored": 35,
+    "reachableFromOutside": [
+      "package-private",
+      "protected",
+      "public"
+    ],
+    "typesEveryCallerAlreadyKnows": [
+      "BigDecimal",
+      "BigInteger",
+      "Boolean",
+      "Byte",
+      "Character",
+      "Class",
+      "Clock",
+      "Collection",
+      "Comparable",
+      "Double",
+      "Duration",
+      "Exception",
+      "Float",
+      "Instant",
+      "Integer",
+      "Iterable",
+      "List",
+      "LocalDate",
+      "LocalDateTime",
+      "Long",
+      "Map",
+      "Number",
+      "Object",
+      "Optional",
+      "RuntimeException",
+      "Set",
+      "Short",
+      "Stream",
+      "String",
+      "Throwable",
+      "Void",
+      "ZoneId",
+      "boolean",
+      "byte",
+      "char",
+      "double",
+      "float",
+      "int",
+      "long",
+      "short",
+      "void"
+    ],
+    "weights": {
+      "method": 1,
+      "parameter": 1,
+      "typeEveryCallerAlreadyKnows": 0,
+      "typeToLearn": 2
+    }
+  },
   "source": {
     "filesParsed": 71,
     "filesSeen": 71,

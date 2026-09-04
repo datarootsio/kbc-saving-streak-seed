@@ -13,7 +13,7 @@ import json
 import logging
 import os
 
-from . import javasource
+from . import javasource, scoring
 
 log = logging.getLogger("module_depth_map.graph")
 
@@ -70,7 +70,7 @@ class SourceRoot:
 
 
 def label_for(path):
-    """Where this directory sits inside its repository, or its own name if it has none.
+    """Where this file or directory sits inside its repository, or its own name if it has none.
 
     A repository is anything carrying a `.git`, whichever shape it takes: an ordinary
     clone has a directory there, while a worktree or a submodule has a plain file
@@ -148,13 +148,18 @@ def _files_under(root):
     return found, unreadable
 
 
-def build(roots):
+def build(roots, rules=None):
     """Read every source file under these roots and return the graph document.
 
     A file that cannot be read is named in the document and logged, never counted as a
     module with nothing in it: a parse failure that looked like an empty module would be
     indistinguishable from a real finding.
+
+    What each module's interface costs a caller, and which modules are drawn but never
+    scored, are decided by `rules` — read from a file beside the tool rather than written
+    into it, so that changing what counts is a diff on that file and not on this one.
     """
+    rules = rules or scoring.load()
     modules = []
     unparsed = []
     seen = 0
@@ -200,6 +205,7 @@ def build(roots):
                 unparsed.append({"root": root.label, "path": relative, "reason": failure.reason})
                 continue
             for declared in parsed.top_level:
+                excluded = rules.excluded_by(declared)
                 modules.append(
                     {
                         "id": parsed.package + "." + declared.name,
@@ -211,6 +217,8 @@ def build(roots):
                         "path": relative,
                         "lines": parsed.lines,
                         "nested": parsed.nested_names(declared),
+                        "interface": rules.interface_of(declared, scored=excluded is None),
+                        "excludedBy": excluded,
                     }
                 )
 
@@ -234,19 +242,71 @@ def build(roots):
         "packages": [
             {"name": name, "moduleIds": sorted(ids)} for name, ids in sorted(packages.items())
         ],
+        "scoring": _scoring(rules, modules),
         "modules": modules,
     }
 
     log.info(
-        "graph built roots=%s filesSeen=%d filesParsed=%d filesUnparsed=%d packages=%d modules=%d",
+        "graph built roots=%s filesSeen=%d filesParsed=%d filesUnparsed=%d packages=%d "
+        "modules=%d scored=%d neverScored=%d",
         ",".join(document["source"]["roots"]),
         seen,
         document["source"]["filesParsed"],
         len(unparsed),
         len(document["packages"]),
         len(modules),
+        document["scoring"]["modulesScored"],
+        document["scoring"]["modulesNeverScored"],
     )
+    for entry in document["scoring"]["exclusions"]:
+        log.info(
+            "modules never scored rule=%s modules=%d",
+            entry["rule"],
+            entry["modulesExcluded"],
+        )
+    scored = [module for module in modules if module["interface"]["cost"] is not None]
+    if scored:
+        dearest = max(scored, key=lambda module: (module["interface"]["cost"], module["id"]))
+        log.info(
+            "widest interface module=%s cost=%d methods=%d typesToLearn=%d",
+            dearest["id"],
+            dearest["interface"]["cost"],
+            len(dearest["interface"]["methods"]),
+            sum(1 for type_ in dearest["interface"]["typesCrossingTheSeam"] if type_["mustBeLearned"]),
+        )
     return document
+
+
+def _scoring(rules, modules):
+    """The rules that produced these scores, carried in the document they produced.
+
+    The page draws its own explanation from this rather than from anything written into
+    it, so a reader who disagrees with a score is reading the rule that made it — and the
+    rule they would edit — rather than a description of one.
+
+    The exclusions keep the order the file gives them, because that is the order they are
+    applied in: the first rule that covers a module is the one recorded against it.
+    """
+    excluded = {}
+    for module in modules:
+        if module["excludedBy"]:
+            excluded[module["excludedBy"]["rule"]] = excluded.get(module["excludedBy"]["rule"], 0) + 1
+    return {
+        "configuration": label_for(rules.path),
+        "weights": dict(rules.weights),
+        "reachableFromOutside": sorted(rules.reachable_from_outside),
+        "typesEveryCallerAlreadyKnows": sorted(rules.already_known),
+        "exclusions": [
+            {
+                "rule": exclusion.rule,
+                "because": exclusion.because,
+                "modulesExcluded": excluded.get(exclusion.rule, 0),
+            }
+            for exclusion in rules.exclusions
+        ],
+        "modulesScored": sum(1 for module in modules if not module["excludedBy"]),
+        "modulesNeverScored": sum(1 for module in modules if module["excludedBy"]),
+    }
 
 
 def _refuse_duplicate_ids(modules):

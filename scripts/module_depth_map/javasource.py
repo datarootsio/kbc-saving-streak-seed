@@ -69,6 +69,21 @@ class ParseFailure(Exception):
         self.reason = reason
 
 
+class Method:
+    """One method a module declares, as a caller meets it.
+
+    The types are the words the source wrote them with — `Optional<Customer>`, `long` —
+    rather than anything resolved: this parser reads one file at a time, and a name it
+    cannot follow to a declaration is still the name a caller has to learn.
+    """
+
+    def __init__(self, name, visibility, parameters, returns):
+        self.name = name
+        self.visibility = visibility
+        self.parameters = tuple(parameters)
+        self.returns = returns
+
+
 class DeclaredType:
     """One type declaration found in a file, and where in the file it sits.
 
@@ -76,15 +91,23 @@ class DeclaredType:
     type itself. `qualified` names it relative to that owner — `Kind`, `Body.Kind` — so
     two same-named types declared in different corners of one file can be told apart on
     the page instead of arriving as the same word twice.
+
+    `annotations`, `supertypes` and `methods` are what a rule outside this file gets to
+    reason about: what this type is marked with, what it is built on, and what it offers
+    anybody holding one. Nothing here decides what any of that is worth.
     """
 
-    def __init__(self, name, kind, depth, ends_at, owner, qualified):
+    def __init__(self, name, kind, depth, ends_at, owner, qualified,
+                 annotations=(), supertypes=(), methods=()):
         self.name = name
         self.kind = kind
         self.depth = depth
         self.ends_at = ends_at
         self.owner = owner
         self.qualified = qualified
+        self.annotations = tuple(annotations)
+        self.supertypes = tuple(supertypes)
+        self.methods = tuple(methods)
 
 
 class ParsedFile:
@@ -261,6 +284,14 @@ def _body_ends_at(offsets, position, depth):
     return None
 
 
+def _body_starts_at(offsets, position, depth):
+    """Where this declaration's body opens, or None when it has no body at all."""
+    after = _first_brace_after(offsets, position)
+    if after >= len(offsets) or offsets[after][1] != depth + 1:
+        return None
+    return offsets[after][0]
+
+
 def parse(text, path):
     """What this Java file contains, or a ParseFailure naming why it could not be read."""
     masked = mask_comments_and_literals(text)
@@ -329,15 +360,28 @@ def _declared_types(masked, depths):
                 "nothing it can name" % (match.group(2), _line_of(masked, start), depth)
             )
         ends_at = _body_ends_at(depths, start, depth)
+        body_ends_at = len(masked) if ends_at is None else ends_at
+        body_starts_at = _body_starts_at(depths, start, depth)
+        kind = _KINDS[match.group(1)]
+        # Between the name and the body: `extends`, `implements`, and a record's own
+        # components. Everything a caller learns about this type without opening it.
+        header = masked[match.end(2):body_starts_at] if body_starts_at is not None else ""
+        owner = open_types[0] if open_types else None
         declared = DeclaredType(
             name=match.group(2),
-            kind=_KINDS[match.group(1)],
+            kind=kind,
             depth=depth,
-            ends_at=len(masked) if ends_at is None else ends_at,
-            owner=open_types[0] if open_types else None,
+            ends_at=body_ends_at,
+            owner=owner,
             qualified=".".join(
                 [holder.name for holder in open_types[1:]] + [match.group(2)]
             ),
+            annotations=_annotations_before(masked, start),
+            supertypes=_supertypes_in(header),
+            # Only for a module — a type declared inside one is named on it rather than
+            # scored, so reading its members would be work nothing asks for.
+            methods=() if owner is not None
+            else _methods_of(masked, kind, header, body_starts_at, body_ends_at),
         )
         types.append(declared)
         open_types.append(declared)
@@ -349,3 +393,270 @@ def _declared_types(masked, depths):
                 % (keyword.group(0), _line_of(masked, keyword.start()))
             )
     return types
+
+
+# What a caller of this type has to learn: what it is marked with, what it is built on,
+# and what it offers. Read here and weighed nowhere: this file says what the source says,
+# and the rules that decide what any of it costs live in a file of their own.
+
+_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)")
+
+_INHERITANCE = re.compile(r"(?<![\w.$])(?:extends|implements|permits)(?![\w$])")
+
+_MODIFIERS = frozenset(
+    [
+        "public", "protected", "private", "static", "final", "abstract", "default",
+        "synchronized", "native", "strictfp", "transient", "volatile", "sealed", "non-sealed",
+    ]
+)
+
+_ACCESS = ("public", "protected", "private")
+
+# The keywords that make a member a type rather than a method. A nested record has a
+# parameter list that reads exactly like one and is not one.
+_TYPE_KEYWORD = re.compile(r"(?<![\w.$])(?:class|interface|enum|record)(?![\w$])")
+
+_TRAILING_NAME = re.compile(r"([A-Za-z_$][\w$]*)\s*$")
+
+_LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s")
+
+
+def _annotations_before(masked, start):
+    """The annotations written on this declaration, by simple name.
+
+    Only as far back as the last thing that ended — a semicolon or a brace either way —
+    so a declaration never inherits the annotations of whatever was written above it.
+    """
+    boundary = max(masked.rfind(character, 0, start) for character in ";{}")
+    return tuple(
+        found.group(1).split(".")[-1]
+        for found in _ANNOTATION.finditer(masked, boundary + 1, start)
+    )
+
+
+def _supertypes_in(header):
+    """What this type is built on, by simple name: `extends X`, `implements Y, Z`."""
+    found = []
+    for clause in _INHERITANCE.split(_without_groups(header))[1:]:
+        for written in clause.split(","):
+            name = written.strip().split(".")[-1]
+            if name:
+                found.append(name)
+    return tuple(found)
+
+
+def _methods_of(masked, kind, header, body_starts_at, body_ends_at):
+    """Every method this type offers, including the ones a record never writes down.
+
+    A record's components compile to an accessor apiece, and a caller learns each of them
+    the way they learn a method somebody typed. Leaving them out would say that a record
+    carrying six values asks nothing of anybody, which is the opposite of what it does.
+    """
+    methods = [
+        Method(name, "public", (), written) for written, name in _components_in(header)
+    ] if kind == "record" else []
+
+    for member in _member_headers(masked, body_starts_at, body_ends_at):
+        method = _method_in(member, kind)
+        if method is not None:
+            methods.append(method)
+    return tuple(methods)
+
+
+def _components_in(header):
+    """A record's components, as (type, name), from the header it declares them in."""
+    opened = header.find("(")
+    if opened < 0:
+        return []
+    return _declared_parameters(header[opened + 1:_after_balanced(header, opened) - 1])
+
+
+def _member_headers(masked, body_starts_at, body_ends_at):
+    """Each member of a type body, as the text before its own body or its semicolon.
+
+    Every member's body is stepped over whole, so nothing written inside a method — a
+    call that reads like a declaration, a local class, a lambda — is ever taken for part
+    of the type's interface.
+    """
+    if body_starts_at is None:
+        return []
+    headers = []
+    start = body_starts_at + 1
+    position = start
+    parens = 0
+    while position < body_ends_at:
+        character = masked[position]
+        if character == "(":
+            parens += 1
+        elif character == ")":
+            parens = max(0, parens - 1)
+        elif parens == 0 and character == "{":
+            headers.append(masked[start:position])
+            position = _after_balanced(masked, position, "{", "}")
+            start = position
+            continue
+        elif parens == 0 and character == ";":
+            headers.append(masked[start:position])
+            start = position + 1
+        position += 1
+    return headers
+
+
+def _method_in(member, holder_kind):
+    """The method this member declares, or None when the member is not one.
+
+    Fields, initialisers, enum constants, nested types and constructors all arrive here
+    and all answer None. The constructor is left out deliberately: it says how a module
+    is built, which in this application is the framework's business rather than a
+    caller's, and counting it would charge every module for being injectable.
+    """
+    text = _without_annotations(member)
+    opened = text.find("(")
+    if opened < 0:
+        return None
+    before = text[:opened]
+    if "=" in before or _TYPE_KEYWORD.search(before):
+        return None
+    modifiers, rest = _modifiers_in(before)
+    name = _TRAILING_NAME.search(_without_type_parameters(rest))
+    if name is None:
+        return None
+    returns = _normalised(_without_type_parameters(rest)[:name.start()])
+    if not returns:
+        return None
+    return Method(
+        name.group(1),
+        _visibility(modifiers, holder_kind),
+        [written for written, _ in _declared_parameters(
+            text[opened + 1:_after_balanced(text, opened) - 1]
+        )],
+        returns,
+    )
+
+
+def _declared_parameters(text):
+    """The parameters written between two brackets, as (type, name)."""
+    declared = []
+    for part in _split_on_commas(text):
+        _, rest = _modifiers_in(_without_annotations(part))
+        name = _TRAILING_NAME.search(rest)
+        if name is None:
+            continue
+        # `String... names` hands over a String: the dots say how many, not what.
+        written = _normalised(rest[:name.start()]).rstrip(". ")
+        if written:
+            declared.append((written, name.group(1)))
+    return declared
+
+
+def _modifiers_in(before):
+    """The modifiers this declaration opens with, and everything after the last of them."""
+    found = []
+    rest = before.lstrip()
+    while True:
+        word = _LEADING_WORD.match(rest)
+        if word is None or word.group(1) not in _MODIFIERS:
+            return found, rest
+        found.append(word.group(1))
+        rest = rest[word.end():].lstrip()
+
+
+def _visibility(modifiers, holder_kind):
+    """How far outside this type the member can be reached from.
+
+    An interface's members carry no access modifier and are public anyway, which is the
+    one place where saying nothing means the widest thing rather than the narrowest.
+    """
+    for access in _ACCESS:
+        if access in modifiers:
+            return access
+    return "public" if holder_kind in ("interface", "annotation") else "package-private"
+
+
+def _without_type_parameters(rest):
+    """`<T extends Comparable<T>> T largest` is `T largest`: the bounds are not the type."""
+    rest = rest.lstrip()
+    return rest[_after_balanced(rest, 0, "<", ">"):] if rest.startswith("<") else rest
+
+
+def _without_annotations(text):
+    """The same text with every annotation, and everything it was given, taken out.
+
+    `@interface` is left where it is: it opens a declaration rather than marking one.
+    """
+    out = []
+    position = 0
+    while position < len(text):
+        if text[position] == "@":
+            found = _ANNOTATION.match(text, position)
+            if found is not None and found.group(1) != "interface":
+                position = found.end()
+                while position < len(text) and text[position] in " \t\r\n":
+                    position += 1
+                if position < len(text) and text[position] == "(":
+                    position = _after_balanced(text, position)
+                continue
+        out.append(text[position])
+        position += 1
+    return "".join(out)
+
+
+def _without_groups(text):
+    """The same text with everything inside `<...>` and `(...)` taken out.
+
+    A supertype's type arguments are not supertypes, a record's components are not either,
+    and a comma inside one of those is not the comma between two of them.
+    """
+    out = []
+    angles = parens = 0
+    for character in text:
+        if character == "<":
+            angles += 1
+        elif character == ">":
+            angles = max(0, angles - 1)
+        elif character == "(":
+            parens += 1
+        elif character == ")":
+            parens = max(0, parens - 1)
+        elif angles == 0 and parens == 0:
+            out.append(character)
+    return "".join(out)
+
+
+def _split_on_commas(text):
+    """Split on the commas between things, never on one inside a type or an annotation."""
+    parts = []
+    depth = 0
+    start = 0
+    for position, character in enumerate(text):
+        if character in "<([":
+            depth += 1
+        elif character in ">)]":
+            depth = max(0, depth - 1)
+        elif character == "," and depth == 0:
+            parts.append(text[start:position])
+            start = position + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _after_balanced(text, position, opening="(", closing=")"):
+    """Just past the bracket that closes the one at `position`, or the end of the text."""
+    depth = 0
+    while position < len(text):
+        if text[position] == opening:
+            depth += 1
+        elif text[position] == closing:
+            depth -= 1
+            if depth == 0:
+                return position + 1
+        position += 1
+    return len(text)
+
+
+def _normalised(written):
+    """A type as the graph carries it: one space where Java needs one, none where it does not."""
+    tidy = re.sub(r"\s+", " ", written).strip()
+    for bracket in ("<", ">", ",", "[", "]"):
+        tidy = tidy.replace(" " + bracket, bracket)
+    return tidy.replace("< ", "<").replace("[ ", "[")

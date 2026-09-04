@@ -101,7 +101,29 @@ section.package { margin: 2rem 0 0; }
   text-transform: uppercase;
   color: var(--ink-soft);
 }
+.module .bar {
+  height: .5rem;
+  margin: .5rem 0 .35rem;
+  background: var(--edge);
+  border-radius: .25rem;
+  overflow: hidden;
+}
+.module .bar span { display: block; height: 100%; background: var(--accent); }
+.module .cost { margin: 0; font-size: .8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.module .unscored { margin: .5rem 0 0; font-size: .8rem; color: var(--ink-soft); font-style: italic; }
 .module .nested { margin: .4rem 0 0; font-size: .8rem; color: var(--ink-soft); }
+.rules {
+  border: 1px solid var(--edge);
+  background: var(--raised);
+  border-radius: .5rem;
+  padding: .85rem 1rem;
+  margin: 1.5rem 0;
+}
+.rules h2 { font-family: inherit; margin-bottom: .4rem; }
+.rules p { margin: 0 0 .6rem; color: var(--ink-soft); font-size: .9rem; }
+.rules ul { margin: 0; padding-left: 1.1rem; }
+.rules li { color: var(--ink-soft); font-size: .9rem; margin-bottom: .3rem; }
+.rules strong { color: var(--ink); }
 footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
 """
 
@@ -139,6 +161,7 @@ _SCRIPT = """
   fact("Files not parsed", document_.source.filesUnparsed);
   fact("Packages", document_.packages.length);
   fact("Modules", document_.modules.length);
+  fact("Modules scored", document_.scoring.modulesScored + " of " + document_.modules.length);
 
   if (document_.source.unparsed.length > 0) {
     var alarm = add(root, "div", "unread");
@@ -151,6 +174,63 @@ _SCRIPT = """
       add(item, "code", null, entry.root + "/" + entry.path);
       add(item, "span", null, " \\u2014 " + entry.reason);
     });
+  }
+
+  var rules = add(root, "section", "rules");
+  add(rules, "h2", null, "What the bars measure");
+  add(rules, "p", null,
+    "Each bar is the cost of a module's interface: everything a caller has to learn before "
+    + "they can use it correctly. A method they can reach counts "
+    + document_.scoring.weights.method + ", each of its parameters counts "
+    + document_.scoring.weights.parameter + ", each distinct type crossing the seam counts "
+    + document_.scoring.weights.typeToLearn + " when it is one this application invented and "
+    + document_.scoring.weights.typeEveryCallerAlreadyKnows + " when every caller already "
+    + "knows it. Reachable means "
+    + document_.scoring.reachableFromOutside.join(", ") + ". Every bar is drawn to the same "
+    + "scale, so two of them can be compared by eye.");
+  add(rules, "p", null,
+    document_.scoring.modulesNeverScored + " of " + document_.modules.length
+    + " modules are drawn but never scored, each by a named rule in "
+    + document_.scoring.configuration + ". They are shallow by construction, and ranking "
+    + "them beside the modules that are not would bury the finding.");
+  var named = add(rules, "ul");
+  var because = {};
+  document_.scoring.exclusions.forEach(function (exclusion) {
+    because[exclusion.rule] = exclusion.because;
+    var item = add(named, "li");
+    add(item, "strong", null, exclusion.rule);
+    add(item, "span", null,
+      " \\u2014 " + count(exclusion.modulesExcluded, "module", "modules") + " \\u2014 "
+      + exclusion.because);
+  });
+
+  var widest = 0;
+  document_.modules.forEach(function (module) {
+    if (module.interface.cost !== null && module.interface.cost > widest) {
+      widest = module.interface.cost;
+    }
+  });
+
+  function drawInterface(item, module) {
+    if (module.interface.cost === null) {
+      var never = add(item, "p", "unscored", "never scored \\u2014 " + module.excludedBy.rule);
+      never.title = module.excludedBy.matched + ". " + because[module.excludedBy.rule];
+      return;
+    }
+    var parameters = 0;
+    module.interface.methods.forEach(function (method) { parameters += method.parameters.length; });
+    var toLearn = 0;
+    module.interface.typesCrossingTheSeam.forEach(function (type) {
+      if (type.mustBeLearned) { toLearn += 1; }
+    });
+    var track = add(item, "div", "bar");
+    track.title = "interface cost " + module.interface.cost;
+    add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
+    add(item, "p", "cost",
+      module.interface.cost + " to learn: "
+      + count(module.interface.methods.length, "method", "methods") + ", "
+      + count(parameters, "parameter", "parameters") + ", "
+      + count(toLearn, "type", "types"));
   }
 
   var byId = {};
@@ -167,6 +247,7 @@ _SCRIPT = """
       var item = add(modules, "li", "module");
       add(item, "div", "name", module.name);
       add(item, "div", "kind", module.kind);
+      drawInterface(item, module);
       if (module.nested.length > 0) {
         add(item, "p", "nested", "nested: " + module.nested.join(", "));
       }

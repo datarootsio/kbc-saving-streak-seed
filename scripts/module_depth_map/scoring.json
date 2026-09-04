@@ -1,0 +1,83 @@
+{
+  "schema": "module-depth-map-scoring/1",
+
+  "interfaceCost": {
+    "weights": {
+      "method": 1,
+      "parameter": 1,
+      "typeToLearn": 2,
+      "typeEveryCallerAlreadyKnows": 0
+    },
+    "reachableFromOutside": ["public", "protected", "package-private"],
+    "typesEveryCallerAlreadyKnows": [
+      "BigDecimal",
+      "BigInteger",
+      "Boolean",
+      "Byte",
+      "Character",
+      "Class",
+      "Clock",
+      "Collection",
+      "Comparable",
+      "Double",
+      "Duration",
+      "Exception",
+      "Float",
+      "Instant",
+      "Integer",
+      "Iterable",
+      "List",
+      "LocalDate",
+      "LocalDateTime",
+      "Long",
+      "Map",
+      "Number",
+      "Object",
+      "Optional",
+      "RuntimeException",
+      "Set",
+      "Short",
+      "Stream",
+      "String",
+      "Throwable",
+      "Void",
+      "ZoneId",
+      "boolean",
+      "byte",
+      "char",
+      "double",
+      "float",
+      "int",
+      "long",
+      "short",
+      "void"
+    ]
+  },
+
+  "exclusions": [
+    {
+      "rule": "data carrier",
+      "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and thirty of them ranked beside the modules that do hide something would bury the finding.",
+      "when": {"kind": ["record", "enum"]}
+    },
+    {
+      "rule": "generated repository",
+      "because": "A Spring Data repository interface has no implementation written in this repository: the query is derived from the method name and the code is generated at run time. Scoring it would measure a naming convention rather than anything anybody wrote.",
+      "when": {
+        "kind": ["interface"],
+        "extendsOrImplements": [
+          "CrudRepository",
+          "JpaRepository",
+          "JpaSpecificationExecutor",
+          "PagingAndSortingRepository",
+          "Repository"
+        ]
+      }
+    },
+    {
+      "rule": "entry point",
+      "because": "The application's entry point exists to be started, not to be called. Its one method has the signature the platform dictates, and no module inside the application ever learns it.",
+      "when": {"annotatedWith": ["SpringBootApplication"]}
+    }
+  ]
+}
