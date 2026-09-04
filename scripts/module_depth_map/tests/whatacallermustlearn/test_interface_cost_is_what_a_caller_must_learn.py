@@ -337,3 +337,65 @@ class ATypeVariableIsNotATypeAnybodyLearnsTest(SourceOfKnownShapeTest):
             [{"name": "List", "mustBeLearned": False}, {"name": "T", "mustBeLearned": True}],
             module["interface"]["typesCrossingTheSeam"],
         )
+
+
+class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
+    """Two bars mean something side by side, and the scale they share is in the graph.
+
+    The page multiplies each cost by its own width and divides by this one number, so a
+    bar is checkable against the document it was drawn from rather than against
+    arithmetic only the browser can do. The proportions themselves are a browser fact and
+    were measured in one: the bars this suite pins are the numbers behind them.
+    """
+
+    def document_for(self, *sources):
+        self.modules(*sources)
+        return self.document
+
+    def modules(self, *sources):
+        tree = self.tree("fixture")
+        for name, body in sources:
+            tree.java("shop.till", name, body)
+        self.document = graph.build([graph.java_root(tree.root)])
+        self.assertEqual([], self.document["source"]["unparsed"])
+        return {module["name"]: module for module in self.document["modules"]}
+
+    def test_the_scale_is_the_dearest_interface_the_graph_holds(self):
+        modules = self.modules(
+            ("Till", "public class Till {\n    public void ring(long id, int cents) {}\n}"),
+            ("Shelf", "public class Shelf {\n    public void restock() {}\n}"),
+        )
+
+        self.assertEqual(3, modules["Till"]["interface"]["cost"])
+        self.assertEqual(1, modules["Shelf"]["interface"]["cost"])
+        self.assertEqual(3, self.document["scoring"]["widestInterface"])
+
+    def test_no_module_costs_more_than_the_scale_so_no_bar_runs_past_its_track(self):
+        self.modules(
+            ("Till", "public class Till {\n    public Receipt ring(long id) { return null; }\n}"),
+            ("Shelf", "public class Shelf {\n    public void restock() {}\n}"),
+            ("Receipt", "public record Receipt(long cents) {}"),
+        )
+
+        for module in self.document["modules"]:
+            if module["interface"]["cost"] is not None:
+                self.assertLessEqual(
+                    module["interface"]["cost"],
+                    self.document["scoring"]["widestInterface"],
+                    module["id"],
+                )
+
+    def test_an_excluded_module_does_not_set_the_scale_it_is_kept_out_of(self):
+        """Otherwise the widest bar on the page could be a bar nobody drew."""
+        self.modules(
+            ("Shelf", "public class Shelf {\n    public void restock() {}\n}"),
+            ("Receipt", "public record Receipt(long a, long b, long c, long d, long e) {}"),
+        )
+
+        self.assertEqual(1, self.document["scoring"]["widestInterface"])
+
+    def test_the_scale_is_nothing_when_no_module_was_scored_at_all(self):
+        """A page with only data carriers on it divides by this, so it has to be safe."""
+        self.modules(("Receipt", "public record Receipt(long cents) {}"))
+
+        self.assertEqual(0, self.document["scoring"]["widestInterface"])

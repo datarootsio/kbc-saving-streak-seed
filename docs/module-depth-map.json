@@ -4095,7 +4095,8 @@
       "parameter": 1,
       "typeEveryCallerAlreadyKnows": 0,
       "typeToLearn": 2
-    }
+    },
+    "widestInterface": 31
   },
   "source": {
     "filesParsed": 71,

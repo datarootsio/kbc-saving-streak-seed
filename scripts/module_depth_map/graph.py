@@ -286,14 +286,25 @@ def _scoring(rules, modules):
 
     The exclusions keep the order the file gives them, because that is the order they are
     applied in: the first rule that covers a module is the one recorded against it.
+
+    `widestInterface` is the one number every bar on the page is drawn relative to. It is
+    worked out here rather than in the browser so that the scale two bars are compared on
+    is in the document as well — a bar the page drew is then checkable against the graph
+    it came from, instead of against arithmetic only the page can do.
     """
     excluded = {}
     for module in modules:
         if module["excludedBy"]:
             excluded[module["excludedBy"]["rule"]] = excluded.get(module["excludedBy"]["rule"], 0) + 1
+    costs = [
+        module["interface"]["cost"]
+        for module in modules
+        if module["interface"]["cost"] is not None
+    ]
     return {
         "configuration": label_for(rules.path),
         "weights": dict(rules.weights),
+        "widestInterface": max(costs) if costs else 0,
         "reachableFromOutside": sorted(rules.reachable_from_outside),
         "typesEveryCallerAlreadyKnows": sorted(rules.already_known),
         "exclusions": [

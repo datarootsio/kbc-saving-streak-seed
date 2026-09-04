@@ -205,12 +205,9 @@ _SCRIPT = """
       + exclusion.because);
   });
 
-  var widest = 0;
-  document_.modules.forEach(function (module) {
-    if (module.interface.cost !== null && module.interface.cost > widest) {
-      widest = module.interface.cost;
-    }
-  });
+  // The scale every bar shares, taken from the document rather than worked out here, so
+  // that two bars are comparable against a number a reader can find in the graph.
+  var widest = document_.scoring.widestInterface;
 
   function drawInterface(item, module) {
     if (module.interface.cost === null) {
