@@ -20,6 +20,20 @@ log = logging.getLogger("module_depth_map.graph")
 SCHEMA = "module-depth-map/1"
 
 
+class DuplicateModules(Exception):
+    """Two source files claiming the same module id, which the graph cannot hold.
+
+    An id is how the page joins a package to its modules, so a repeated one draws one
+    card twice and drops the other file entirely. Reachable as soon as a second root is
+    read, so it is refused with both paths named rather than left to look like a module
+    that moved.
+    """
+
+    def __init__(self, clashes):
+        super().__init__("duplicate module ids: %s" % ", ".join(sorted(clashes)))
+        self.clashes = sorted(clashes)
+
+
 class SourceRoot:
     """A directory of source, and the name the graph will know it by.
 
@@ -114,6 +128,7 @@ def build(roots):
 
     modules.sort(key=lambda module: (module["package"], module["name"]))
     unparsed.sort(key=lambda entry: (entry["root"], entry["path"]))
+    _refuse_duplicate_ids(modules)
 
     packages = {}
     for module in modules:
@@ -146,12 +161,42 @@ def build(roots):
     return document
 
 
+def _refuse_duplicate_ids(modules):
+    """Stop the run if two files declare the same module, naming both of them."""
+    holders = {}
+    for module in modules:
+        holders.setdefault(module["id"], []).append(module["root"] + "/" + module["path"])
+
+    clashes = {id_: paths for id_, paths in holders.items() if len(paths) > 1}
+    for id_, paths in sorted(clashes.items()):
+        log.error(
+            "refusing to build the graph: module id=%s is declared %d times in %s",
+            id_,
+            len(paths),
+            ", ".join(sorted(paths)),
+        )
+    if clashes:
+        raise DuplicateModules(clashes)
+
+
 def _read(whole):
+    """The file as text, or a ParseFailure saying why it could not be read.
+
+    Every way a file can refuse to be read ends here as one named failure: a dangling
+    symlink, a file with no read permission and a file deleted since the walk are all
+    OSError, and letting one of those out would end the run with a traceback and write
+    neither output — one unreadable file costing the whole page instead of one card.
+    The reason is the errno's own text, never the path, which would be machine-specific.
+    """
     try:
         with open(whole, "rb") as handle:
             return handle.read().decode("utf-8")
     except UnicodeDecodeError as broken:
         raise javasource.ParseFailure("not valid UTF-8: %s" % broken.reason)
+    except OSError as unreadable:
+        raise javasource.ParseFailure(
+            "could not be opened: %s" % (unreadable.strerror or unreadable.__class__.__name__)
+        )
 
 
 def serialise(document):

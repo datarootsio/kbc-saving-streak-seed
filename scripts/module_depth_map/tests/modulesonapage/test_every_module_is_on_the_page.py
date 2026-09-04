@@ -1,9 +1,11 @@
 """Every module in the source reaches the page, grouped by its package, and nothing else does."""
 
 import json
+import logging
+import os
 import re
 
-from ... import graph, page
+from ... import cli, graph, page
 from ..support.sourcetrees import SourceTreeTest
 
 
@@ -116,3 +118,104 @@ def _embedded_graph(rendered):
 
 def _unescaped(embedded):
     return embedded.replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")
+
+
+class NoDeclarationIsWalkedPastTest(SourceTreeTest):
+    """Declarations that do not open their own line reach the page like any other.
+
+    Every one of these is legal Java that a line-anchored pattern drops without a word:
+    the module simply is not there, and nothing on the page says so. The page's claim is
+    that it shows every module, so these are the shapes that claim has to survive.
+    """
+
+    def test_a_declaration_after_an_annotation_on_the_same_line_is_still_a_module(self):
+        tree = self.tree("fixture")
+        tree.raw(
+            "shop/till/Foo.java",
+            "package shop.till;\n\n@Deprecated public class Foo {}\nclass Bar {}\n",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["source"]["unparsed"])
+        self.assertEqual(["shop.till.Bar", "shop.till.Foo"], [m["id"] for m in document["modules"]])
+
+    def test_a_nested_declaration_after_an_annotation_is_named_on_its_module(self):
+        tree = self.tree("fixture")
+        tree.java(
+            "shop.till",
+            "Outer",
+            "public class Outer {\n    @Deprecated public enum Kind { A }\n}",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["Kind"], document["modules"][0]["nested"])
+
+    def test_a_declaration_that_is_not_first_on_its_line_is_still_found(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "B", "class B { class N {} }")
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["shop.till.B"], [m["id"] for m in document["modules"]])
+        self.assertEqual(["N"], document["modules"][0]["nested"])
+
+
+class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
+    """The page may not show a module the source does not have, either."""
+
+    def test_a_comment_opening_with_slash_star_slash_is_a_comment_all_the_way(self):
+        tree = self.tree("fixture")
+        tree.raw(
+            "shop/till/Real.java",
+            "package shop.till;\n\n/*/ class Ghost {} */\npublic class Real {}\n",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["shop.till.Real"], [m["id"] for m in document["modules"]])
+        self.assertEqual([], document["source"]["unparsed"])
+
+    def test_a_module_records_the_number_of_lines_its_file_actually_has(self):
+        tree = self.tree("fixture")
+        tree.raw(
+            "shop/till/Till.java",
+            "package shop.till;\n\npublic class Till {\n}\n",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(4, document["modules"][0]["lines"])
+
+    def test_two_files_declaring_the_same_module_are_refused_rather_than_drawn_twice(self):
+        first, second = self.tree("first"), self.tree("second")
+        for tree in (first, second):
+            tree.java("shop.till", "Till", "public class Till {}")
+        roots = [graph.java_root(first.root), graph.java_root(second.root)]
+
+        with self.assertLogs("module_depth_map", level=logging.ERROR) as logged:
+            with self.assertRaises(graph.DuplicateModules):
+                graph.build(roots)
+
+        self.assertIn("shop.till.Till", logged.output[0])
+        self.assertIn("first/shop/till/Till.java", logged.output[0])
+        self.assertIn("second/shop/till/Till.java", logged.output[0])
+
+    def test_the_command_refuses_that_run_rather_than_writing_a_page_it_cannot_draw(self):
+        first, second = self.tree("first"), self.tree("second")
+        for tree in (first, second):
+            tree.java("shop.till", "Till", "public class Till {}")
+        graph_path = os.path.join(self.scratch, "out", "graph.json")
+        page_path = os.path.join(self.scratch, "out", "page.html")
+
+        with self.assertLogs("module_depth_map", level=logging.ERROR) as logged:
+            exit_code = cli.main(
+                ["--source", first.root, "--source", second.root,
+                 "--graph", graph_path, "--page", page_path, "--log-level", "ERROR"]
+            )
+
+        self.assertEqual(3, exit_code)
+        self.assertTrue(any("refused to run" in line for line in logged.output))
+        self.assertFalse(os.path.exists(graph_path))
+        self.assertFalse(os.path.exists(page_path))

@@ -56,7 +56,16 @@ def main(argv=None):
         return 2
 
     log.info("run started sources=%s graph=%s page=%s", ",".join(sources), arguments.graph, arguments.page)
-    document = graph.build([graph.java_root(directory) for directory in sources])
+    try:
+        document = graph.build([graph.java_root(directory) for directory in sources])
+    except graph.DuplicateModules as clash:
+        log.error(
+            "refused to run: %d module id(s) are declared more than once (%s), and a page "
+            "drawn from them would show one of each pair twice and the other not at all",
+            len(clash.clashes),
+            ", ".join(clash.clashes),
+        )
+        return 3
 
     written_graph = write(arguments.graph, graph.serialise(document))
     written_page = write(arguments.page, page.render(document))
