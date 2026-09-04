@@ -401,3 +401,71 @@ class SourceReachedTwiceIsReadOnceTest(SourceTreeTest):
 
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
         self.assertTrue(any("not reading source directory" in line for line in logged.output))
+
+
+class AShapeThatWouldMakeAnInterfaceCheaperIsNamedTest(SourceTreeTest):
+    """The three places where losing part of a declaration would look like a finding.
+
+    A parameter that cannot be read, a member handing back something that is not a type,
+    and a declaration whose body cannot be found are all places where this parser can
+    carry on with less of an interface than the source has. Less interface is a lower
+    cost, a lower cost is a shorter bar, and a short bar is what this page calls deep. So
+    each of them fails the file by name and by line instead, the way an unclosed comment
+    does — the reader is told which shape was not understood rather than being handed a
+    module that looks well designed.
+    """
+
+    def failure_for(self, body):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/A.java", body)
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["modules"])
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+        return document["source"]["unparsed"][0]["reason"]
+
+    def test_a_parameter_that_cannot_be_read_is_named_with_its_line(self):
+        reason = self.failure_for(
+            "package shop.till;\npublic class A {\n    public void take(int) {}\n}\n"
+        )
+
+        self.assertEqual("a parameter this parser cannot read: 'int' on line 3", reason)
+
+    def test_a_record_component_that_cannot_be_read_is_named_too(self):
+        reason = self.failure_for("package shop.till;\npublic record A(long) {}\n")
+
+        self.assertEqual("a parameter this parser cannot read: 'long' on line 2", reason)
+
+    def test_a_member_handing_back_something_that_is_not_a_type_is_named(self):
+        reason = self.failure_for(
+            "package shop.till;\npublic class A {\n    int one, two() { return 2; }\n}\n"
+        )
+
+        self.assertIn("a member this parser cannot read: two on line 3", reason)
+        self.assertIn("hands back", reason)
+
+    def test_a_declaration_whose_body_cannot_be_found_is_named(self):
+        """Every kind of type Java declares has a body, so not finding one is being lost."""
+        reason = self.failure_for("package shop.till;\nclass A\n")
+
+        self.assertEqual(
+            "a type declaration whose body this parser cannot find: A on line 2", reason
+        )
+
+    def test_the_run_warns_by_name_rather_than_drawing_a_cheaper_module(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        tree.raw(
+            "shop/till/A.java",
+            "package shop.till;\npublic class A {\n    public void take(int) {}\n}\n",
+        )
+
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
+            document = graph.build([graph.java_root(tree.root)])
+
+        warnings = [line for line in logged.output if "could not parse" in line]
+        self.assertEqual(1, len(warnings))
+        self.assertIn("shop/till/A.java", warnings[0])
+        self.assertIn("a parameter this parser cannot read", warnings[0])
+        self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])

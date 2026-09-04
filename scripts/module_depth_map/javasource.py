@@ -20,7 +20,16 @@ whenever this parser can tell it is no longer reading what the compiler would re
 - a type whose place this parser cannot explain, because a nested type it cannot attribute
   to anything is a type it has stopped tracking;
 - a reserved declaration keyword the patterns walked past, which is a module the page
-  would otherwise lose with nobody noticing.
+  would otherwise lose with nobody noticing;
+- a type declaration whose body cannot be found, since every kind of type Java declares
+  has one, and reading a type with no body would price its whole interface at zero;
+- a parameter, or the type a member hands back, that cannot be read as one — the two
+  places where a shape this parser does not understand would leave an interface quietly
+  cheaper than the source makes it.
+
+The last three are the ones a future edit is most likely to reach: a legal construct the
+patterns have not met yet arrives as a named failure on the page, at a line, rather than
+as a module that looks shallow.
 """
 
 import logging
@@ -29,6 +38,10 @@ import re
 log = logging.getLogger("module_depth_map.javasource")
 
 _PACKAGE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
+
+# An annotation, wherever one can be written: on a declaration, on a member, on a
+# parameter, or inside another annotation's arguments.
+_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)")
 
 # A declaration is its keyword followed by the name it declares, wherever it sits: after
 # annotations on the same line, inside another type's braces, or after any modifiers.
@@ -59,6 +72,11 @@ _KINDS = {
     "record": "record",
     "@interface": "annotation",
 }
+
+# Every kind of module this parser can report, for a rule outside this file to be checked
+# against: a rule written about a kind that is not one of these could never match, and a
+# condition that can never hold is a rule nobody can tell from a rule that never fired.
+KINDS = tuple(sorted(set(_KINDS.values())))
 
 
 class ParseFailure(Exception):
@@ -151,11 +169,21 @@ class ParsedFile:
         return sorted(names)
 
 
-def mask_comments_and_literals(text):
-    """The same text with comments and literal contents blanked out, offsets preserved.
+def masked_source(text):
+    """The same text with everything that must not be read as source blanked out.
 
-    Brace counting and declaration matching both run over this rather than over the
-    source, so a brace in a string or the word "class" in a comment cannot move them.
+    Three things are blanked, and offsets are preserved through all of them: the contents
+    of comments, the contents of literals, and the braces inside an annotation's
+    arguments. Brace counting and declaration matching both run over the result rather
+    than over the source, so a brace in a string, the word "class" in a comment, and the
+    `{` of `@Values({"a"})` are all unable to move them.
+
+    That last one is a brace Java does not open a body with, and every scan in this file
+    that looks for "the first brace after the name" would otherwise take it for one:
+    `record R(@Values({"a"}) String s)` would have its body read as the annotation's array
+    argument, and the whole interface would arrive as nothing at all — the one failure
+    this file exists not to have. Blanking it here fixes every one of those scans at once
+    rather than each of them separately.
 
     Every branch blanks exactly as many characters as it consumed and keeps every newline
     where it was, so the result is the same length as the source and an offset — or a line
@@ -172,6 +200,10 @@ def mask_comments_and_literals(text):
     out = []
     i = 0
     n = len(text)
+    # One entry per annotation argument list still open, holding how deeply the brackets
+    # inside it nest. An annotation's argument can be another annotation, so the answer
+    # is a stack rather than a flag.
+    annotation_arguments = []
     while i < n:
         ch = text[i]
         two = text[i:i + 2]
@@ -215,10 +247,41 @@ def mask_comments_and_literals(text):
                 )
             out.append(" ")
             i += 1
+        elif ch == "@" and _marks_a_declaration(text, i):
+            marked = _ANNOTATION.match(text, i)
+            out.append(text[i:marked.end()])
+            i = marked.end()
+            while i < n and text[i] in " \t\r\n":
+                out.append(text[i])
+                i += 1
+            if i < n and text[i] == "(":
+                annotation_arguments.append(0)
+                out.append("(")
+                i += 1
+        elif annotation_arguments:
+            if ch == "(":
+                annotation_arguments[-1] += 1
+            elif ch == ")":
+                if annotation_arguments[-1]:
+                    annotation_arguments[-1] -= 1
+                else:
+                    annotation_arguments.pop()
+            out.append(" " if ch in "{}" else ch)
+            i += 1
         else:
             out.append(ch)
             i += 1
     return "".join(out)
+
+
+def _marks_a_declaration(text, position):
+    """Whether an annotation is written at this offset, `@interface` excepted.
+
+    `@interface` opens a declaration rather than marking one, and its body is a body: the
+    braces inside it are the ones every scan here is looking for.
+    """
+    marked = _ANNOTATION.match(text, position)
+    return marked is not None and marked.group(1) != "interface"
 
 
 def _blank_one(text, out, i):
@@ -283,7 +346,7 @@ def _depth_at(offsets, position):
 
 
 def _body_ends_at(offsets, position, depth):
-    """Where the body opened after `position` closes again, or None at the end of file."""
+    """Where the body opened after `position` closes again, or None if it never does."""
     for offset, after in offsets[_first_brace_after(offsets, position):]:
         if after == depth:
             return offset
@@ -291,7 +354,7 @@ def _body_ends_at(offsets, position, depth):
 
 
 def _body_starts_at(offsets, position, depth):
-    """Where this declaration's body opens, or None when it has no body at all."""
+    """Where this declaration's body opens, or None when no brace after it opens one."""
     after = _first_brace_after(offsets, position)
     if after >= len(offsets) or offsets[after][1] != depth + 1:
         return None
@@ -300,7 +363,7 @@ def _body_starts_at(offsets, position, depth):
 
 def parse(text, path):
     """What this Java file contains, or a ParseFailure naming why it could not be read."""
-    masked = mask_comments_and_literals(text)
+    masked = masked_source(text)
     lines = len(text.splitlines())
 
     depths, final_depth, closed_too_many_at = _brace_depths(masked)
@@ -365,13 +428,28 @@ def _declared_types(masked, depths):
                 "a type this parser cannot place: %s on line %d sits %d brace(s) deep in "
                 "nothing it can name" % (match.group(2), _line_of(masked, start), depth)
             )
-        ends_at = _body_ends_at(depths, start, depth)
-        body_ends_at = len(masked) if ends_at is None else ends_at
+        # Every one of the five kinds of type Java declares has a body, so a declaration
+        # whose body this parser cannot find is a declaration it is no longer reading.
+        # Carrying on with an empty header would read the type's whole interface as
+        # nothing and price it at zero, which is a finding-shaped answer to a parse
+        # failure — exactly what this file refuses to hand anybody.
+        line = _line_of(masked, start)
         body_starts_at = _body_starts_at(depths, start, depth)
+        if body_starts_at is None:
+            raise ParseFailure(
+                "a type declaration whose body this parser cannot find: %s on line %d"
+                % (match.group(2), line)
+            )
+        body_ends_at = _body_ends_at(depths, start, depth)
+        if body_ends_at is None:
+            raise ParseFailure(
+                "a type declaration whose body never closes: %s on line %d"
+                % (match.group(2), line)
+            )
         kind = _KINDS[match.group(1)]
         # Between the name and the body: `extends`, `implements`, and a record's own
         # components. Everything a caller learns about this type without opening it.
-        header = masked[match.end(2):body_starts_at] if body_starts_at is not None else ""
+        header = masked[match.end(2):body_starts_at]
         owner = open_types[0] if open_types else None
         declared = DeclaredType(
             name=match.group(2),
@@ -388,7 +466,7 @@ def _declared_types(masked, depths):
             # Only for a module — a type declared inside one is named on it rather than
             # scored, so reading its members would be work nothing asks for.
             methods=() if owner is not None
-            else _methods_of(masked, kind, header, body_starts_at, body_ends_at),
+            else _methods_of(masked, kind, header, body_starts_at, body_ends_at, line),
         )
         types.append(declared)
         open_types.append(declared)
@@ -405,8 +483,6 @@ def _declared_types(masked, depths):
 # What a caller of this type has to learn: what it is marked with, what it is built on,
 # and what it offers. Read here and weighed nowhere: this file says what the source says,
 # and the rules that decide what any of it costs live in a file of their own.
-
-_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)")
 
 _INHERITANCE = re.compile(r"(?<![\w.$])(?:extends|implements|permits)(?![\w$])")
 
@@ -425,6 +501,11 @@ _TYPE_KEYWORD = re.compile(r"(?<![\w.$])(?:class|interface|enum|record)(?![\w$])
 
 _TRAILING_NAME = re.compile(r"([A-Za-z_$][\w$]*)\s*$")
 
+# How a type is spelled, once annotations are off it and its spacing is normalised: a
+# name, and then the shapes a name can be carried in. Nothing else belongs where a type
+# belongs, so anything else there is a member this parser has misread.
+_A_TYPE = re.compile(r"[A-Za-z_$][\w$.<>,\[\] ?]*$")
+
 _LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s")
 
 _TRAILING_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)\s*$")
@@ -442,11 +523,13 @@ def _annotations_before(masked, start):
     modifiers — and stopping at the first thing that is none of those, so a declaration
     never inherits the annotations of whatever was written above it.
 
-    Looking back to the nearest `;` or brace instead is what this replaces, and it loses
-    the whole annotation whenever an argument holds a brace of its own:
-    `@SpringBootApplication(scanBasePackages = {"shop"})` is the ordinary way to write
-    the entry point, and the search stopped inside it, so the entry point arrived as a
-    module no rule had excluded and was scored like anything else.
+    Looking back to the nearest `;` or brace instead, and then reading the annotations in
+    what that leaves, would say the wrong thing rather than nothing: an annotation's
+    argument can be another annotation, and `@JsonSubTypes({@Type(A.class)})` would then
+    report `Type` as marking the declaration. A rule in the configuration file that names
+    `Type` would exclude a module nobody wrote it on, and the graph would name a rule for
+    an exclusion the source does not support. Stepping over the arguments is what keeps
+    this list to the annotations the declaration actually carries.
     """
     found = []
     head = masked[:start]
@@ -481,43 +564,56 @@ def _supertypes_in(header):
     return tuple(found)
 
 
-def _methods_of(masked, kind, header, body_starts_at, body_ends_at):
+def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
     """Every method this type offers, including the ones a record never writes down.
 
     A record's components compile to an accessor apiece, and a caller learns each of them
     the way they learn a method somebody typed. Leaving them out would say that a record
     carrying six values asks nothing of anybody, which is the opposite of what it does.
+
+    `line` is where the declaration was written, so that a member this parser cannot read
+    is named by a line a reader can go and open.
     """
     methods = [
-        Method(name, "public", (), written) for written, name in _components_in(header)
+        Method(name, "public", (), written)
+        for written, name in _components_in(header, line)
     ] if kind == "record" else []
 
-    for member in _member_headers(masked, body_starts_at, body_ends_at):
-        method = _method_in(member, kind)
+    for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
+        method = _method_in(member, kind, _line_of(masked, at))
         if method is not None:
             methods.append(method)
     return tuple(methods)
 
 
-def _components_in(header):
+def _components_in(header, line):
     """A record's components, as (type, name), from the header it declares them in."""
     opened = header.find("(")
     if opened < 0:
         return []
-    return _declared_parameters(header[opened + 1:_after_balanced(header, opened) - 1])
+    return _declared_parameters(
+        header[opened + 1:_after_balanced(header, opened) - 1], line
+    )
 
 
-def _member_headers(masked, body_starts_at, body_ends_at):
-    """Each member of a type body, as the text before its own body or its semicolon.
+def _member_headers(masked, kind, body_starts_at, body_ends_at):
+    """Each member of a type body, as (the text before its body or semicolon, its offset).
 
     Every member's body is stepped over whole, so nothing written inside a method — a
     call that reads like a declaration, a local class, a lambda — is ever taken for part
-    of the type's interface.
+    of the type's interface. The separator that follows a stepped-over body is stepped
+    over with it, because a member whose text begins with the comma or the semicolon
+    ending the member before it is not the member it looks like.
+
+    An enum's constants are not members and are skipped as a block. They are written in
+    the same place as members, they may carry arguments and a body of their own, and
+    reading one as a member is how `B("y")` became a package-private method returning a
+    comma.
     """
-    if body_starts_at is None:
-        return []
     headers = []
     start = body_starts_at + 1
+    if kind == "enum":
+        start = _after_enum_constants(masked, start, body_ends_at)
     position = start
     parens = 0
     while position < body_ends_at:
@@ -527,24 +623,72 @@ def _member_headers(masked, body_starts_at, body_ends_at):
         elif character == ")":
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
-            headers.append(masked[start:position])
-            position = _after_balanced(masked, position, "{", "}")
+            headers.append(_header(masked, start, position))
+            position = _past_separator(masked, _after_balanced(masked, position, "{", "}"))
             start = position
             continue
         elif parens == 0 and character == ";":
-            headers.append(masked[start:position])
+            headers.append(_header(masked, start, position))
             start = position + 1
         position += 1
     return headers
 
 
-def _method_in(member, holder_kind):
+def _header(masked, start, position):
+    """One member's text, and the offset of the first thing written in it.
+
+    The offset is where the member's own first word is rather than where the member
+    before it ended, because it is only ever used to name a line to a reader, and the
+    line after the previous member's semicolon is not the line they need to open.
+    """
+    while start < position and masked[start] in " \t\r\n":
+        start += 1
+    return masked[start:position], start
+
+
+def _after_enum_constants(masked, start, body_ends_at):
+    """Just past the semicolon that ends an enum's constants, or the end of its body.
+
+    An enum with nothing but constants writes no semicolon at all, and then every member
+    there is to read is a constant.
+    """
+    position = start
+    parens = 0
+    while position < body_ends_at:
+        character = masked[position]
+        if character == "(":
+            parens += 1
+        elif character == ")":
+            parens = max(0, parens - 1)
+        elif parens == 0 and character == "{":
+            position = _after_balanced(masked, position, "{", "}")
+            continue
+        elif parens == 0 and character == ";":
+            return position + 1
+        position += 1
+    return body_ends_at
+
+
+def _past_separator(masked, position):
+    """Just past the `,` or `;` that closes off a member whose body was stepped over."""
+    while position < len(masked) and masked[position] in " \t\r\n":
+        position += 1
+    return position + 1 if position < len(masked) and masked[position] in ",;" else position
+
+
+def _method_in(member, holder_kind, line):
     """The method this member declares, or None when the member is not one.
 
     Fields, initialisers, enum constants, nested types and constructors all arrive here
     and all answer None. The constructor is left out deliberately: it says how a module
     is built, which in this application is the framework's business rather than a
     caller's, and counting it would charge every module for being injectable.
+
+    A member that reads as a method but hands back something that is not a type spelling
+    fails the file by name. Answering None there would be the same silence as scoring an
+    unreadable file at zero, one member at a time: the shape this parser cannot read
+    would leave no trace, and the next one would be found by a reader rather than by the
+    tool.
     """
     text = _without_annotations(member)
     opened = text.find("(")
@@ -561,30 +705,100 @@ def _method_in(member, holder_kind):
     returns = _normalised(signature[:name.start()])
     if not returns:
         return None
+    if not _reads_as_a_type(returns):
+        raise ParseFailure(
+            "a member this parser cannot read: %s on line %d hands back %r, which is not a "
+            "type" % (name.group(1), line, returns)
+        )
     return Method(
         name.group(1),
         _visibility(modifiers, holder_kind),
         [written for written, _ in _declared_parameters(
-            text[opened + 1:_after_balanced(text, opened) - 1]
+            text[opened + 1:_after_balanced(text, opened) - 1], line
         )],
         returns,
         _type_parameters_in(rest),
     )
 
 
-def _declared_parameters(text):
-    """The parameters written between two brackets, as (type, name)."""
+def _declared_parameters(text, line):
+    """The parameters written between two brackets, as (type, name).
+
+    A parameter this parser cannot read fails the file rather than being dropped. Two
+    spellings of one parameter list — `take(int xs[])` and `take(int[] xs)` — used to cost
+    a caller different amounts because the first was discarded here without a word, which
+    is the parser losing part of an interface while the score still added up.
+    """
     declared = []
     for part in _split_on_commas(text):
-        _, rest = _modifiers_in(_without_annotations(part))
-        name = _TRAILING_NAME.search(rest)
-        if name is None:
+        if not part.strip():
             continue
+        _, rest = _modifiers_in(_without_annotations(part))
+        # `int xs[]` declares the array on the name rather than on the type. The brackets
+        # belong to what the caller has to hand over either way.
+        rest, brackets = _brackets_after_the_name(rest)
+        name = _TRAILING_NAME.search(rest)
         # `String... names` hands over a String: the dots say how many, not what.
-        written = _normalised(rest[:name.start()]).rstrip(". ")
-        if written:
-            declared.append((written, name.group(1)))
+        written = _normalised(rest[:name.start()] if name else "").rstrip(". ")
+        if name is None or not written or not _reads_as_a_type(written + brackets):
+            raise ParseFailure(
+                "a parameter this parser cannot read: %r on line %d" % (part.strip(), line)
+            )
+        if name.group(1) == "this":
+            # `void f(Foo this, int x)` names the receiver rather than a parameter: a
+            # caller passes nothing for it, so charging them for it would be an invented
+            # parameter on every method written that way.
+            log.debug("receiver parameter read on line %d, which a caller never passes", line)
+            continue
+        declared.append((written + brackets, name.group(1)))
     return declared
+
+
+def _brackets_after_the_name(rest):
+    """The text with any trailing `[]` pairs taken off it, and the pairs, as one string."""
+    brackets = ""
+    while True:
+        trimmed = rest.rstrip()
+        if not trimmed.endswith("]"):
+            return rest, brackets
+        opened = _before_balanced(trimmed, "[", "]")
+        if opened is None:
+            return rest, brackets
+        rest = trimmed[:opened]
+        brackets += "[]"
+
+
+def _reads_as_a_type(written):
+    """Whether this is spelled the way a Java type is, brackets balanced and all.
+
+    Not "names a type this parser could resolve" — it reads one file at a time and cannot
+    — but "could be one at all". Anything else in the place a type belongs means the
+    scan has lost the shape of what it is reading, and the file is failed rather than
+    scored on the strength of it.
+
+    Once the spacing is normalised, everything a type can be spelled with is a name, a
+    bracket, or one of the words inside `<? extends Receipt>`. So a type is a name whose
+    brackets balance and which holds a space, a comma or a `?` only inside a `<...>`: a
+    space anywhere else is two words, and two words in the place of one type means a
+    member header was cut in the wrong place.
+    """
+    if _A_TYPE.match(written) is None:
+        return False
+    angles = brackets = 0
+    for character in written:
+        if character == "<":
+            angles += 1
+        elif character == ">":
+            angles -= 1
+        elif character == "[":
+            brackets += 1
+        elif character == "]":
+            brackets -= 1
+        elif character in " ,?" and angles == 0:
+            return False
+        if angles < 0 or brackets < 0:
+            return False
+    return angles == 0 and brackets == 0
 
 
 def _modifiers_in(before):
@@ -736,8 +950,16 @@ def _before_balanced(text, opening="(", closing=")"):
 
 
 def _normalised(written):
-    """A type as the graph carries it: one space where Java needs one, none where it does not."""
+    """A type as the graph carries it: one space where Java needs one, none where it does not.
+
+    Every bracket is closed up against what it holds and every comma between two type
+    arguments is followed by exactly one space, whether or not the source wrote one. The
+    comma is the one that matters: while the space after it was carried through, one
+    document held both `Map<String, Long>` and `Map<String,Long>`, which reads as two
+    types a caller has to learn where there is one.
+    """
     tidy = re.sub(r"\s+", " ", written).strip()
     for bracket in ("<", ">", ",", "[", "]"):
         tidy = tidy.replace(" " + bracket, bracket)
-    return tidy.replace("< ", "<").replace("[ ", "[")
+    tidy = tidy.replace("< ", "<").replace("[ ", "[")
+    return re.sub(r",\s*", ", ", tidy).strip()

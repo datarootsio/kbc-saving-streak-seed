@@ -26,6 +26,11 @@ class SourceOfKnownShapeTest(SourceTreeTest):
     def cost_of(self, body):
         return self.modules(("Till", body))["Till"]["interface"]["cost"]
 
+    def methods_of(self, name, body):
+        """The interface of one module, by method name."""
+        module = self.modules((name, body))[name]
+        return {method["name"]: method for method in module["interface"]["methods"]}
+
 
 class EveryMethodACallerCanReachIsCountedTest(SourceOfKnownShapeTest):
 
@@ -399,3 +404,158 @@ class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
         self.modules(("Receipt", "public record Receipt(long cents) {}"))
 
         self.assertEqual(0, self.document["scoring"]["widestInterface"])
+
+
+class OneInterfaceCostsTheSameHoweverItIsWrittenTest(SourceOfKnownShapeTest):
+    """Two spellings of one interface are one interface, and cost one thing.
+
+    Java lets a caller's obligation be written more than one way, and every way it can be
+    written is a way this parser can lose part of it. Losing part of an interface makes a
+    module look cheaper than it is, and cheap is what this page calls deep — so each of
+    these fixtures writes the same obligation twice and asserts the two agree, rather than
+    asserting either number on its own.
+    """
+
+    def test_an_array_written_on_the_name_is_the_array_written_on_the_type(self):
+        methods = self.methods_of(
+            "Till",
+            "public class Till {\n"
+            "    public void take(int xs[], String name) {}\n"
+            "    public void alsoTake(int[] xs, String name) {}\n"
+            "}",
+        )
+
+        self.assertEqual(["int[]", "String"], methods["take"]["parameters"])
+        self.assertEqual(methods["alsoTake"]["parameters"], methods["take"]["parameters"])
+        self.assertEqual(methods["alsoTake"]["cost"], methods["take"]["cost"])
+
+    def test_a_two_dimensional_array_is_the_same_however_the_brackets_are_split(self):
+        methods = self.methods_of(
+            "Till",
+            "public class Till {\n"
+            "    public void grid(int cells[][]) {}\n"
+            "    public void alsoGrid(int[] cells[]) {}\n"
+            "    public void plainGrid(int[][] cells) {}\n"
+            "}",
+        )
+
+        self.assertEqual(["int[][]"], methods["grid"]["parameters"])
+        self.assertEqual(["int[][]"], methods["alsoGrid"]["parameters"])
+        self.assertEqual(["int[][]"], methods["plainGrid"]["parameters"])
+
+    def test_a_type_argument_is_spelled_one_way_wherever_it_is_written(self):
+        """Otherwise one document holds two names for the type a caller learns once."""
+        module = self.modules(
+            ("Till", "import java.util.Map;\npublic class Till {\n"
+                     "    public Map<String, Long> tally(Map<String,Long> so_far) { return null; }\n}")
+        )["Till"]
+        method = module["interface"]["methods"][0]
+
+        self.assertEqual(method["returns"], method["parameters"][0])
+        self.assertEqual("Map<String, Long>", method["returns"])
+
+    def test_the_receiver_a_method_can_name_is_not_a_parameter_a_caller_passes(self):
+        """`void ring(Till this, long id)` is one parameter, and `this` is not it."""
+        methods = self.methods_of(
+            "Till",
+            "public class Till {\n    public void ring(Till this, long id) {}\n}",
+        )
+
+        self.assertEqual(["long"], methods["ring"]["parameters"])
+        self.assertEqual(2, methods["ring"]["cost"])
+
+
+class AnAnnotationsArgumentIsNeverReadAsABodyTest(SourceOfKnownShapeTest):
+    """A brace inside an annotation's arguments is not the brace a body opens with.
+
+    `@Values({"a", "b"})` on a record component put a `{` between the module's name and
+    its body, and every scan looking for "the first brace after the name" took it for the
+    body. The interface then read as nothing at all: no methods, no types crossing the
+    seam, nothing said — a module priced at the cost of an empty interface. This
+    repository holds twenty-six records, and an annotation with an array argument on one
+    of their components is an ordinary edit away.
+    """
+
+    def test_a_record_whose_component_is_annotated_still_offers_its_whole_interface(self):
+        module = self.modules(
+            ("R", 'public record R(@Values({"a", "b"}) String s, long cents)\n'
+                  "        implements Comparable<R> {\n"
+                  "    public String pretty() { return s + cents; }\n"
+                  "    public int compareTo(R other) { return 0; }\n}"),
+        )["R"]
+
+        self.assertEqual(
+            ["cents", "compareTo", "pretty", "s"],
+            [method["name"] for method in module["interface"]["methods"]],
+        )
+        self.assertEqual(
+            ["R", "String", "int", "long"],
+            [type_["name"] for type_ in module["interface"]["typesCrossingTheSeam"]],
+        )
+
+    def test_an_excluded_module_of_that_shape_is_still_drawn_with_what_it_offers(self):
+        """Criterion six: a rule declining to measure an interface has to leave one to see."""
+        module = self.modules(
+            ("R", 'public record R(@Values({"a"}) String s) {}'),
+        )["R"]
+
+        self.assertEqual("data carrier", module["excludedBy"]["rule"])
+        self.assertIsNone(module["interface"]["cost"])
+        self.assertEqual(["s"], [method["name"] for method in module["interface"]["methods"]])
+
+    def test_a_type_declared_inside_such_a_record_is_still_named_on_it(self):
+        """The same fixture used to fail the whole file rather than read it."""
+        module = self.modules(
+            ("R", 'public record R(@Values({"a"}) String s) {\n'
+                  "    record Row(long id) {}\n}"),
+        )["R"]
+
+        self.assertEqual(["Row"], module["nested"])
+        self.assertEqual(["s"], [method["name"] for method in module["interface"]["methods"]])
+
+    def test_a_supertypes_type_argument_can_be_annotated_too(self):
+        methods = self.methods_of(
+            "Till", 'public class Till extends Base<@Values({"a"}) String> {\n'
+                    "    public void ring() {}\n}"
+        )
+
+        self.assertEqual(["ring"], sorted(methods))
+
+    def test_an_annotation_on_a_parameter_is_not_a_body_either(self):
+        methods = self.methods_of(
+            "Till", "public class Till {\n"
+                    '    public void ring(@Values({"a"}) String name) {}\n'
+                    "    public void open() {}\n}"
+        )
+
+        self.assertEqual(["open", "ring"], sorted(methods))
+        self.assertEqual(["String"], methods["ring"]["parameters"])
+
+
+class AnEnumConstantIsNotAMethodTest(SourceOfKnownShapeTest):
+    """An enum's constants are written where its members are and are not members.
+
+    A constant carrying arguments after one carrying a body was read as a method — with
+    the comma between them as its return type — and the module was charged for it. Enums
+    are excluded from scoring by a rule the configuration file names, so the invented
+    method only reached a bar when that rule was taken out; the interface it inflated was
+    in the graph either way.
+    """
+
+    def test_a_constant_with_a_body_leaves_the_constant_after_it_a_constant(self):
+        module = self.modules(
+            ("Kind", "public enum Kind {\n"
+                     '    A("x") { int n() { return 1; } },\n'
+                     '    B("y");\n'
+                     "    Kind(String s) {}\n"
+                     "    public String label() { return null; }\n}"),
+        )["Kind"]
+
+        self.assertEqual(
+            ["label"], [method["name"] for method in module["interface"]["methods"]]
+        )
+
+    def test_an_enum_of_nothing_but_constants_offers_nothing(self):
+        module = self.modules(("Kind", "public enum Kind { A, B }"))["Kind"]
+
+        self.assertEqual([], module["interface"]["methods"])
