@@ -4323,11 +4323,6 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // that two bars are comparable against a number a reader can find in the graph.
   var widest = document_.scoring.widestInterface;
 
-  // Branching on the fact that carries the exclusion, not on the absent cost that
-  // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
-  // would throw for a module that had one without the other, and the renderer is one
-  // pass: a throw abandons every package section after it, which reads as a page that
-  // ends early rather than as a page that failed.
   // One term per weight the configuration holds, in the order the breakdown reads them
   // out. A cost is the weighted sum of exactly these counts, so a weight with no term
   // here would be part of every total with nothing under it to account for: a module
@@ -4373,6 +4368,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     return counted;
   }
 
+  // Branching on the fact that carries the exclusion, not on the absent cost that
+  // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
+  // would throw for a module that had one without the other, and the renderer is one
+  // pass: a throw abandons every package section after it, which reads as a page that
+  // ends early rather than as a page that failed.
   function drawInterface(item, module) {
     if (module.excludedBy) {
       var never = add(item, "p", "unscored", "never scored \u2014 " + module.excludedBy.rule);
