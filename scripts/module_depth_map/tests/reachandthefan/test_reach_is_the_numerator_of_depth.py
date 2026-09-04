@@ -13,9 +13,11 @@ lines of implementation and not one more thing coordinated has to come out at ex
 depth it had before.
 """
 
+import logging
 import re
+import unittest
 
-from ... import graph, page, scoring
+from ... import graph, javasource, page, scoring
 from ..support.sourcetrees import SourceTreeTest
 
 # The collaborators the fixtures reach for. Each is here to be one kind of reached thing:
@@ -34,6 +36,11 @@ A_PERSISTENT_RECORD = (
     "    public long id() { return 0; }\n}"
 )
 A_MODULE_IN_ANOTHER_PACKAGE = "public class Shelf {\n    public void take(long id) {}\n}"
+# The same name as the record above and nothing persistent about it, so that a test can
+# put one of each in two packages and say which one a `new` written out in full built.
+A_RECORD_THAT_IS_NOT_PERSISTENT = (
+    "class Receipt {\n    Receipt(long id) {}\n    public long id() { return 0; }\n}"
+)
 
 A_DEEP_MODULE = """import org.springframework.transaction.annotation.Transactional;
 
@@ -409,6 +416,73 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
 
         self.assertEqual([], self.reached(modules["Till"]))
 
+    def test_a_member_imported_statically_and_declared_one_brace_deeper_reaches_nothing(self):
+        """The same mistake as above, with the declaration moved into a nested class.
+
+        Everything a module's body reaches for is read over the whole body, nested types
+        and all — so everything it *declares* has to be read over the whole body too.
+        Read from the top-level type's own methods only, this module has no `of` of its
+        own, its `of` in the body is taken for a call, and the graph says it calls a
+        module whose name appears nowhere but an import it never uses.
+
+        A static import beside a nested record or a helper class whose method shares the
+        name is everyday Java: this repository statically imports `AmountOfMoney.asMoney`
+        in two services.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    static final class Coin {\n"
+                     "        long of(long cents) { return cents; }\n"
+                     "    }\n"
+                     "    public long ring(long id) { return 1; }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertEqual(0, modules["Till"]["reach"]["count"])
+
+    def test_a_member_imported_statically_and_declared_in_an_anonymous_class_reaches_nothing(self):
+        """The same again, in the one body no declaration keyword opens.
+
+        An anonymous class has no `class Coin` in front of its brace, so nothing can list
+        it as a type and read its members. Its methods are told from calls the way every
+        other declaration is: by what is written in front of the name.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    public Object ring(long id) {\n"
+                     "        return new Object() {\n"
+                     "            long of(long cents) { return cents; }\n"
+                     "        };\n"
+                     "    }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_call_written_inside_an_anonymous_class_is_still_a_call(self):
+        """The other side of the test above: what is declined is declarations, not depth.
+
+        A guard that answered "declaration" for everything written inside a body it
+        cannot name would be a fan missing every call a lambda or an anonymous class
+        makes, which is a floor low enough to be useless.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    public Runnable ring(long id) {\n"
+                     "        return new Runnable() {\n"
+                     "            public void run() { of(id); }\n"
+                     "        };\n"
+                     "    }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "calls of, imported statically from it",
+            modules["Till"]["reach"]["reaches"][0]["matched"],
+        )
+
     def test_a_module_that_both_declares_a_name_and_calls_the_import_reports_a_floor(self):
         """What the fix above costs, stated rather than left to be discovered.
 
@@ -421,6 +495,30 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
                      "    public long of(long cents) { return cents; }\n"
                      "    public long ring(long id) { return of(id) + of(1); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_name_declared_one_brace_deeper_and_called_reports_the_same_floor(self):
+        """The whole body decides, and the cost of that is stated rather than discovered.
+
+        Here the declaration is a nested class's and the call is the outer method's, so
+        Java would read `of(id)` as the imported `Prices.of` — a declaration inside `Coin`
+        shadows nothing outside it. This tool does not go that far: it reads the names its
+        body declares as one set, because knowing which brace a name was declared under is
+        knowing where in the body each call was written too, and half of that is a guess.
+
+        So this reach is dropped. A fan shorter than the source is the direction every
+        reading here is willing to be wrong in; a line to a card the module never calls is
+        not.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\npublic class Till {\n"
+                     "    static final class Coin {\n"
+                     "        long of(long cents) { return cents; }\n"
+                     "    }\n"
+                     "    public long ring(long id) { return of(id); }\n}"),
             ("Prices", A_MODULE_TO_CALL),
         )
 
@@ -459,6 +557,75 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             [entry["moduleId"] for entry in modules["Till"]["reach"]["reaches"]],
         )
 
+    def test_a_name_a_nested_type_shadows_is_not_followed_to_the_module_next_door(self):
+        """`Kind.of(x)` inside a module that nests a `Kind` means the nested one.
+
+        That is how Java reads it — a member type shadows the package the file sits in
+        and every import above it — and a nested type is not a module, so the name
+        reaches nothing. Followed to the top-level `Kind` instead, the page draws a line
+        to a card this module never calls, and the collision is not hypothetical: this
+        repository already nests a `SavingsAccountResponse` inside
+        `CustomerAccountsResponse` while a top-level one sits in the same package.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    enum Kind {\n"
+                     "        COIN;\n"
+                     "        static long of(String s) { return 1; }\n"
+                     "    }\n"
+                     "    public long ring(String s) { return Kind.of(s); }\n}"),
+            ("Kind", "public class Kind {\n"
+                     "    public static long of(String s) { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertEqual(["Kind"], modules["Till"]["nested"])
+
+    def test_a_new_written_out_in_full_builds_the_module_that_name_spells(self):
+        """A name written with its package on it means that one and nothing else.
+
+        Two `Receipt`s, one of them persistent, and the `new` says which: the package in
+        front of the name is the whole of the answer, and reading only the word after the
+        last dot throws it away.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public long ring() { return new shop.stock.Receipt(1L).id(); }\n}"),
+            ("Receipt", A_RECORD_THAT_IS_NOT_PERSISTENT),
+            Receipt=("shop.stock", A_PERSISTENT_RECORD),
+        )
+
+        self.assertEqual([("record", "Receipt")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "shop.stock.Receipt", modules["Till"]["reach"]["reaches"][0]["moduleId"]
+        )
+
+    def test_a_new_written_out_in_full_is_not_credited_to_the_module_next_door(self):
+        """The same two files with the persistence moved, and the answer moves with it.
+
+        Cut back to `Receipt`, this built the record in its own package: the wrong
+        module, a kind the module it named does not have, and an evidence string —
+        "builds one: annotated with Entity" — about a class carrying no such annotation.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public long ring() { return new shop.stock.Receipt(1L).id(); }\n}"),
+            ("Receipt", A_PERSISTENT_RECORD),
+            Receipt=("shop.stock", A_RECORD_THAT_IS_NOT_PERSISTENT),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_new_written_out_in_full_that_names_nothing_here_reaches_nothing(self):
+        """`new java.util.ArrayList<>()` is not this source tree's business."""
+        modules = self.modules(
+            ("Till", "import java.util.ArrayList;\n\npublic class Till {\n"
+                     "    public Object ring() { return new java.util.ArrayList<>(); }\n}"),
+            ("Receipt", A_PERSISTENT_RECORD),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
     def test_a_call_written_in_a_comment_reaches_nothing(self):
         modules = self.modules(
             ("Till", "public class Till {\n"
@@ -468,6 +635,57 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
         )
 
         self.assertEqual([], self.reached(modules["Till"]))
+
+
+class WhatAModuleHoldsIsReadHoweverItIsSpelledTest(unittest.TestCase):
+    """A field is how a call through it is followed, so a field dropped is a reach lost.
+
+    These read the parser directly rather than a graph, because what is being established
+    is that nothing leaves this file in silence: a member read as a field arrives as one,
+    and a member declined says which member and why at DEBUG. A field quietly dropped
+    understates a fan with nothing to grep for, in the one file whose whole promise is
+    that it does not do that.
+    """
+
+    def parsed(self, body):
+        return javasource.parse("package shop.till;\n\n" + body + "\n", "Till.java").top_level[0]
+
+    def test_an_array_field_is_read_when_the_brackets_are_written_after_the_name(self):
+        """`DepositRepository deposits[]` holds what `DepositRepository[] deposits` holds.
+
+        The header ends in `]`, so there is no name at the end of it to find until the
+        brackets come off. Looked for the other way round, this member was declined as
+        having no name — and declined with no line at all, because the branch that
+        declines it never logged.
+        """
+        till = self.parsed(
+            "public class Till {\n    private DepositRepository deposits[];\n}"
+        )
+
+        self.assertEqual(
+            [("deposits", "DepositRepository[]")],
+            [(field.name, field.written) for field in till.fields],
+        )
+
+    def test_both_spellings_of_an_array_field_hold_the_same_thing(self):
+        after = self.parsed("public class Till {\n    private int xs[];\n}")
+        before = self.parsed("public class Till {\n    private int[] xs;\n}")
+
+        self.assertEqual(
+            [(field.name, field.written) for field in before.fields],
+            [(field.name, field.written) for field in after.fields],
+        )
+
+    def test_a_member_that_is_not_a_field_at_all_is_declined_with_a_line(self):
+        """An initialiser block is not a field, and says so where a reader can grep it."""
+        with self.assertLogs("module_depth_map.javasource", level=logging.DEBUG) as logged:
+            till = self.parsed("public class Till {\n    static { }\n}")
+
+        self.assertEqual((), till.fields)
+        self.assertTrue(
+            any("member not read as a field" in line for line in logged.output),
+            logged.output,
+        )
 
 
 class EveryLineInAFanResolvesTest(SourceOfKnownShapeTest):

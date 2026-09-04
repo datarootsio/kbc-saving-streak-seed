@@ -325,9 +325,9 @@ _SCRIPT = """
     + "coordination this tool can see, and it does not guess at them. Three spellings of "
     + "a call are missed the same way: a call written out in full, package and all "
     + "(a.b.C.d()), a call through something reached through something else (a.b.c()), "
-    + "and a call to a statically imported member a module also declares a method for, "
-    + "which is read as the declaration it also is. Each leaves a fan shorter than the "
-    + "source, which is the direction this page is willing to be wrong in.");
+    + "and a call to a statically imported member whose name the module's own body "
+    + "declares, which is read as the declaration it also is. Each leaves a fan shorter "
+    + "than the source, which is the direction this page is willing to be wrong in.");
 
   var named = add(rules, "ul");
   var because = {};

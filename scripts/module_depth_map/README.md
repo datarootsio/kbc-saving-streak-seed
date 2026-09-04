@@ -205,12 +205,17 @@ hundred lines of local variables around it, moves nothing. Every module carries 
 with both numbers it was taken from, so the division can be checked by hand.
 
 Nothing is reached that the graph does not also hold. A name in a body is followed to a
-module the way the compiler would follow it — through the file's own single-type imports
-first, then its package, then any on-demand import — and a name that resolves to no module
-here is not counted at all. That is what keeps every line in a fan pointing at a card on
-the same page, and what stops a module raising its own score by importing more of the JDK.
-The transaction is the one thing reached with no module behind it, and it says so by
-carrying no module id.
+module the way the compiler would follow it — a type the module declares inside itself
+first, then the file's own single-type imports, then its package, then any on-demand
+import — and a name that resolves to no module here is not counted at all. That is what
+keeps every line in a fan pointing at a card on the same page, and what stops a module
+raising its own score by importing more of the JDK. The nested type comes first because
+Java puts it first: `Kind.of(x)` written in a module that nests a `Kind` means that one
+rather than the top-level `Kind` next door, and a nested type is not a module, so the name
+reaches nothing at all. A name written out in full — `new other.Receipt()` — means the
+module of that id and no other; the package in front of it is the answer rather than
+something to cut off. The transaction is the one thing reached with no module behind it,
+and it says so by carrying no module id.
 
 A fan is a floor on what a module coordinates, the way a bar is a floor on what a caller
 must learn. A collaborator handed in as an argument rather than held as a field, and a
@@ -226,10 +231,13 @@ that the edge of the floor can be seen rather than discovered:
   a file can spell after its imports, `AccountsService.of(x)`;
 - a call through something reached through something else — `orders.repository.save(x)` —
   for the same reason: the field is not the name in front of the last dot;
-- a call to a statically imported member whose name the module also declares a method
-  for. A declaration is written the same way a call is, so counting it would credit a
-  module with reaching something it never called and print evidence saying so; the call
-  is dropped instead.
+- a call to a statically imported member whose name the module's own body also declares —
+  a method, a constructor, a nested record's header, an anonymous class's method, anywhere
+  in the body. A declaration is written the same way a call is, and which of the two it is
+  is decided by what stands in front of the name: a type means a declaration, punctuation
+  an expression can follow means a call. Where the two cannot be told apart the reading is
+  "declaration", because counting a declaration as a call credits a module with reaching
+  something it never called and prints evidence saying so.
 
 Each of these leaves a fan shorter than the source, never longer. That is the direction
 this tool is willing to be wrong in: a number a reader can check and find understated is

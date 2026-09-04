@@ -410,7 +410,7 @@ class Rules:
             "cost": cost,
         }
 
-    def reach_of(self, declared, module_id, package, imports, modules):
+    def reach_of(self, declared, module_id, package, imports, modules, nested=()):
         """Everything this module coordinates on its caller's behalf, one entry apiece.
 
         Reach is the numerator of depth, and it is a count of *distinct things* rather
@@ -432,7 +432,7 @@ class Rules:
         this module loads and mutates rather than creates, are coordination this tool
         cannot see and does not guess at. So are three spellings of a call — one written
         out in full, one through something itself reached through something else, and a
-        statically imported member whose name the module also declares a method for. The
+        statically imported member whose name the module's own body also declares. The
         page names all three, because a floor whose edge a reader cannot see is not one
         they can trust.
         """
@@ -449,7 +449,32 @@ class Rules:
                 "matched": matched,
             }
 
+        shadowed = {name.rsplit(".", 1)[-1] for name in nested}
+
         def resolve(name):
+            # A name written out in full names one thing and nothing else: the module of
+            # that id, if this source tree holds one. `new other.Receipt()` is `other`'s
+            # `Receipt` and never this package's, and cutting the package off to look the
+            # rest up here is how it became this package's — a different module, of a
+            # different kind, with an evidence string a reader could check and find false.
+            if "." in name:
+                return name if name in modules and name != module_id else None
+            # A type this module declares inside itself shadows every name an import or
+            # the package could offer, which is how Java reads it: `Kind.of(x)` written in
+            # a module that nests a `Kind` means that one, not the top-level `Kind` next
+            # door. A nested type is not a module, so the name reaches nothing.
+            #
+            # Every nested type is read as shadowing, however deep it sits, though one
+            # declared two levels down is only in scope in part of the body. That drops a
+            # reach the source has rather than inventing one it does not, which is the
+            # direction every reading here is willing to be wrong in.
+            if name in shadowed:
+                log.debug(
+                    "name not followed name=%s in=%s, because this module declares a type "
+                    "of that name inside itself and a nested type is not a module",
+                    name, declared.name,
+                )
+                return None
             for candidate in javasource.candidate_ids(name, package, imports):
                 if candidate in modules and candidate != module_id:
                     return candidate
@@ -477,27 +502,39 @@ class Rules:
         # A member imported statically is written with no receiver in front of it, so the
         # only thing tying `asMoney(...)` to the module that declares it is the import.
         #
-        # `called` is every name in the body with a call's brackets after it, and a
-        # module's own declarations are written that way too: a module declaring
-        # `long of(long cents)` carries `of` in `called` having called nothing at all.
-        # Read straight, that credits a module which merely imports a member and happens
-        # to declare a method of the same name with reaching the module the import came
-        # from — a fan line to a card it never calls, and an evidence string that is a
-        # false statement about the source. So a name this module declares is never read
-        # as a call to the import that shares its spelling.
+        # A declaration is written the same way: `long of(long cents)` puts a name in
+        # front of brackets having called nothing at all. Read straight, that credits a
+        # module which merely imports a member and happens to declare something of the
+        # same name with reaching the module the import came from — a fan line to a card
+        # it never calls, and an evidence string that is a false statement about the
+        # source. So a name this module's body declares is never read as a call to the
+        # import that shares its spelling.
+        #
+        # `declares` is taken over the *whole* body, one brace deeper included, because
+        # `called` is: reading only the top-level type's own methods left the same false
+        # statement coming out of a module whose declaration sat in a nested record or a
+        # helper class, which is everyday Java rather than an exotic shape.
+        #
+        # For the module's own methods this is what Java does — a method shadows a static
+        # import of its name, so `of(id)` there really is this module's own `of` and
+        # really does reach nothing. For a declaration further in it is a floor: Java
+        # would read the call as the import, and this drops it. Telling the two apart
+        # means knowing which brace every call was written under as well as every
+        # declaration, and half of that is a guess.
         #
         # The cost of that is a module which both declares and calls one name, whose real
         # call goes uncounted. Reach is a floor and this keeps it one: it errs towards
         # saying less about the source than the source says, never towards saying
         # something the source does not.
-        declares = {method.name for method in declared.methods} | {declared.name}
+        declares = set(declared.declares) | {declared.name}
         for imported in imports:
             if imported.member not in declared.called:
                 continue
             if imported.member in declares:
                 log.debug(
                     "static import not read as a call name=%s member=%s from=%s, because "
-                    "this module declares that name itself and a declaration is not a call",
+                    "this module's body declares that name itself and a declaration is "
+                    "not a call",
                     declared.name, imported.member, imported.type,
                 )
                 continue

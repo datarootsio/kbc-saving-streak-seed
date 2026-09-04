@@ -331,11 +331,16 @@ def _measure_depth(read, rules):
     coordinates whatever it coordinates, and drawing its fan is what lets a reader see
     that the rule declined to price something real. Its depth carries the same two numbers
     with no ratio between them, because there is no interface cost to divide by.
+
+    The nested names already on the module are handed over with the rest, because they are
+    part of how a name is followed: a type a module declares inside itself shadows the
+    package and every import above it, exactly as it does for the compiler.
     """
     declared_by_id = {module["id"]: declared for module, declared, _ in read}
     for module, declared, parsed in read:
         module["reach"] = rules.reach_of(
-            declared, module["id"], parsed.package, parsed.imports, declared_by_id
+            declared, module["id"], parsed.package, parsed.imports, declared_by_id,
+            module["nested"],
         )
         module["depth"] = rules.depth_of(module["reach"], module["interface"])
 

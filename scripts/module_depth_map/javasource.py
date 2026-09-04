@@ -62,13 +62,37 @@ _IMPORT = re.compile(r"^\s*import\s+(static\s+)?([\w.]+(?:\.\*)?)\s*;", re.M)
 # is called on it is its own business.
 _A_RECEIVER = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*\s*\(")
 
-# `new Deposit(...)`, `new java.util.ArrayList<>()`: the type a body builds one of.
+# `new Deposit(...)`, `new java.util.ArrayList<>()`: the type a body builds one of, kept
+# exactly as it was written. A name written out in full is carried with its package on it
+# rather than cut back to `ArrayList` — cutting it back is how `new other.Receipt()` was
+# read as building this package's own `Receipt`, a different module, of a different kind,
+# with an evidence string saying so. Whoever resolves it decides what a dotted spelling
+# can mean; this file only reports what the source wrote.
 _CONSTRUCTED = re.compile(r"(?<![\w.$])new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
 
 # A name with a call's brackets after it and nothing in front of the name. Read only so
 # that a member imported statically — `asMoney(amount)` — can be followed back to the type
 # it was imported from; everything else it matches is a name nothing ever asks about.
+#
+# It matches a declaration too. `long of(long cents)` puts brackets after a name with
+# nothing in front of the name either, and so does every constructor, every nested
+# record's header and every method of an anonymous class. Which is which is decided by
+# `_declares_rather_than_calls` below, because reading a declaration as a call is how a
+# module gets credited with reaching something it never called.
 _A_CALL = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(")
+
+# What a declaration writes in front of the name and a call never does: a type. So the
+# thing immediately before the name decides it — a word that is not one of the words below
+# is the return type or the modifier of a declaration, and `>` or `]` is the end of one
+# spelled `Map<String, Long>` or `int[]`. Everything else — `;`, `{`, `=`, `(`, `,`, an
+# operator, `->` — is punctuation only an expression can follow, so the name after it is
+# a call.
+#
+# Where the two readings are genuinely ambiguous this answers "declaration", because the
+# only thing that answer costs is a static import going uncounted, and the other answer
+# costs a fan line to a card the module never calls.
+_ENDS_A_TYPE = ("]", ">")
+_A_LAMBDA_ARROW = "->"
 
 # The words Java writes brackets after that are not calls. Listed so that `if`, `while`
 # and their kind are not carried as things a module called.
@@ -214,16 +238,18 @@ class DeclaredType:
     reason about: what this type is marked with, what it is built on, and what it offers
     anybody holding one. Nothing here decides what any of that is worth.
 
-    `fields`, `receivers`, `constructed` and `called` are the same again for the other
-    side of the seam — what the implementation reaches for. They are read for a module
-    only, because a type declared inside one is named on it rather than measured, and they
-    are counts of *names*, never of lines: writing the same call ten more times adds
-    nothing to any of them.
+    `fields`, `receivers`, `constructed`, `called` and `declares` are the same again for
+    the other side of the seam — what the implementation reaches for, and which of the
+    names written like a call it declares instead. They are read for a module only,
+    because a type declared inside one is named on it rather than measured, and they are
+    counts of *names*, never of lines: writing the same call ten more times adds nothing
+    to any of them. All five are taken over the whole body, nested types included, since
+    that whole body is the module.
     """
 
     def __init__(self, name, kind, depth, ends_at, owner, qualified,
                  annotations=(), supertypes=(), methods=(), type_parameters=(),
-                 fields=(), receivers=(), constructed=(), called=()):
+                 fields=(), receivers=(), constructed=(), called=(), declares=()):
         self.name = name
         self.kind = kind
         self.depth = depth
@@ -238,6 +264,7 @@ class DeclaredType:
         self.receivers = tuple(receivers)
         self.constructed = tuple(constructed)
         self.called = tuple(called)
+        self.declares = tuple(declares)
 
 
 class ParsedFile:
@@ -807,12 +834,23 @@ def _field_in(member, line):
         return None
     _, rest = _modifiers_in(before)
     rest = _without_type_parameters(rest)
+    # `int xs[]` declares the array after the name rather than on the type, and holds the
+    # same thing `int[] xs` does. The brackets come off before the name is looked for,
+    # because a header ending in `]` has no name at its end for `_TRAILING_NAME` to find:
+    # read the other way round, `private DepositRepository deposits[];` was declined as
+    # having no name — silently, in the one file whose promise is that nothing is dropped
+    # without a word — and a call through that field then reached nothing.
+    rest, brackets = _brackets_after_the_name(rest)
     name = _TRAILING_NAME.search(rest)
     if name is None:
+        log.debug(
+            "member not read as a field line=%d reason=%s member=%s",
+            line,
+            "nothing at the end of it reads as a name",
+            _one_line(member),
+        )
         return None
-    # `int xs[]` declares the array after the name, and hands back the same thing
-    # `int[] xs` does.
-    written = _normalised(rest[:name.start()]) + _brackets_after(rest[name.end():])
+    written = _normalised(rest[:name.start()]) + brackets
     if not written or not _reads_as_a_type(written):
         log.debug(
             "member not read as a field line=%d reason=%s member=%s",
@@ -828,34 +866,69 @@ def _field_in(member, line):
 def _reached_in(body):
     """What this module's implementation reaches for, by name and never by volume.
 
-    Three readings, each a set of names rather than a count of occurrences, which is the
+    Four readings, each a set of names rather than a count of occurrences, which is the
     whole point: a module that writes the same call ten more times reaches for nothing
     new, and a measure built on these cannot be moved by adding lines.
 
     - `receivers`: what a call was written against, `deposits` in `deposits.save(...)`
       and `AmountOfMoney` in `AmountOfMoney.whyItIsNotOne(...)`. Whether that name is a
       field, a type or a local is not this file's business to decide.
-    - `constructed`: the types a `new` builds one of.
+    - `constructed`: the types a `new` builds one of, spelled the way the source spelled
+      them — `Deposit`, `other.Receipt`, `java.util.ArrayList`.
     - `called`: a name with a call's brackets after it and nothing in front of it, so
       that a member imported statically can be followed back to the type it came from.
+    - `declares`: the names in that same shape that this body *declares* rather than
+      calls — every method, constructor and nested record header in it, however deep,
+      the ones inside a nested class and an anonymous class included. It is read
+      alongside `called` and not subtracted from it, so that whoever drops a name can say
+      which reading it was dropped for; on its own, `called` cannot tell a module's own
+      `long of(long cents)` from a call to a statically imported `of`.
+
+    `called` and `declares` are both taken over the whole body, nested types and all,
+    because that is the body the module is: a declaration one brace deeper is still not
+    a call.
 
     Everything a body writes inside a comment or a literal is already blanked out by the
     time this reads it, so a call in a javadoc example is not a collaborator.
     """
     plain = _THROUGH_THIS.sub("", body)
+    called = []
+    declares = []
+    for found in _A_CALL.finditer(plain):
+        name = found.group(1)
+        if name in _NOT_A_CALL:
+            continue
+        (declares if _declares_rather_than_calls(plain, found.start(1)) else called).append(name)
     return {
         "receivers": sorted({found.group(1) for found in _A_RECEIVER.finditer(plain)}),
-        "constructed": sorted(
-            {found.group(1).rsplit(".", 1)[-1] for found in _CONSTRUCTED.finditer(plain)}
-        ),
-        "called": sorted(
-            {
-                found.group(1)
-                for found in _A_CALL.finditer(plain)
-                if found.group(1) not in _NOT_A_CALL
-            }
-        ),
+        "constructed": sorted({found.group(1) for found in _CONSTRUCTED.finditer(plain)}),
+        "called": sorted(set(called)),
+        "declares": sorted(set(declares)),
     }
+
+
+def _declares_rather_than_calls(plain, at):
+    """Whether the name at this offset is being declared rather than called.
+
+    What is written immediately in front of it decides, because a declaration writes a
+    type there and a call cannot: `long of(...)` and `Map<String, Long> of(...)` and
+    `int[] of(...)` are declarations, while `of(...)`, `= of(...)`, `return of(...)` and
+    `x -> of(...)` are calls. A word in front is a type or a modifier unless it is one of
+    the words Java lets a statement begin with, which `_NOT_A_CALL` already lists.
+
+    Nothing here fails and nothing here is repaired into a guess: the two readings are
+    the same handful of characters apart, and where they cannot be told apart this
+    answers "declaration". That costs a statically imported call going uncounted, which
+    leaves a fan shorter than the source. The other answer draws a line to a card the
+    module never calls.
+    """
+    before = plain[:at].rstrip()
+    if before.endswith(_A_LAMBDA_ARROW):
+        return False
+    if before.endswith(_ENDS_A_TYPE):
+        return True
+    word = _TRAILING_NAME.search(before)
+    return word is not None and word.group(1) not in _NOT_A_CALL
 
 
 def _member_headers(masked, kind, body_starts_at, body_ends_at):
