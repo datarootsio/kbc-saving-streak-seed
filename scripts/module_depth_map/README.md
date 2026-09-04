@@ -81,11 +81,20 @@ Run its tests with the standard library's own runner, also from the repository r
 - **The graph and the page are written together, or neither is and the run says so.** Both
   are rendered to bytes, written beside where they belong, and then moved into place. Two
   renames are not one step and this does not claim to be atomic: what it claims is that no
-  failure is silent. Every way a move can fail that the tool can check for — a destination
-  that is already a directory is the one the `open` does not catch — is checked before a
-  byte is written, and nothing is left half written; a move that fails anyway is logged at
-  ERROR with the exception, naming which file landed and which one is still the previous
-  run's. Nothing here ends the run with a traceback.
+  failure is silent. Every way a move can fail that the tool can check for is checked
+  before a byte is written — a destination that is already a directory, which the `open`
+  does not catch, and two outputs sent to one file, which nothing catches at all because
+  it succeeds: both would stage to one `.writing` file, the second's bytes would land
+  under the first's name, and the run would report the wrong output as the one written.
+  Nothing is left half written; a move that fails anyway is logged at ERROR with the
+  exception, naming which file landed and which one is still the previous run's. Nothing
+  here ends the run with a traceback.
+- **The graph says which shape it is.** `schema` in the document is the contract an agent
+  reading it is promised: it moved to `module-depth-map/2` when the document gained a
+  top-level `scoring` object and gave every module an `interface` and an `excludedBy`. The
+  page checks it before drawing, and says so rather than drawing half a document, because
+  reaching into a shape that is not there throws in the middle of one pass and reads as a
+  page that ended early.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
   and `docs/module-depth-map.html` are checked in, and a test byte-compares them against a
   fresh run, so adding a Java class without rerunning the tool fails the suite instead of
@@ -114,12 +123,17 @@ Everything a caller has to learn before they can use a module correctly:
   the receiver a method may name (`void ring(Till this, long id)`) is not a parameter a
   caller passes at all.
 - **each distinct type crossing the seam** in a parameter or a return, counted once per
-  module however many methods hand it over, and weighted apart depending on whether it is
-  one every Java caller already knows or one this application invented. That is what makes
-  a method handing back a domain type cost more than one handing back a primitive.
-  `List<Optional<Customer>>` is three types; `java.util.List` and `List` are one; a type
-  variable — the `T` in `<T> T first(List<T> of)` — is a hole the caller fills rather than
-  a type anybody learns, and is not counted.
+  module however many methods hand it over, and weighted apart: a type whose name is in
+  `typesEveryCallerAlreadyKnows` counts `typeEveryCallerAlreadyKnows`, and every other type
+  counts `typeToLearn`. That is what makes a method handing back a domain type cost more
+  than one handing back a primitive. That list is the whole of the difference, and it is
+  all `mustBeLearned` in the graph means: this tool reads one source tree and never
+  resolves a name, so it cannot and does not say where a type was declared — `ProblemDetail`
+  is charged at `typeToLearn` for the same reason `RecordedDeposit` is, which is that
+  nobody put it on the list. `List<Optional<Customer>>` is three types; `java.util.List`
+  and `List` are one; a type variable — the `T` in `<T> T first(List<T> of)` — is a hole
+  the caller fills rather than a type anybody learns, and is not counted; and `void` is
+  not a type at all, so a method that hands nothing back puts nothing across the seam.
 
 Every bar is drawn against one number, `scoring.widestInterface` in the graph, so two of
 them can be compared by eye.
@@ -139,15 +153,19 @@ floor on what a caller must learn rather than the whole of it, and the page says
 in those words, rather than letting the number read as complete.
 
 Under each bar the page draws the counts the cost was added up from, one for every weight
-in the configuration file, so a reader with the weights in front of them can take the
-number apart.
+in the configuration file — read from the document's own `scoring.weights`, so a weight
+the page has no term for arrives as a term saying so rather than as part of a total with
+nothing under it. The counts are checked against the cost they are printed under, and a
+breakdown that does not come to it says so on the card: a number a reader is invited to
+argue with has to be one they can add up.
 
 ## What is drawn but never scored
 
 Three kinds of thing are shallow by construction, and ranking them beside the modules that
 are not would bury the finding. Each is excluded by a rule `scoring.json` names, and each
 excluded module is still drawn — in the graph, in its package, with its interface read and
-its cost absent rather than zero:
+its cost absent rather than zero, per method as well as for the module, because a score
+published in parts is still a score for a module the document says has none:
 
 - **data carriers** — a record or an enum, whose interface is its content;
 - **generated repositories** — an interface extending one of Spring Data's, whose

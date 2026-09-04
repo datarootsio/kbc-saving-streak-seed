@@ -4313,9 +4313,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // page has no term for arrives on the card as a term saying so.
   //
   // "A type to learn" is all `mustBeLearned` means, and all it can mean: the flag says
-  // the name is not on the configuration's list of types every caller already knows.
-  // These two terms said "this application invented" instead, of names — ProblemDetail,
-  // ApplicationListener — this application did not invent and this tool never looked for.
+  // only that the name is not on the configuration's list of types every caller already
+  // knows. These two terms used to claim the type was one this application invented,
+  // which is a statement about the source a reader can check — and four of the names it
+  // was printed over (ProblemDetail, ResponseEntity, ApplicationListener,
+  // ApplicationStartedEvent) are declared nowhere in the source this tool read.
   var terms = [
     {
       weight: "method",
