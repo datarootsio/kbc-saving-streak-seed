@@ -582,22 +582,44 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
     the way they learn a method somebody typed. Leaving them out would say that a record
     carrying six values asks nothing of anybody, which is the opposite of what it does.
 
+    A record may also write one of those accessors out itself — defensive copying and
+    normalising are the sanctioned way to give a record an invariant, and this repository
+    already has records with bodies. Java compiles exactly one `cents()` either way, so a
+    written zero-argument method named after a component *is* that component's accessor,
+    and the synthesised one gives way to what the source actually says. Counting both
+    charges a caller twice for one method they can only call once, says nothing about
+    having done so, and moves the scale every other bar on the page is drawn against.
+
+    A method that merely shares a component's name — `cents(int scale)` — is not that
+    accessor and is counted beside it, because a caller has both to learn.
+
     `line` is where the declaration was written, so that a member this parser cannot read
     is named by a line a reader can go and open.
     """
-    methods = [
-        # `record R(int... more)` accepts any number of ints and hands the caller back the
-        # array they arrived in, so the accessor's return is the array rather than the
-        # element: the dots say how many on the way in, and nothing at all on the way out.
-        Method(name, "public", (), written + ("[]" if dots else ""))
-        for written, name, dots in _components_in(header, line)
-    ] if kind == "record" else []
-
+    written_here = []
     for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
         method = _method_in(member, kind, _line_of(masked, at))
         if method is not None:
-            methods.append(method)
-    return tuple(methods)
+            written_here.append(method)
+    if kind != "record":
+        return tuple(written_here)
+
+    accessors_written = {method.name for method in written_here if not method.parameters}
+    accessors = []
+    for spelled, name, dots in _components_in(header, line):
+        if name in accessors_written:
+            log.debug(
+                "record writes its own accessor for a component name=%s line=%d, so the "
+                "one it would otherwise be given is not counted a second time",
+                name,
+                line,
+            )
+            continue
+        # `record R(int... more)` accepts any number of ints and hands the caller back the
+        # array they arrived in, so the accessor's return is the array rather than the
+        # element: the dots say how many on the way in, and nothing at all on the way out.
+        accessors.append(Method(name, "public", (), spelled + ("[]" if dots else "")))
+    return tuple(accessors + written_here)
 
 
 def _components_in(header, line):

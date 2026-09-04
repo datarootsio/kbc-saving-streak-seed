@@ -6,7 +6,9 @@ against the application's own code: a rule established against a module somebody
 writing changes meaning every time they save.
 """
 
-from ... import graph
+import json
+
+from ... import graph, scoring
 from ..support.sourcetrees import SourceTreeTest
 
 
@@ -590,6 +592,86 @@ class AnAnnotationsArgumentIsNeverReadAsABodyTest(SourceOfKnownShapeTest):
 
         self.assertEqual(["open", "ring"], sorted(methods))
         self.assertEqual(["String"], methods["ring"]["parameters"])
+
+
+class ARecordThatWritesAnAccessorOffersOneOfItTest(SourceOfKnownShapeTest):
+    """Java compiles one `cents()` whether or not the record writes it out.
+
+    A record's components each give it an accessor, and a record is allowed to write one
+    of those accessors itself — defensive copying and normalising are how a record is
+    given an invariant. Both were counted, so a record that wrote two of its accessors
+    offered four methods where a caller meets two: an interface priced at twice what the
+    source asks for, with nothing said about it, and a scale every other bar on the page
+    is drawn against moved by it.
+
+    The pair here writes the same interface twice, once with the accessors typed out and
+    once without, and asserts the two agree rather than asserting either number alone.
+    """
+
+    def scored(self, *sources):
+        """These modules, with the rule that never scores a record taken out of the file.
+
+        The cost of a record is absent under the committed configuration, so a doubled
+        method only reaches a bar once a reader makes the edit criterion eight invites.
+        The method list is in the graph either way, which is what the page and every
+        later measurement read.
+        """
+        with open(scoring.DEFAULT_CONFIGURATION, "rb") as handle:
+            configuration = json.loads(handle.read().decode("utf-8"))
+        configuration["exclusions"] = [
+            rule for rule in configuration["exclusions"] if rule["rule"] != "data carrier"
+        ]
+        rules = scoring.load(self.tree("rules").raw("scoring.json", json.dumps(configuration)))
+
+        tree = self.tree("fixture")
+        for name, body in sources:
+            tree.java("shop.till", name, body)
+        self.document = graph.build([graph.java_root(tree.root)], rules)
+
+        self.assertEqual([], self.document["source"]["unparsed"])
+        return {module["name"]: module for module in self.document["modules"]}
+
+    WRITES_THEM = (
+        "Coin",
+        "public record Coin(long cents, List<String> tags) {\n"
+        "    @Override public long cents() { return cents < 0 ? 0 : cents; }\n"
+        "    @Override public List<String> tags() { return List.copyOf(tags); }\n}",
+    )
+    WRITES_NEITHER = ("Plain", "public record Plain(long cents, List<String> tags) {}")
+
+    def test_the_accessor_a_record_writes_is_the_one_its_component_gives_it(self):
+        methods = self.methods_of(*self.WRITES_THEM)
+
+        self.assertEqual(["cents", "tags"], sorted(methods))
+        self.assertEqual("long", methods["cents"]["returns"])
+        self.assertEqual("List<String>", methods["tags"]["returns"])
+
+    def test_writing_an_accessor_out_costs_a_caller_what_leaving_it_out_costs(self):
+        modules = self.scored(self.WRITES_THEM, self.WRITES_NEITHER)
+
+        self.assertEqual(
+            [method["name"] for method in modules["Plain"]["interface"]["methods"]],
+            [method["name"] for method in modules["Coin"]["interface"]["methods"]],
+        )
+        self.assertEqual(
+            modules["Plain"]["interface"]["cost"], modules["Coin"]["interface"]["cost"]
+        )
+
+    def test_a_record_that_writes_its_own_accessors_does_not_move_the_scale(self):
+        """The doubled interface was the widest one, so every other bar was drawn to it."""
+        self.scored(self.WRITES_THEM, self.WRITES_NEITHER)
+
+        self.assertEqual(2, self.document["scoring"]["widestInterface"])
+
+    def test_a_method_that_only_shares_a_components_name_is_a_method_of_its_own(self):
+        """`cents(int scale)` is not the accessor: a caller has both to learn."""
+        methods = self.modules(
+            ("Coin", "public record Coin(long cents) {\n"
+                     "    public long cents(int scale) { return cents * scale; }\n}")
+        )["Coin"]["interface"]["methods"]
+
+        self.assertEqual(["cents", "cents"], [method["name"] for method in methods])
+        self.assertEqual([[], ["int"]], [method["parameters"] for method in methods])
 
 
 class AnEnumConstantIsNotAMethodTest(SourceOfKnownShapeTest):

@@ -53,13 +53,23 @@ class AValueThatOnlyCarriesDataIsNeverScoredTest(SourceOfKnownShapeTest):
         A record with a computed accessor is still a thing whose interface is the values
         it carries, and ranking it beside the modules that hide something would be the
         false positive the exclusion exists to prevent.
+
+        One of the methods here is named after a component and one is not, because the
+        two are read differently: `cents()` is the accessor the component already gives
+        the record, written out to normalise what it hands back, while `inEuros()` is a
+        method of its own. The rule covers the declaration either way, and the interface
+        the graph draws underneath it holds each method once.
         """
+        module = self.modules(
+            ("Receipt", "public record Receipt(long cents) {\n"
+                        "    @Override public long cents() { return cents < 0 ? 0 : cents; }\n"
+                        "    public long inEuros() { return cents / 100; }\n}")
+        )["Receipt"]
+
+        self.assertEqual("data carrier", module["excludedBy"]["rule"])
         self.assertEqual(
-            {"Receipt": "data carrier"},
-            self.excluded_by(
-                ("Receipt", "public record Receipt(long cents) {\n"
-                            "    public long inEuros() { return cents / 100; }\n}")
-            ),
+            ["cents", "inEuros"],
+            [method["name"] for method in module["interface"]["methods"]],
         )
 
     def test_a_class_that_carries_values_is_not_excluded_by_this_rule(self):
