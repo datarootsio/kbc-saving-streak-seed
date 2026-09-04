@@ -14,12 +14,12 @@ numerator.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
-- [ ] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
-- [ ] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
-- [ ] The fan beneath each module is drawn from its reach, with one line per thing reached
-- [ ] A module with several collaborators behind few methods is visibly distinguishable from one with a method per collaborator, without reading any label
-- [ ] Every line in a fan resolves to something the graph document also contains
-- [ ] Fixture source trees establish a deep module and a pass-through, each asserting the depth it was built to produce
+- [x] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
+- [x] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
+- [x] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
+- [x] The fan beneath each module is drawn from its reach, with one line per thing reached
+- [x] A module with several collaborators behind few methods is visibly distinguishable from one with a method per collaborator, without reading any label
+- [x] Every line in a fan resolves to something the graph document also contains
+- [x] Fixture source trees establish a deep module and a pass-through, each asserting the depth it was built to produce
