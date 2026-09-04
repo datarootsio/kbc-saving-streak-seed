@@ -3987,7 +3987,7 @@
     "configuration": "scripts/module_depth_map/scoring.json",
     "exclusions": [
       {
-        "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and thirty of them ranked beside the modules that do hide something would bury the finding.",
+        "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and ranking them beside the modules that do hide something would bury the finding.",
         "modulesExcluded": 26,
         "rule": "data carrier"
       },

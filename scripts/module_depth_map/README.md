@@ -59,7 +59,8 @@ Run its tests with the standard library's own runner, also from the repository r
   makes it, which is what this page calls deep. So it is logged: run with
   `--log-level DEBUG` and `grep "member not read as a method"` for every member declined,
   its line and the reason. On this repository that is 56 lines — 43 constructors, 10
-  logger fields, 3 nested records — short enough to read and check.
+  fields with a value assigned to them (nine loggers and a `SecureRandom`), 3 nested
+  records — short enough to read and check.
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
   beside this file holds the interface-cost weights and every exclusion rule. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
@@ -79,10 +80,13 @@ Run its tests with the standard library's own runner, also from the repository r
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
 - **It refuses rather than guessing.** No source directory (exit 2), two files declaring
-  the same module id (exit 3), a scoring configuration this tool cannot use (exit 4) and
-  outputs it cannot write (exit 5) all stop the run with the reason logged as a warning —
-  because a page that drew one of two clashing modules twice, or that scored with weights
-  nobody wrote, would be worse than no page. Nothing is written on any of those paths.
+  the same module id (exit 3) and a scoring configuration this tool cannot use (exit 4)
+  all stop the run with the reason logged as a warning, before a byte is written — because
+  a page that drew one of two clashing modules twice, or that scored with weights nobody
+  wrote, would be worse than no page. Outputs it cannot write are exit 5, which is the one
+  code with two paths: a destination it can see is unwritable is refused as a warning with
+  nothing written, and a move that fails after another has already landed is logged at
+  ERROR with the exception, described below.
 - **The graph and the page are written together, or neither is and the run says so.** Both
   are rendered to bytes, written beside where they belong, and then moved into place. Two
   renames are not one step and this does not claim to be atomic: what it claims is that no
@@ -147,15 +151,23 @@ A record's components each give it an accessor, and a record that writes one of 
 accessors out itself — to copy or to normalise what it hands back — is offering the one
 method Java compiles, not two.
 
-Prose invariants, ordering constraints, the bound on a type variable, the methods a
-module inherits rather than declares, and the members of a type declared inside a module
-are part of an interface and are not measured. Inheritance is a limit of reading one file
-at a time: `MovableClock extends Clock` is read for the five methods it writes down, and
-`Clock.millis()` is reachable through it without being in this file to count. A nested
-type is a deliberate boundary rather than a limit — it is named on the module that holds
-it instead of becoming one — and its members are named nowhere. A bar is therefore a
-floor on what a caller must learn rather than the whole of it, and the page says as much,
-in those words, rather than letting the number read as complete.
+Prose invariants, ordering constraints, the bound on a type variable, the constructor a
+caller writes `new` against, the methods a module inherits rather than declares, and the
+members of a type declared inside a module are part of an interface and are not measured.
+Inheritance is a limit of reading one file at a time: `MovableClock extends Clock` is read
+for the five methods it writes down, and `Clock.millis()` is reachable through it without
+being in this file to count. A nested type is a deliberate boundary rather than a limit —
+it is named on the module that holds it instead of becoming one — and its members are
+named nowhere. A bar is therefore a floor on what a caller must learn rather than the
+whole of it, and the page says as much, in those words and naming each of them, rather
+than letting the number read as complete.
+
+A zero is that floor at its lowest, and three modules here sit on it with a constructor
+and nothing else: `ClockRefused`, `JobFailed` and `JobRefused` each declare one, so a
+caller writing `new JobFailed(what, cause)` has it and both types crossing it to learn.
+Their cards say `nothing this bar counts, which is not the same as nothing to learn`, so a
+zero drawn over an empty class — `SchedulingIsOn` declares nothing at all — reads the same
+as a zero drawn over a constructor, which is what the two of them have in common.
 
 Under each bar the page draws the counts the cost was added up from, one for every weight
 in the configuration file — read from the document's own `scoring.weights`, so a weight

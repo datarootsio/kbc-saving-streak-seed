@@ -213,11 +213,14 @@ _SCRIPT = """
   add(rules, "p", null,
     "What a bar leaves out is part of the interface too, and is not measured: the "
     + "invariants a module states in prose, the order its calls have to be made in, "
-    + "what a type variable has to be, the methods a module inherits rather than "
-    + "declares \\u2014 this tool reads one file at a time and never opens a supertype "
-    + "it does not hold \\u2014 and the members of a type declared inside a module, "
-    + "which are named below it rather than counted. A bar is a floor on what a caller "
-    + "must learn rather than the whole of it.");
+    + "what a type variable has to be, the constructor a caller writes new against "
+    + "\\u2014 how a module is built is this framework's business rather than a "
+    + "caller's \\u2014 the methods a module inherits rather than declares \\u2014 this "
+    + "tool reads one file at a time and never opens a supertype it does not hold "
+    + "\\u2014 and the members of a type declared inside a module, which are named "
+    + "below it rather than counted. A bar is a floor on what a caller must learn "
+    + "rather than the whole of it, and a bar at nothing says only that there was "
+    + "nothing on it to count.");
   add(rules, "p", null,
     document_.scoring.modulesNeverScored + " of " + document_.modules.length
     + " modules are drawn but never scored, each by a named rule in "
@@ -347,6 +350,14 @@ _SCRIPT = """
       reading.appendChild(document.createTextNode(
         " \u2014 but these counts come to " + added
         + ", so this page is counting something the score did not"));
+    } else if (module.interface.cost === 0) {
+      // A zero read on its own says a caller has nothing to learn here, which is a
+      // stronger claim than this bar ever makes. A module whose only member is a
+      // constructor reads zero: a caller writing `new` against it has that constructor
+      // and every type crossing it to learn, and a bar counts none of it. Nothing else
+      // on the card tells that zero from a module that declares nothing at all.
+      reading.appendChild(document.createTextNode(
+        " \u2014 nothing this bar counts, which is not the same as nothing to learn"));
     }
   }
 

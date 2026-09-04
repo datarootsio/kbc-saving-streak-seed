@@ -21,10 +21,17 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        document = graph.build([graph.java_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
 
-        self.assertEqual([], document["source"]["unparsed"])
-        return {module["name"]: module for module in document["modules"]}
+        self.assertEqual([], self.document["source"]["unparsed"])
+        return {module["name"]: module for module in self.document["modules"]}
+
+    def rendered(self, *sources):
+        """These modules, and the page rendered from the document they made."""
+        modules = self.modules(*sources)
+        return modules, page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
 
     def cost_of(self, body):
         return self.modules(("Till", body))["Till"]["interface"]["cost"]
@@ -459,26 +466,107 @@ class AMethodThatHandsNothingBackCrossesNoSeamTest(SourceOfKnownShapeTest):
             module["interface"]["typesCrossingTheSeam"],
         )
 
+
+class AsJavaScriptReadsIt:
+    """A value out of the graph document, reached with dots the way the renderer reaches it.
+
+    `module.interface.cost` is one expression in JavaScript and two subscripts in Python.
+    This is the adapter that lets the page's own expression be worked out here against
+    the document it was rendered from, rather than against a second copy of it written in
+    the test — which is the fault this suite was told about elsewhere: a formula
+    re-implemented beside the one it is meant to establish agrees with itself.
+    """
+
+    def __init__(self, value):
+        self._value = value
+
+    def __getattr__(self, name):
+        found = self._value[name]
+        return AsJavaScriptReadsIt(found) if isinstance(found, dict) else found
+
+
 class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
     """Two bars mean something side by side, and the scale they share is in the graph.
 
     The page multiplies each cost by its own width and divides by this one number, so a
     bar is checkable against the document it was drawn from rather than against
-    arithmetic only the browser can do. The proportions themselves are a browser fact and
-    were measured in one: the bars this suite pins are the numbers behind them.
+    arithmetic only the browser can do. Both halves are established here: the number in
+    the graph, and the expression the page draws with — taken out of the rendered file
+    and worked out against that document, because until it was, a width hardcoded to a
+    constant left every bar identical with the whole suite green.
     """
 
-    def document_for(self, *sources):
-        self.modules(*sources)
-        return self.document
+    # The width of a bar is the one thing on this page that only a browser works out, and
+    # for six attempts nothing established it: hardcoding it to a constant left every bar
+    # identical, the committed page regenerated, and the whole suite green. What a test
+    # without a browser can reach is the expression, which the rendered file carries as
+    # text — so it is lifted out of the page and read here.
+    _A_WIDTH_IS_SET = re.compile(r"style\.width\s*=\s*([^;]+);")
+    _A_SHARE_OF_THE_SCALE = re.compile(
+        r"\A\(\s*(?P<when>.+?)\s*\?\s*(?P<then>.+?)\s*:\s*(?P<otherwise>.+?)\s*\)"
+        r'\s*\+\s*"%"\Z'
+    )
 
-    def modules(self, *sources):
-        tree = self.tree("fixture")
-        for name, body in sources:
-            tree.java("shop.till", name, body)
-        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
-        self.assertEqual([], self.document["source"]["unparsed"])
-        return {module["name"]: module for module in self.document["modules"]}
+    A_FEW_COSTS = (
+        ("Till", "public class Till {\n"
+                 "    public Receipt ring(long id, String iban) { return null; }\n"
+                 "    public int add(int a, int b) { return a + b; }\n}"),
+        ("Shelf", "public class Shelf {\n    public void restock() {}\n}"),
+        ("Receipt", "public record Receipt(long cents) {}"),
+    )
+
+    def test_a_bar_is_drawn_from_its_own_modules_cost_and_the_scale_in_the_document(self):
+        """One width is set on this page, and both halves of it come out of the document."""
+        _, rendered = self.rendered(*self.A_FEW_COSTS)
+
+        widths = self._A_WIDTH_IS_SET.findall(rendered)
+
+        self.assertEqual(1, len(widths), widths)
+        self.assertIn("module.interface.cost", widths[0])
+        self.assertIn("widest", widths[0])
+        self.assertIn("var widest = document_.scoring.widestInterface;", rendered)
+
+    def test_the_width_the_page_works_out_is_the_cost_as_a_share_of_the_scale(self):
+        """The page's own expression, worked out here for every bar the fixture draws.
+
+        The expression is taken out of the rendered file rather than written again in
+        this test, because a formula written twice agrees with itself: what is checked is
+        the arithmetic a browser would do, over the document the page carries.
+        """
+        modules, rendered = self.rendered(*self.A_FEW_COSTS)
+        widest = self.document["scoring"]["widestInterface"]
+        shape = self._A_SHARE_OF_THE_SCALE.match(
+            self._A_WIDTH_IS_SET.findall(rendered)[0].strip()
+        )
+        self.assertIsNotNone(
+            shape,
+            "the page sets a width this test cannot read; read it and say what it does",
+        )
+
+        drawn = {}
+        for name, module in modules.items():
+            if module["excludedBy"] is not None:
+                continue
+            reached = {"module": AsJavaScriptReadsIt(module), "widest": widest}
+            half = "then" if eval(shape.group("when"), {}, reached) else "otherwise"
+            drawn[name] = eval(shape.group(half), {}, reached)
+
+        self.assertEqual(["Shelf", "Till"], sorted(drawn))
+        self.assertEqual(100.0, drawn["Till"])
+        self.assertAlmostEqual(
+            100.0 * modules["Shelf"]["interface"]["cost"] / widest, drawn["Shelf"]
+        )
+
+    def test_the_page_divides_by_nothing_when_no_module_was_scored_at_all(self):
+        """A page of nothing but data carriers reaches the same expression with widest 0."""
+        modules, rendered = self.rendered(("Receipt", "public record Receipt(long cents) {}"))
+        shape = self._A_SHARE_OF_THE_SCALE.match(
+            self._A_WIDTH_IS_SET.findall(rendered)[0].strip()
+        )
+        reached = {"module": AsJavaScriptReadsIt(modules["Receipt"]), "widest": 0}
+
+        self.assertFalse(eval(shape.group("when"), {}, reached))
+        self.assertEqual(0, eval(shape.group("otherwise"), {}, reached))
 
     def test_the_scale_is_the_dearest_interface_the_graph_holds(self):
         modules = self.modules(
@@ -519,6 +607,47 @@ class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
         self.modules(("Receipt", "public record Receipt(long cents) {}"))
 
         self.assertEqual(0, self.document["scoring"]["widestInterface"])
+
+
+class WhatABarLeavesOutIsSaidOnThePageTest(SourceOfKnownShapeTest):
+    """A number that measures part of a thing has to say which part, or it reads as all of it.
+
+    A constructor is deliberately not counted — how a module is built is this framework's
+    business rather than a caller's — and for six attempts the page's list of what a bar
+    leaves out named five things and not that one. Three modules in this application
+    declare a constructor and nothing else, so their cards read "0 to learn" with nothing
+    anywhere on the page to tell that zero from an empty class, while a caller writing
+    `new JobFailed(what, cause)` has the constructor and both types crossing it to learn.
+    """
+
+    ONLY_A_CONSTRUCTOR = (
+        "JobFailed",
+        "public class JobFailed extends RuntimeException {\n"
+        "    JobFailed(String what, Throwable cause) { super(what, cause); }\n}",
+    )
+    NOTHING_AT_ALL = ("SchedulingIsOn", "public class SchedulingIsOn {}")
+
+    def test_a_module_whose_only_member_is_a_constructor_is_scored_at_nothing(self):
+        """The fixture behind the wording: the zero on the page is a real zero."""
+        modules, _ = self.rendered(self.ONLY_A_CONSTRUCTOR, self.NOTHING_AT_ALL)
+
+        for name in ("JobFailed", "SchedulingIsOn"):
+            self.assertEqual(0, modules[name]["interface"]["cost"], name)
+            self.assertEqual([], modules[name]["interface"]["methods"], name)
+
+    def test_the_page_names_the_constructor_among_the_things_a_bar_leaves_out(self):
+        _, rendered = self.rendered(self.ONLY_A_CONSTRUCTOR)
+
+        self.assertIn("the constructor a caller writes new against", rendered)
+
+    def test_a_bar_at_nothing_says_that_is_what_this_bar_counts_and_not_what_there_is(self):
+        """The card itself, not only the paragraph three boxes above it."""
+        _, rendered = self.rendered(self.ONLY_A_CONSTRUCTOR)
+
+        self.assertIn("module.interface.cost === 0", rendered)
+        self.assertIn(
+            "nothing this bar counts, which is not the same as nothing to learn", rendered
+        )
 
 
 class OneInterfaceCostsTheSameHoweverItIsWrittenTest(SourceOfKnownShapeTest):
