@@ -94,13 +94,15 @@ def main(argv=None):
         )
         return 3
 
-    # Both outputs are turned into bytes before either is written. A page that fails to
-    # render after the graph has landed would leave a fresh document beside a stale
-    # picture of it, which is the one thing this command promises cannot happen.
+    # Both outputs are turned into bytes before either is written, and then written
+    # together. A page that fails to render, or fails to be written, after the graph has
+    # landed would leave a fresh document beside a stale picture of it, which is the one
+    # thing this command promises cannot happen.
     serialised = graph.serialise(document)
     rendered = page.render(document, serialised)
-    written_graph = write(arguments.graph, serialised)
-    written_page = write(arguments.page, rendered)
+    written_graph, written_page = write_together(
+        (arguments.graph, serialised), (arguments.page, rendered)
+    )
     log.info(
         "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
         "scored=%d neverScored=%d",
@@ -124,11 +126,42 @@ def main(argv=None):
     return 0
 
 
-def write(path, content):
-    directory = os.path.dirname(path)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    with open(path, "wb") as handle:
-        handle.write(content)
-    log.debug("wrote path=%s bytes=%d", path, len(content))
-    return len(content)
+def write_together(*outputs):
+    """Write every one of these (path, bytes), or leave all of them as they were.
+
+    Each is written beside where it belongs and then moved into place. Rendering both to
+    bytes before writing either is not enough on its own: the second `open` fails on a
+    read-only directory or a full disk just as readily as the render does, and a graph
+    that had already landed would then sit beside the page it no longer describes — the
+    stale one being the file a reader opens.
+
+    The two moves are not one step, and nothing here pretends otherwise. They are metadata
+    operations on files already written whole, so what is left to fail between them is
+    what would have failed at the `open` above; the window this closes is the wide one.
+    """
+    staged = []
+    try:
+        for path, content in outputs:
+            directory = os.path.dirname(path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            beside = path + ".writing"
+            with open(beside, "wb") as handle:
+                handle.write(content)
+            staged.append((beside, path, len(content)))
+    except OSError:
+        for beside, path, _ in staged:
+            log.debug("discarding path=%s: nothing was written for %s", beside, path)
+            _discard(beside)
+        raise
+    for beside, path, size in staged:
+        os.replace(beside, path)
+        log.debug("wrote path=%s bytes=%d", path, size)
+    return [size for _, _, size in staged]
+
+
+def _discard(path):
+    try:
+        os.remove(path)
+    except OSError as stuck:
+        log.warning("could not remove the part-written file %s: %s", path, stuck)

@@ -10,7 +10,7 @@ import logging
 import os
 
 from ... import cli, page
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import SourceTreeTest, bytes_of
 
 
 class TheRunSaysWhatItDidTest(SourceTreeTest):
@@ -92,6 +92,35 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
             )
 
         self.assertFalse(os.path.exists(graph_path))
+
+    def test_a_page_that_cannot_be_written_leaves_the_graph_as_it_was(self):
+        """The other half of the same claim, and the one rendering to bytes first misses.
+
+        Rendering both outputs before writing either only closes the window where the
+        page cannot be built. The window where it cannot be *written* — a read-only
+        directory, a full disk — is still open if the graph is written in place first,
+        and it leaves behind exactly what this class says cannot happen.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {}")
+        out = os.path.join(self.scratch, "out")
+        os.makedirs(out)
+        graph_path = os.path.join(out, "graph.json")
+        with open(graph_path, "wb") as handle:
+            handle.write(b"the previous run's graph")
+        blocker = os.path.join(out, "not-a-directory")
+        with open(blocker, "w", encoding="utf-8") as handle:
+            handle.write("a file, so nothing can be written underneath it")
+
+        with self.assertRaises(OSError):
+            cli.main(
+                ["--source", tree.root, "--graph", graph_path,
+                 "--page", os.path.join(blocker, "page.html"),
+                 "--log-level", "ERROR"]
+            )
+
+        self.assertEqual(b"the previous run's graph", bytes_of(graph_path))
+        self.assertEqual(["graph.json", "not-a-directory"], sorted(os.listdir(out)))
 
 
 def _refuse_to_render(document, serialised):
