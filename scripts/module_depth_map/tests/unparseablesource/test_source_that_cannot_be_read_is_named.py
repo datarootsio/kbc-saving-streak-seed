@@ -2,6 +2,7 @@
 
 import logging
 import os
+import unittest
 
 from ... import cli, graph, page
 from ..support.sourcetrees import SourceTreeTest
@@ -48,7 +49,7 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
     def test_the_page_says_which_files_it_was_not_drawn_from(self):
         document = graph.build([graph.java_root(self.tree_with_one_broken_file().root)])
 
-        rendered = page.render(document).decode("utf-8")
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertIn("shop/till/Broken.java", rendered)
         self.assertIn("could not be read", rendered)
@@ -129,9 +130,10 @@ class SourceThatCannotBeOpenedIsNamedTest(SourceTreeTest):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             graph.build([graph.java_root(self.tree_with_one_unopenable_file().root)])
 
-        warnings = [line for line in logged.output if "could not parse" in line]
+        warnings = [line for line in logged.output if "could not read source file" in line]
         self.assertEqual(1, len(warnings))
         self.assertIn("shop/till/Gone.java", warnings[0])
+        self.assertIn("could not be opened", warnings[0])
 
     def test_both_outputs_are_still_written(self):
         tree = self.tree_with_one_unopenable_file()
@@ -217,6 +219,185 @@ class AFileDeclaringNoTypeOnPurposeIsNotAnAlarmTest(SourceTreeTest):
     def test_the_page_draws_no_alarm_when_every_file_was_read(self):
         document = graph.build([graph.java_root(self.tree_with_both_descriptors().root)])
 
-        rendered = page.render(document).decode("utf-8")
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertNotIn("package-info.java", rendered)
+
+
+class AnUnclosedRegionIsNamedTest(SourceTreeTest):
+    """A comment or literal that is never closed swallows the rest of the file.
+
+    This is the most ordinary way a Java file is broken mid-edit, and the worst shape of
+    failure this tool can have: everything after the opener is blanked, so the parser
+    sees a short, well-formed file and says nothing at all. Every one of these fixtures
+    hides two declarations behind the opener, and the test is that the file is named
+    rather than that the declarations are found.
+    """
+
+    def failure_for(self, body):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/A.java", body)
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["modules"])
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+        return document["source"]["unparsed"][0]["reason"]
+
+    def test_a_block_comment_that_is_never_closed_is_named_with_the_line_it_opened_on(self):
+        reason = self.failure_for(
+            "package shop.till;\npublic class A {}\n/* forgot to close\n"
+            "class B { void x() {} }\nclass C { void y() {} }\n"
+        )
+
+        self.assertEqual("block comment is never closed: opened on line 3", reason)
+
+    def test_a_text_block_that_is_never_closed_is_named(self):
+        reason = self.failure_for(
+            'package shop.till;\npublic class A {\n    String s = """\n    hello\n}\nclass B {}\n'
+        )
+
+        self.assertEqual("text block is never closed: opened on line 3", reason)
+
+    def test_a_string_that_is_never_closed_is_named(self):
+        reason = self.failure_for(
+            'package shop.till;\npublic class A {\n    String s = "oops;\n}\nclass B {}\n'
+        )
+
+        self.assertEqual("string literal is never closed: opened on line 3", reason)
+
+    def test_a_character_literal_that_is_never_closed_is_named(self):
+        reason = self.failure_for(
+            "package shop.till;\npublic class A {\n    char c = 'x;\n}\nclass B {}\n"
+        )
+
+        self.assertEqual("character literal is never closed: opened on line 3", reason)
+
+    def test_the_run_warns_rather_than_dropping_the_declarations_quietly(self):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/A.java", "package shop.till;\npublic class A {}\n/* open\nclass B {}\n")
+
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
+            graph.build([graph.java_root(tree.root)])
+
+        warnings = [line for line in logged.output if "could not parse" in line]
+        self.assertEqual(1, len(warnings))
+        self.assertIn("shop/till/A.java", warnings[0])
+        self.assertIn("block comment is never closed", warnings[0])
+
+
+class BracesThatCloseMoreThanTheyOpenAreNamedTest(SourceTreeTest):
+    """Unbalanced braces that happen to net to zero are unbalanced all the same.
+
+    Counting only the total misses the whole class of file where a stray `}` shifts every
+    later declaration to a depth the source does not have. That does not merely lose a
+    module: it can hang a top-level type off an unrelated one as a nested type, which is
+    a wrong answer rather than a missing one.
+    """
+
+    def failure_for(self, body):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/A.java", body)
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["modules"])
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+        return document["source"]["unparsed"][0]["reason"]
+
+    def test_a_closing_brace_with_nothing_open_is_named_with_its_line(self):
+        reason = self.failure_for("package shop.till;\n}\nclass Vanished {\nclass Real {}\n")
+
+        self.assertEqual(
+            "braces do not balance: a closing brace with nothing open on line 2", reason
+        )
+
+    def test_a_type_is_never_drawn_as_nested_under_one_that_does_not_hold_it(self):
+        reason = self.failure_for("package shop.till;\npublic class A {}\n}\nclass B {\n")
+
+        self.assertEqual(
+            "braces do not balance: a closing brace with nothing open on line 3", reason
+        )
+
+    def test_a_type_the_parser_cannot_place_is_named_rather_than_attributed(self):
+        reason = self.failure_for(
+            "package shop.till;\npublic class A {}\nvoid stray() { class L {} }\n"
+        )
+
+        self.assertIn("a type this parser cannot place: L on line 3", reason)
+
+
+class ADirectoryThatWillNotOpenIsNamedTest(SourceTreeTest):
+    """A directory the walk cannot list takes every module in it off the page.
+
+    Silently, if nothing looks: the files under it are never seen, so they are neither
+    parsed nor reported, and every count on the page still adds up. That is the same
+    failure the per-file rule exists to prevent, one level up.
+    """
+
+    def tree_with_one_locked_directory(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {}")
+        tree.java("shop.locked", "Hidden", "public class Hidden {}")
+        locked = os.path.join(tree.root, "shop", "locked")
+        os.chmod(locked, 0o000)
+        self.addCleanup(os.chmod, locked, 0o755)
+        return tree
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_the_directory_is_named_and_counted_rather_than_passed_over(self):
+        document = graph.build([graph.java_root(self.tree_with_one_locked_directory().root)])
+
+        self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+        failure = document["source"]["unparsed"][0]
+        self.assertEqual("shop/locked", failure["path"])
+        self.assertIn("directory could not be read", failure["reason"])
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_the_run_warns_by_name(self):
+        tree = self.tree_with_one_locked_directory()
+
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
+            graph.build([graph.java_root(tree.root)])
+
+        warnings = [line for line in logged.output if "could not read source directory" in line]
+        self.assertEqual(1, len(warnings))
+        self.assertIn("shop/locked", warnings[0])
+
+
+class SourceReachedTwiceIsReadOnceTest(SourceTreeTest):
+    """A symlinked directory is followed, but the same directory is not read twice.
+
+    Stepping over a symlinked directory would drop the modules under it without a word;
+    walking into the same directory twice would draw each of them twice and then refuse
+    the whole run for duplicate ids. Neither is what the reader asked for.
+    """
+
+    def test_a_symlinked_directory_is_read_rather_than_skipped(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {}")
+        elsewhere = os.path.join(self.scratch, "elsewhere", "shop", "stock")
+        os.makedirs(elsewhere)
+        with open(os.path.join(elsewhere, "Shelf.java"), "w", encoding="utf-8") as handle:
+            handle.write("package shop.stock;\n\npublic class Shelf {}\n")
+        os.symlink(os.path.join(self.scratch, "elsewhere", "shop", "stock"),
+                   os.path.join(tree.root, "shop", "stock"))
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["source"]["unparsed"])
+        self.assertEqual(
+            ["shop.stock.Shelf", "shop.till.Till"], [module["id"] for module in document["modules"]]
+        )
+
+    def test_a_directory_reachable_twice_is_read_once_and_the_repeat_is_said_out_loud(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {}")
+        os.symlink(os.path.join(tree.root, "shop"), os.path.join(tree.root, "again"))
+
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
+            document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
+        self.assertTrue(any("not reading source directory" in line for line in logged.output))

@@ -8,8 +8,6 @@ package and no count, so everything a reader sees came out of the document.
 
 import logging
 
-from . import graph
-
 log = logging.getLogger("module_depth_map.page")
 
 GRAPH_ELEMENT_ID = "module-depth-map-graph"
@@ -145,7 +143,7 @@ _SCRIPT = """
   if (document_.source.unparsed.length > 0) {
     var alarm = add(root, "div", "unread");
     add(alarm, "h2", null,
-      count(document_.source.unparsed.length, "source file", "source files")
+      count(document_.source.unparsed.length, "source path", "source paths")
       + " could not be read; nothing declared inside is drawn below");
     var failures = add(alarm, "ul");
     document_.source.unparsed.forEach(function (entry) {
@@ -187,9 +185,15 @@ def _embeddable(text):
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def render(document):
-    """The whole page as bytes: markup, style, the graph document, and the renderer."""
-    embedded = _embeddable(graph.serialise(document).decode("utf-8").rstrip("\n"))
+def render(document, serialised):
+    """The whole page as bytes: markup, style, the graph document, and the renderer.
+
+    The graph arrives already serialised, as the exact bytes the graph file is written
+    from, rather than being serialised a second time here. That is what makes "the page
+    carries the document the graph file holds" structural: there is one serialisation in
+    the run, so the two outputs cannot drift apart even in principle.
+    """
+    embedded = _embeddable(serialised.decode("utf-8").rstrip("\n"))
     html = "\n".join(
         [
             "<!doctype html>",

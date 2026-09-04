@@ -1060,7 +1060,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   if (document_.source.unparsed.length > 0) {
     var alarm = add(root, "div", "unread");
     add(alarm, "h2", null,
-      count(document_.source.unparsed.length, "source file", "source files")
+      count(document_.source.unparsed.length, "source path", "source paths")
       + " could not be read; nothing declared inside is drawn below");
     var failures = add(alarm, "ul");
     document_.source.unparsed.forEach(function (entry) {

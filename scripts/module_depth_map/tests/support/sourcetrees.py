@@ -19,6 +19,14 @@ class SourceTreeTest(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.mkdtemp(prefix="module-depth-map-")
         self.addCleanup(shutil.rmtree, self.scratch, True)
+        # The scratch directory is a repository of its own, because a source root is
+        # named by where it sits inside the nearest one. Without this marker the walk
+        # leaves the scratch directory and finds whatever repository TMPDIR happens to
+        # sit inside, and every fixture is then named by its path under that instead of
+        # by itself — a suite that goes red for a reason that has nothing to do with the
+        # code under test. This repository's own agents run inside git worktrees, so
+        # that is not a hypothetical arrangement.
+        os.makedirs(os.path.join(self.scratch, ".git"))
 
     def tree(self, name):
         """A new, empty source root named `name`, which is how the graph will label it."""
@@ -47,3 +55,9 @@ class SourceTree:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
         return path
+
+
+def bytes_of(path):
+    """A file as bytes, for the tests that compare two outputs byte for byte."""
+    with open(path, "rb") as handle:
+        return handle.read()

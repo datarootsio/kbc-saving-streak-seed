@@ -19,6 +19,13 @@ log = logging.getLogger("module_depth_map.graph")
 
 SCHEMA = "module-depth-map/1"
 
+# What a source root that is its own repository is called. `os.path.relpath` answers "."
+# for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
+# says nothing; the repository's directory name would say something, but it is a different
+# word in every clone and worktree, which is exactly the machine-specific value the output
+# may not carry.
+REPOSITORY_ROOT = "<repository root>"
+
 
 class DuplicateModules(Exception):
     """Two source files claiming the same module id, which the graph cannot hold.
@@ -32,6 +39,20 @@ class DuplicateModules(Exception):
     def __init__(self, clashes):
         super().__init__("duplicate module ids: %s" % ", ".join(sorted(clashes)))
         self.clashes = sorted(clashes)
+
+
+class SourceUnreadable(Exception):
+    """A path the operating system would not hand over: not Java this parser cannot read.
+
+    Kept apart from `javasource.ParseFailure` on purpose. "This file could not be opened"
+    and "this Java could not be parsed" are different findings for the reader — one is
+    about the checkout, the other about the source — and folding them together would
+    also make the parser answer for a second language back-end's file handling.
+    """
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class SourceRoot:
@@ -61,7 +82,7 @@ def label_for(path):
     walk = absolute
     while True:
         if os.path.exists(os.path.join(walk, ".git")):
-            return os.path.relpath(absolute, walk).replace(os.sep, "/")
+            return _relative(absolute, walk) or REPOSITORY_ROOT
         parent = os.path.dirname(walk)
         if parent == walk:
             return os.path.basename(absolute)
@@ -72,16 +93,59 @@ def java_root(path):
     return SourceRoot(path, label_for(path), "java", (".java",))
 
 
+def _relative(whole, base):
+    """`whole` as a forward-slash path under `base`, or "" when it is `base` itself."""
+    relative = os.path.relpath(whole, base).replace(os.sep, "/")
+    return "" if relative == "." else relative
+
+
 def _files_under(root):
+    """Every source file under this root, and every directory that would not open.
+
+    Nothing under a root is passed over in silence, because a directory the walk skipped
+    takes every module in it off the page while every count still adds up. A directory
+    that cannot be listed comes back as a named failure, and a symlinked one is followed
+    rather than stepped over — once, so that a link pointing back up the tree cannot make
+    the same file arrive twice under two names.
+    """
     found = []
-    for directory, subdirectories, names in os.walk(root.path):
+    unreadable = []
+    read_already = {}
+
+    def refuse(error):
+        unreadable.append(
+            (
+                _relative(error.filename, root.path),
+                "directory could not be read: %s"
+                % (error.strerror or error.__class__.__name__),
+            )
+        )
+
+    for directory, subdirectories, names in os.walk(root.path, onerror=refuse, followlinks=True):
+        here = os.path.realpath(directory)
+        if here in read_already:
+            log.warning(
+                "not reading source directory root=%s path=%s twice: it is the same "
+                "directory as %s",
+                root.label,
+                _relative(directory, root.path),
+                read_already[here] or root.label,
+            )
+            subdirectories[:] = []
+            continue
+        read_already[here] = _relative(directory, root.path)
+        # The walk order decides which of two names for the same directory is the one
+        # read, so it is fixed here rather than left to the order the filesystem hands
+        # back. The files themselves are sorted once, at the end.
         subdirectories.sort()
-        for name in sorted(names):
+        for name in names:
             if name.endswith(root.suffixes):
                 whole = os.path.join(directory, name)
-                found.append((whole, os.path.relpath(whole, root.path).replace(os.sep, "/")))
+                found.append((whole, _relative(whole, root.path)))
+
     found.sort(key=lambda pair: pair[1])
-    return found
+    unreadable.sort()
+    return found, unreadable
 
 
 def build(roots):
@@ -97,10 +161,34 @@ def build(roots):
 
     for root in roots:
         log.debug("reading source root label=%s language=%s", root.label, root.language)
-        for whole, relative in _files_under(root):
+        files, unreadable_directories = _files_under(root)
+
+        for relative, reason in unreadable_directories:
+            seen += 1
+            log.warning(
+                "could not read source directory root=%s path=%s reason=%s",
+                root.label,
+                relative,
+                reason,
+            )
+            unparsed.append({"root": root.label, "path": relative, "reason": reason})
+
+        for whole, relative in files:
             seen += 1
             try:
                 text = _read(whole)
+            except SourceUnreadable as unreadable:
+                log.warning(
+                    "could not read source file root=%s path=%s reason=%s",
+                    root.label,
+                    relative,
+                    unreadable.reason,
+                )
+                unparsed.append(
+                    {"root": root.label, "path": relative, "reason": unreadable.reason}
+                )
+                continue
+            try:
                 parsed = javasource.parse(text, relative)
             except javasource.ParseFailure as failure:
                 log.warning(
@@ -122,7 +210,7 @@ def build(roots):
                         "root": root.label,
                         "path": relative,
                         "lines": parsed.lines,
-                        "nested": sorted(n.name for n in parsed.nested_under(declared.name)),
+                        "nested": parsed.nested_names(declared),
                     }
                 )
 
@@ -165,11 +253,13 @@ def _refuse_duplicate_ids(modules):
     """Stop the run if two files declare the same module, naming both of them."""
     holders = {}
     for module in modules:
-        holders.setdefault(module["id"], []).append(module["root"] + "/" + module["path"])
+        holders.setdefault(module["id"], []).append(
+            "/".join(part for part in (module["root"], module["path"]) if part)
+        )
 
     clashes = {id_: paths for id_, paths in holders.items() if len(paths) > 1}
     for id_, paths in sorted(clashes.items()):
-        log.error(
+        log.warning(
             "refusing to build the graph: module id=%s is declared %d times in %s",
             id_,
             len(paths),
@@ -180,21 +270,24 @@ def _refuse_duplicate_ids(modules):
 
 
 def _read(whole):
-    """The file as text, or a ParseFailure saying why it could not be read.
+    """The file as text, or a named failure saying why it could not be read.
 
     Every way a file can refuse to be read ends here as one named failure: a dangling
     symlink, a file with no read permission and a file deleted since the walk are all
     OSError, and letting one of those out would end the run with a traceback and write
     neither output — one unreadable file costing the whole page instead of one card.
     The reason is the errno's own text, never the path, which would be machine-specific.
+
+    Bytes that are not text arrive here too, and they are the same kind of finding: the
+    parser was never handed any Java to fail on.
     """
     try:
         with open(whole, "rb") as handle:
             return handle.read().decode("utf-8")
     except UnicodeDecodeError as broken:
-        raise javasource.ParseFailure("not valid UTF-8: %s" % broken.reason)
+        raise SourceUnreadable("not valid UTF-8: %s" % broken.reason)
     except OSError as unreadable:
-        raise javasource.ParseFailure(
+        raise SourceUnreadable(
             "could not be opened: %s" % (unreadable.strerror or unreadable.__class__.__name__)
         )
 

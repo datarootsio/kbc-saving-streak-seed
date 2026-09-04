@@ -43,23 +43,27 @@ def parser():
 
 def main(argv=None):
     arguments = parser().parse_args(argv)
+    # force, because basicConfig is otherwise a no-op once anything has configured the
+    # root logger: without it a second run in the same process — the suite, or any caller
+    # that imports this module — silently keeps the first run's --log-level.
     logging.basicConfig(
         stream=sys.stderr,
         level=getattr(logging, arguments.log_level),
         format="%(levelname)-5s %(name)s %(message)s",
+        force=True,
     )
 
     sources = arguments.source or [DEFAULT_SOURCE]
     missing = [directory for directory in sources if not os.path.isdir(directory)]
     if missing:
-        log.error("refused to run: no such source directory %s", ", ".join(missing))
+        log.warning("refused to run: no such source directory %s", ", ".join(missing))
         return 2
 
     log.info("run started sources=%s graph=%s page=%s", ",".join(sources), arguments.graph, arguments.page)
     try:
         document = graph.build([graph.java_root(directory) for directory in sources])
     except graph.DuplicateModules as clash:
-        log.error(
+        log.warning(
             "refused to run: %d module id(s) are declared more than once (%s), and a page "
             "drawn from them would show one of each pair twice and the other not at all",
             len(clash.clashes),
@@ -67,8 +71,13 @@ def main(argv=None):
         )
         return 3
 
-    written_graph = write(arguments.graph, graph.serialise(document))
-    written_page = write(arguments.page, page.render(document))
+    # Both outputs are turned into bytes before either is written. A page that fails to
+    # render after the graph has landed would leave a fresh document beside a stale
+    # picture of it, which is the one thing this command promises cannot happen.
+    serialised = graph.serialise(document)
+    rendered = page.render(document, serialised)
+    written_graph = write(arguments.graph, serialised)
+    written_page = write(arguments.page, rendered)
     log.info(
         "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d",
         written_graph,

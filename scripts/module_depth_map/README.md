@@ -22,21 +22,34 @@ Run its tests with the standard library's own runner, also from the repository r
   identical, and a test asserts it.
 - **The page contains nothing the graph does not.** The page carries the graph document
   verbatim and draws itself from it, so there is no second place for a fact to come from.
-- **A file it cannot read is named, not scored as empty.** Parsing is targeted pattern
+- **Source it cannot read is named, not scored as empty.** Parsing is targeted pattern
   matching rather than a full Java grammar. Anything it cannot make sense of is logged as a
   warning with the reason, counted in the graph, and shown on the page, because a parse
   failure that looked like an empty module would be indistinguishable from a real finding.
-  That covers every way a file can go wrong: one that will not open (a dangling symlink, no
-  read permission, deleted since the walk), one that is not UTF-8, one whose braces do not
-  balance, and one holding a declaration the patterns cannot read — the last is caught by
-  counting the reserved declaration keywords against the declarations actually found, so a
-  missed module fails its file by name instead of quietly disappearing. One bad file costs
-  one card; both outputs are still written. `package-info.java` and `module-info.java`
-  declare no type on purpose and are read rather than reported.
+  Silence has to mean nothing was missed, so a file is failed by name whenever the parser
+  can tell it has stopped reading what the compiler would read:
+
+  - it will not open at all — a dangling symlink, no read permission, deleted since the
+    walk — or it is not UTF-8;
+  - a block comment, text block, string or character literal is never closed, which would
+    otherwise blank out the rest of the file and take every declaration in it with it;
+  - its braces do not balance, in either direction: left open at the end, or closing more
+    than were opened, which shifts later declarations to a depth the source does not have;
+  - a type is declared somewhere the parser cannot place, rather than being hung off
+    whichever module happened to come before it;
+  - a reserved declaration keyword matched no declaration, caught by counting `class`,
+    `interface` and `enum` against the declarations actually found.
+
+  A directory that will not open is named the same way, because the modules under it would
+  otherwise be missing while every count still added up. One bad file costs one card; both
+  outputs are still written. `package-info.java` and `module-info.java` declare no type on
+  purpose and are read rather than reported, and legal Java is never failed — an escaped
+  `\"""` inside a text block is a quote, not the end of it.
 - **It refuses rather than guessing.** No source directory (exit 2) and two files declaring
-  the same module id (exit 3) both stop the run with the reason logged at ERROR, because a
-  page that drew one of those modules twice and the other not at all would be worse than
-  no page.
+  the same module id (exit 3) both stop the run with the reason logged as a warning, because
+  a page that drew one of those modules twice and the other not at all would be worse than
+  no page. Nothing is written on either path, and the graph and the page are always written
+  together or not at all.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
   and `docs/module-depth-map.html` are checked in, and a test byte-compares them against a
   fresh run, so adding a Java class without rerunning the tool fails the suite instead of
@@ -46,7 +59,8 @@ Run its tests with the standard library's own runner, also from the repository r
 
 Every top-level type in the backend source, at class grain, grouped by its package. Types
 declared inside another are listed on the module that holds them rather than becoming
-modules of their own. Nothing is scored, ranked or judged yet.
+modules of their own, each named by where it sits inside that module — `Body.Kind`, not a
+second `Kind` a reader cannot tell from the first. Nothing is scored, ranked or judged yet.
 
 ## Arguments
 

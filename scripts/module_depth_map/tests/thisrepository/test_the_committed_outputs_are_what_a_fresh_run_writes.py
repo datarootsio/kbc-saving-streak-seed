@@ -9,7 +9,7 @@ the only test that fails when the outputs in `docs/` no longer describe the sour
 import os
 
 from ... import cli
-from ..support.sourcetrees import BACKEND_SOURCE, REPOSITORY, SourceTreeTest
+from ..support.sourcetrees import BACKEND_SOURCE, REPOSITORY, SourceTreeTest, bytes_of
 
 COMMITTED_GRAPH = os.path.join(REPOSITORY, "docs", "module-depth-map.json")
 COMMITTED_PAGE = os.path.join(REPOSITORY, "docs", "module-depth-map.html")
@@ -29,19 +29,14 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
 
     def test_the_committed_graph_document_is_byte_identical_to_a_fresh_run(self):
         self.assertEqual(
-            _bytes_of(COMMITTED_GRAPH),
-            _bytes_of(self.graph_path),
+            bytes_of(COMMITTED_GRAPH),
+            bytes_of(self.graph_path),
             "docs/module-depth-map.json is out of date: run python3 scripts/module-depth-map.py",
         )
 
     def test_the_committed_page_is_byte_identical_to_a_fresh_run(self):
         self.assertEqual(
-            _bytes_of(COMMITTED_PAGE),
-            _bytes_of(self.page_path),
+            bytes_of(COMMITTED_PAGE),
+            bytes_of(self.page_path),
             "docs/module-depth-map.html is out of date: run python3 scripts/module-depth-map.py",
         )
-
-
-def _bytes_of(path):
-    with open(path, "rb") as handle:
-        return handle.read()

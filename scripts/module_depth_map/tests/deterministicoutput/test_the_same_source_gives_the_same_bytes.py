@@ -8,7 +8,7 @@ import os
 import re
 
 from ... import cli, graph, page
-from ..support.sourcetrees import BACKEND_SOURCE, SourceTree, SourceTreeTest
+from ..support.sourcetrees import BACKEND_SOURCE, SourceTree, SourceTreeTest, bytes_of
 
 
 class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
@@ -31,8 +31,8 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
     def test_the_page_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = page.render(graph.build([graph.java_root(tree.root)]))
-        second = page.render(graph.build([graph.java_root(tree.root)]))
+        first = _rendered(graph.build([graph.java_root(tree.root)]))
+        second = _rendered(graph.build([graph.java_root(tree.root)]))
 
         self.assertEqual(first, second)
 
@@ -72,7 +72,7 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
             ["--source", source, "--graph", graph_path, "--page", page_path, "--log-level", "ERROR"]
         )
         self.assertEqual(0, exit_code)
-        return _bytes_of(graph_path), _bytes_of(page_path)
+        return bytes_of(graph_path), bytes_of(page_path)
 
 
 class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
@@ -82,7 +82,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {}")
         document = graph.build([graph.java_root(tree.root)])
-        return tree, graph.serialise(document).decode("utf-8"), page.render(document).decode("utf-8")
+        return tree, graph.serialise(document).decode("utf-8"), _rendered(document).decode("utf-8")
 
     def test_neither_output_names_a_directory_on_this_machine(self):
         tree, written_graph, written_page = self.written()
@@ -136,6 +136,18 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
 
         self.assertEqual(written[0], written[1])
 
+    def test_a_root_that_is_its_own_repository_is_named_rather_than_called_a_dot(self):
+        """The repository root is where every checkout differs, so it is named by neither.
+
+        Its own directory name is a different word in every clone and worktree, and "."
+        — what a relative path answers here — reads on the page as "Source read: ." and
+        prefixes every failure as `./shop/Till.java`, which tells a reader nothing.
+        """
+        top = os.path.join(self.scratch, "clone")
+        os.makedirs(os.path.join(top, ".git"))
+
+        self.assertEqual(graph.REPOSITORY_ROOT, graph.label_for(top))
+
     def test_neither_output_carries_anything_that_looks_like_a_date_or_a_time(self):
         _, written_graph, written_page = self.written()
 
@@ -150,6 +162,5 @@ def _gitdir_pointer(path):
         handle.write("gitdir: /elsewhere/.git/worktrees/checkout\n")
 
 
-def _bytes_of(path):
-    with open(path, "rb") as handle:
-        return handle.read()
+def _rendered(document):
+    return page.render(document, graph.serialise(document))

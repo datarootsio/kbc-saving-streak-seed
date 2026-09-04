@@ -71,14 +71,14 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
     def test_the_page_carries_the_graph_document_it_was_rendered_from(self):
         document = self.source()
 
-        rendered = page.render(document).decode("utf-8")
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertEqual(document, json.loads(_embedded_graph(rendered)))
 
     def test_the_graph_the_page_carries_is_the_bytes_the_graph_document_was_written_as(self):
         document = self.source()
 
-        rendered = page.render(document).decode("utf-8")
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertEqual(
             graph.serialise(document).decode("utf-8").rstrip("\n"),
@@ -88,7 +88,7 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
     def test_nothing_on_the_page_comes_from_anywhere_but_the_graph_document(self):
         document = self.source()
 
-        rendered = page.render(document).decode("utf-8")
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         outside_the_graph = rendered.replace(_embedded_graph(rendered), "")
         for module in document["modules"]:
@@ -96,14 +96,16 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
             self.assertNotIn(module["package"], outside_the_graph)
 
     def test_the_page_loads_nothing_from_outside_itself(self):
-        rendered = page.render(self.source()).decode("utf-8")
+        document = self.source()
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertNotIn("http://", rendered)
         self.assertNotIn("https://", rendered)
         self.assertEqual([], re.findall(r"\b(?:src|href)\s*=", rendered))
 
     def test_the_page_is_legible_in_either_theme(self):
-        rendered = page.render(self.source()).decode("utf-8")
+        document = self.source()
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertIn("color-scheme: light dark", rendered)
         self.assertIn("@media (prefers-color-scheme: dark)", rendered)
@@ -194,7 +196,7 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
             tree.java("shop.till", "Till", "public class Till {}")
         roots = [graph.java_root(first.root), graph.java_root(second.root)]
 
-        with self.assertLogs("module_depth_map", level=logging.ERROR) as logged:
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             with self.assertRaises(graph.DuplicateModules):
                 graph.build(roots)
 
@@ -209,13 +211,115 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
         graph_path = os.path.join(self.scratch, "out", "graph.json")
         page_path = os.path.join(self.scratch, "out", "page.html")
 
-        with self.assertLogs("module_depth_map", level=logging.ERROR) as logged:
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             exit_code = cli.main(
                 ["--source", first.root, "--source", second.root,
-                 "--graph", graph_path, "--page", page_path, "--log-level", "ERROR"]
+                 "--graph", graph_path, "--page", page_path, "--log-level", "WARNING"]
             )
 
         self.assertEqual(3, exit_code)
         self.assertTrue(any("refused to run" in line for line in logged.output))
         self.assertFalse(os.path.exists(graph_path))
         self.assertFalse(os.path.exists(page_path))
+
+
+class NestedTypesAreToldApartTest(SourceTreeTest):
+    """A nested name says where it sits, so two of them are never the same word twice.
+
+    `nested: B, C, C, D` is unreadable: a reader cannot tell which `C` is which, and the
+    repeat looks like a fault in the page rather than a fact about the source.
+    """
+
+    def test_two_nested_types_with_the_same_name_are_named_by_where_they_sit(self):
+        tree = self.tree("fixture")
+        tree.java(
+            "shop.till",
+            "A",
+            "class A {\n"
+            "    class B { class C {} }\n"
+            "    class D { class C {} }\n"
+            "}",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["B", "B.C", "D", "D.C"], document["modules"][0]["nested"])
+
+    def test_a_type_declared_inside_a_method_belongs_to_the_module_that_holds_it(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "A", "class A {\n    void m() { class Row {} }\n}")
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["shop.till.A"], [m["id"] for m in document["modules"]])
+        self.assertEqual(["Row"], document["modules"][0]["nested"])
+
+    def test_the_same_nested_name_is_carried_once_rather_than_drawn_twice(self):
+        tree = self.tree("fixture")
+        tree.java(
+            "shop.till",
+            "A",
+            "class A {\n    void m() { class Row {} }\n    void n() { class Row {} }\n}",
+        )
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual(["Row"], document["modules"][0]["nested"])
+
+
+class LegalJavaIsNeverCalledUnreadableTest(SourceTreeTest):
+    """The alarm band only stays worth reading while it never cries wolf.
+
+    Every fixture here is Java the compiler accepts. Failing one of them would take two
+    real modules off the page and paint the band over a file with nothing wrong with it.
+    """
+
+    def parsed(self, name, body):
+        tree = self.tree("fixture")
+        tree.raw("shop/till/%s.java" % name, body)
+
+        document = graph.build([graph.java_root(tree.root)])
+
+        self.assertEqual([], document["source"]["unparsed"])
+        return document
+
+    def test_a_text_block_holding_an_escaped_triple_quote_is_read(self):
+        document = self.parsed(
+            "A",
+            "package shop.till;\n\n"
+            "public class A {\n"
+            '    static final String S = """\n'
+            '        say \\"""\n'
+            '        """;\n'
+            "    class Real {}\n"
+            "}\n",
+        )
+
+        self.assertEqual(["shop.till.A"], [m["id"] for m in document["modules"]])
+        self.assertEqual(["Real"], document["modules"][0]["nested"])
+
+    def test_a_text_block_holding_one_or_two_quotes_is_read(self):
+        document = self.parsed(
+            "B",
+            "package shop.till;\n\n"
+            "public class B {\n"
+            '    static final String S = """\n'
+            '        a " and a "" and a } brace\n'
+            '        """;\n'
+            "}\n",
+        )
+
+        self.assertEqual(["shop.till.B"], [m["id"] for m in document["modules"]])
+
+    def test_a_string_holding_an_escaped_backslash_or_quote_is_read(self):
+        document = self.parsed(
+            "C",
+            "package shop.till;\n\n"
+            "public class C {\n"
+            '    static final String BACKSLASH = "\\\\";\n'
+            '    static final String QUOTE = "\\"";\n'
+            "    static final char TICK = '\\'';\n"
+            "}\n",
+        )
+
+        self.assertEqual(["shop.till.C"], [m["id"] for m in document["modules"]])
