@@ -132,7 +132,7 @@ class Rules:
             (method for method in declared.methods if method.visibility in self.reachable_from_outside),
             key=lambda method: (method.name, method.parameters),
         )
-        crossing = self._types_crossing_the_seam(methods)
+        crossing = self._types_crossing_the_seam(methods, declared.type_parameters)
         cost = None
         if scored:
             cost = sum(self._cost_of(method) for method in methods) + sum(
@@ -165,17 +165,24 @@ class Rules:
     def _cost_of(self, method):
         return self.weights["method"] + len(method.parameters) * self.weights["parameter"]
 
-    def _types_crossing_the_seam(self, methods):
+    def _types_crossing_the_seam(self, methods, of_the_module):
         """Every distinct type a caller meets in a parameter or a return, counted once.
 
         A type is named by the simple name it is written with and stripped of the shapes
         it is carried in: `List<Optional<Customer>>` is `List`, `Optional` and `Customer`,
         because a caller who has to unwrap the first two still has to learn the third.
+
+        A type variable is not one of them. `<T> T first(List<T> of)` hands back whatever
+        the caller passed in, and charging them for learning `T` would price the letter
+        rather than a type — the module's own `<T>` and each method's are both left out.
         """
         names = set()
         for method in methods:
+            variables = set(of_the_module) | set(method.type_parameters)
             for written in list(method.parameters) + [method.returns]:
-                names.update(_named_types_in(written))
+                names.update(
+                    name for name in _named_types_in(written) if name not in variables
+                )
         return [
             {"name": name, "mustBeLearned": name not in self.already_known}
             for name in sorted(names)

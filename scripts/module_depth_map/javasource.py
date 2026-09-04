@@ -75,13 +75,18 @@ class Method:
     The types are the words the source wrote them with — `Optional<Customer>`, `long` —
     rather than anything resolved: this parser reads one file at a time, and a name it
     cannot follow to a declaration is still the name a caller has to learn.
+
+    `type_parameters` is the exception: the names this method's own `<T>` introduces are
+    holes the caller fills with a type they already hold, so they are recorded here for a
+    rule outside this file to tell apart from the types it has to go and read.
     """
 
-    def __init__(self, name, visibility, parameters, returns):
+    def __init__(self, name, visibility, parameters, returns, type_parameters=()):
         self.name = name
         self.visibility = visibility
         self.parameters = tuple(parameters)
         self.returns = returns
+        self.type_parameters = tuple(type_parameters)
 
 
 class DeclaredType:
@@ -98,7 +103,7 @@ class DeclaredType:
     """
 
     def __init__(self, name, kind, depth, ends_at, owner, qualified,
-                 annotations=(), supertypes=(), methods=()):
+                 annotations=(), supertypes=(), methods=(), type_parameters=()):
         self.name = name
         self.kind = kind
         self.depth = depth
@@ -108,6 +113,7 @@ class DeclaredType:
         self.annotations = tuple(annotations)
         self.supertypes = tuple(supertypes)
         self.methods = tuple(methods)
+        self.type_parameters = tuple(type_parameters)
 
 
 class ParsedFile:
@@ -378,6 +384,7 @@ def _declared_types(masked, depths):
             ),
             annotations=_annotations_before(masked, start),
             supertypes=_supertypes_in(header),
+            type_parameters=_type_parameters_in(header),
             # Only for a module — a type declared inside one is named on it rather than
             # scored, so reading its members would be work nothing asks for.
             methods=() if owner is not None
@@ -420,18 +427,47 @@ _TRAILING_NAME = re.compile(r"([A-Za-z_$][\w$]*)\s*$")
 
 _LEADING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s")
 
+_TRAILING_ANNOTATION = re.compile(r"@\s*([A-Za-z_$][\w$.]*)\s*$")
+
+_TRAILING_WORD = re.compile(r"([A-Za-z_$][\w$-]*)\s*$")
+
+_LEADING_TYPE_PARAMETER = re.compile(r"\s*([A-Za-z_$][\w$]*)")
+
 
 def _annotations_before(masked, start):
     """The annotations written on this declaration, by simple name.
 
-    Only as far back as the last thing that ended — a semicolon or a brace either way —
-    so a declaration never inherits the annotations of whatever was written above it.
+    Read by walking back over exactly what Java allows between an annotation and the
+    keyword it marks — further annotations, the arguments they were given, and
+    modifiers — and stopping at the first thing that is none of those, so a declaration
+    never inherits the annotations of whatever was written above it.
+
+    Looking back to the nearest `;` or brace instead is what this replaces, and it loses
+    the whole annotation whenever an argument holds a brace of its own:
+    `@SpringBootApplication(scanBasePackages = {"shop"})` is the ordinary way to write
+    the entry point, and the search stopped inside it, so the entry point arrived as a
+    module no rule had excluded and was scored like anything else.
     """
-    boundary = max(masked.rfind(character, 0, start) for character in ";{}")
-    return tuple(
-        found.group(1).split(".")[-1]
-        for found in _ANNOTATION.finditer(masked, boundary + 1, start)
-    )
+    found = []
+    head = masked[:start]
+    while head:
+        head = head.rstrip()
+        if head.endswith(")"):
+            opened = _before_balanced(head)
+            if opened is None:
+                break
+            head = head[:opened]
+            continue
+        marked = _TRAILING_ANNOTATION.search(head)
+        if marked is not None:
+            found.append(marked.group(1).split(".")[-1])
+            head = head[:marked.start()]
+            continue
+        word = _TRAILING_WORD.search(head)
+        if word is None or word.group(1) not in _MODIFIERS:
+            break
+        head = head[:word.start()]
+    return tuple(reversed(found))
 
 
 def _supertypes_in(header):
@@ -518,10 +554,11 @@ def _method_in(member, holder_kind):
     if "=" in before or _TYPE_KEYWORD.search(before):
         return None
     modifiers, rest = _modifiers_in(before)
-    name = _TRAILING_NAME.search(_without_type_parameters(rest))
+    signature = _without_type_parameters(rest)
+    name = _TRAILING_NAME.search(signature)
     if name is None:
         return None
-    returns = _normalised(_without_type_parameters(rest)[:name.start()])
+    returns = _normalised(signature[:name.start()])
     if not returns:
         return None
     return Method(
@@ -531,6 +568,7 @@ def _method_in(member, holder_kind):
             text[opened + 1:_after_balanced(text, opened) - 1]
         )],
         returns,
+        _type_parameters_in(rest),
     )
 
 
@@ -577,6 +615,30 @@ def _without_type_parameters(rest):
     """`<T extends Comparable<T>> T largest` is `T largest`: the bounds are not the type."""
     rest = rest.lstrip()
     return rest[_after_balanced(rest, 0, "<", ">"):] if rest.startswith("<") else rest
+
+
+def _type_parameters_in(text):
+    """The names a `<...>` at the front of this text introduces: `<T>`, `<K, V>`.
+
+    A type variable is a hole rather than a type: `<T> T first(List<T> of)` asks its
+    caller for a type they already hold, and `T` is a letter standing in for it, not
+    something anybody goes and reads.
+
+    Only the names are taken, not their bounds: what an interface costs is counted over
+    parameters and returns, and `<T extends Receipt>` is neither. A caller does have to
+    honour that bound, which makes this one more thing the score does not measure — the
+    page's business to admit rather than this file's to guess at.
+    """
+    text = text.lstrip()
+    if not text.startswith("<"):
+        return ()
+    inside = text[1:_after_balanced(text, 0, "<", ">") - 1]
+    names = []
+    for part in _split_on_commas(inside):
+        found = _LEADING_TYPE_PARAMETER.match(_without_annotations(part))
+        if found is not None:
+            names.append(found.group(1))
+    return tuple(names)
 
 
 def _without_annotations(text):
@@ -652,6 +714,25 @@ def _after_balanced(text, position, opening="(", closing=")"):
                 return position + 1
         position += 1
     return len(text)
+
+
+def _before_balanced(text, opening="(", closing=")"):
+    """Where the bracket that closes this text opens, or None when nothing opens it.
+
+    The mirror of `_after_balanced`, for reading backwards: the only way to find the front
+    of an annotation's argument list from the keyword it sits in front of.
+    """
+    depth = 0
+    position = len(text) - 1
+    while position >= 0:
+        if text[position] == closing:
+            depth += 1
+        elif text[position] == opening:
+            depth -= 1
+            if depth == 0:
+                return position
+        position -= 1
+    return None
 
 
 def _normalised(written):
