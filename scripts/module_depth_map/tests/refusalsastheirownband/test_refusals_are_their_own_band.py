@@ -295,6 +295,23 @@ class ADocumentedRefusalIsReadFromTheSourcesOwnWordsTest(SourceOfKnownShapeTest)
 
         self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Gate"]))
 
+    def test_a_javadoc_written_flush_against_its_member_still_documents_it(self):
+        """Legal, ugly, and the one shape a search by offset can get wrong.
+
+        Nothing at all between the block's `*/` and the method, so the two offsets are
+        equal — and a search that compared the names as a tie-break would step past the
+        block to whatever came before it.
+        """
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Gate", "public class Gate {\n"
+                     "    /** @throws Shut if it is shut */public void go(long id) {\n"
+                     "        throw new Shut(\"shut\");\n"
+                     "    }\n}"),
+        )
+
+        self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Gate"]))
+
     def test_a_javadoc_documents_the_member_under_it_and_not_the_next_one(self):
         modules = self.modules(
             ("Shut", A_REFUSAL),

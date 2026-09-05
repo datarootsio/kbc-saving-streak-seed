@@ -625,6 +625,9 @@ def parse(text, path):
 def _refusals_documented_in(text, documentation):
     """The refusals each javadoc block promises, and the offset each block ends at.
 
+    Two lists rather than a list of pairs, because the offsets are what is searched and
+    the names are only what is then read off.
+
     Tied to where it ends because that is how a block is tied to what it documents: the
     member it belongs to is the next thing written after it. Keying by the member instead
     would mean deciding here what a member is, which is the one thing this function has no
@@ -636,12 +639,14 @@ def _refusals_documented_in(text, documentation):
     order `documentation` arrives in, so that the search below can be a walk backwards
     through the file rather than a guess at which block is nearest.
     """
-    documented = []
+    ends_at_of = []
+    names_of = []
     for opened, ends_at in documentation:
         names = _DOCUMENTED_REFUSAL.findall(text[opened:ends_at])
         if names:
-            documented.append((ends_at, tuple(_simple(name) for name in names)))
-    return documented
+            ends_at_of.append(ends_at)
+            names_of.append(tuple(_simple(name) for name in names))
+    return ends_at_of, names_of
 
 
 def _documented_before(masked, at, documented):
@@ -658,12 +663,18 @@ def _documented_before(masked, at, documented):
     back over whitespace, because a comment is *blanked* in the masked text: walking back
     over "whitespace" would step straight over the block being looked for and land on
     whatever came before it.
+
+    The search is over the offsets alone. Searching a list of pairs instead would compare
+    the names when two offsets were equal, and a block ending exactly where the member
+    begins — `/** @throws Shut */public void go()`, legal and ugly — would then be passed
+    over for whatever block came before it.
     """
-    at_or_before = bisect.bisect_right(documented, (at, ()))
+    ends_at_of, names_of = documented
+    at_or_before = bisect.bisect_right(ends_at_of, at)
     if not at_or_before:
         return ()
-    ends_at, names = documented[at_or_before - 1]
-    return names if not masked[ends_at:at].strip() else ()
+    ends_at = ends_at_of[at_or_before - 1]
+    return names_of[at_or_before - 1] if not masked[ends_at:at].strip() else ()
 
 
 def _simple(written):
