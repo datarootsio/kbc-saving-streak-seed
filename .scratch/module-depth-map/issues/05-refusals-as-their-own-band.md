@@ -12,15 +12,15 @@ by a machine rather than by whoever called it.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-review
+**Status:** needs-info
 
 - [x] Every refusal a module can answer with appears in the graph as part of its interface
 - [x] Refusals count toward interface cost, and are also reported separately from the rest of it
 - [x] The page shows refusals as their own band, so an honestly-wide interface is distinguishable from a merely wide one
-- [x] Documented refusals are read from the source's own documentation rather than guessed at
+- [ ] Documented refusals are read from the source's own documentation rather than guessed at
 - [x] A module documenting a refusal it cannot raise produces a finding naming both sides of the disagreement
 - [x] A module raising a refusal it does not document produces a finding naming both sides of the disagreement
-- [x] A module whose documentation and implementation agree produces no finding
+- [ ] A module whose documentation and implementation agree produces no finding
 - [x] Fixture modules establish each direction of disagreement and the agreeing case
 
 ## Review feedback - attempt 1
@@ -558,3 +558,278 @@ separate reporting, the page, the config-driven rule, the constructor reading, t
 bodiless-signature reading, the `this.` reading, the enum-constructor reading, the fixtures
 for the three directions and the logging are all real and all verified — none of them needs
 doing again.
+
+## Review feedback - attempt 4
+
+The three defects attempt 3 named are genuinely fixed and I reproduced each on my own fresh
+trees. What sends this back is two more instances of the shape attempts 1, 2 and 3 each sent it
+back for — **a module that kept its word gets accused** — plus the third instance of the stale-prose
+defect. Both accusations are latent on this source, as attempt 2's `throw this.` and attempt 3's
+`<T>` were; both are four-line files away.
+
+### 1. A nested type's `@throws` is invisible while its `throw` counts as the module's
+
+`_documenters_of` (`scripts/module_depth_map/scoring.py:627`) reads the documented side off
+`declared.methods` and `declared.constructors`. `_declared_types` fills both **only for the module
+itself** — `methods = () if owner is not None else _methods_of(...)`. The raised side,
+`declared.raises`, is read over the whole body, nested types included. So a nested type's `throw`
+is counted as the module raising it, and the nested type's own `@throws` documenting that exact
+refusal is never read. Reproduce with a two-file tree (`Shut` is the usual `extends
+RuntimeException`):
+
+    public class Till {
+        private final Inner inner = new Inner();
+
+        public void open() { inner.deep(); }
+
+        public static class Inner {
+            /**
+             * Goes deep.
+             *
+             * @throws Shut when shut
+             */
+            public void deep() { throw new Shut("x"); }
+        }
+    }
+
+Expected: documentation and implementation agree, no finding. What I got:
+
+    refusal {'name': 'Shut', 'documented': False, 'documentedBy': [], 'raised': True, 'checked': True}
+    FINDING raised but never documented | Shut | documentedBy [] | raised True
+
+The refusal is documented on the very method that throws it, and the module is accused of throwing
+something nobody wrote down.
+
+This is attempt 1's point 2 one level over. That one was about constructors, and the answer it got
+is the right one, written into the README: *"A constructor is read on **both** sides or it would be
+read on one."* The same sentence settles this. The README already commits to the raised half —
+"**raised** is what the module's body throws, over that whole body, **nested types** and
+constructors included" (`README.md:227`) — so the tool advertises the symmetry it does not
+implement. Read a nested type's `@throws` as the module documenting itself, or stop reading a
+nested type's `throw` into `raises`; whichever you pick, say which in `scoring.py` and the README
+and pin it with a fixture. `tests/refusalsastheirownband` has no nested-type fixture on the
+documented side at all.
+
+Nothing in `backend/src/main/java` is affected today: all 7 `@throws` this repository writes sit on
+top-level methods (`ScheduledJobs`'s two are on `runNow`; its nested `AJob` at line 240 documents
+nothing), so the committed `docs/module-depth-map.{json,html}` are not wrong. Latent, not live —
+but this repository has seven nested types already, and the page is one a training day projects at
+people about to add an eighth.
+
+### 2. A tagless javadoc does not shield its member from an older tagged one
+
+`_refusals_documented_in` (`scripts/module_depth_map/javasource.py:708`) drops every javadoc block
+carrying no `@throws` from the offset list it searches. `_documented_before` then bisects to the
+nearest **remaining** block and accepts it whenever `masked[ends_at:at]` is blank — but comments are
+blanked in the masked text, so the intervening javadoc it walked past is invisible and the gap looks
+empty. A member's own javadoc therefore does not stop the search reaching an older one.
+
+Reproduce at the parser seam. All three of these give `go` `documented_refusals == ('Shut',)`, and
+`go`'s own javadoc mentions no refusal at all:
+
+    /** @throws Shut when shut. */
+
+    /** Opens it. */
+    public void go() { }
+
+    ---
+
+    /** @throws Shut when shut. */
+    // public void old() { throw new Shut("x"); }
+
+    /** Opens it. */
+    public void go() { }
+
+    ---
+
+    /** @throws Shut when shut. */
+    /* just a note */
+    /** Opens it. */
+    public void go() { }
+
+    python3 -c 'import sys; sys.path.insert(0,"scripts")
+    from module_depth_map import javasource
+    t = javasource.parse(open("<file>").read(), "X.java").types[0]
+    print([(m.name, m.documented_refusals) for m in t.methods])'
+
+End to end on the middle one, as a one-class module:
+
+    refusal {'name': 'Shut', 'documented': True, 'documentedBy': ['go'], 'raised': False, 'checked': True}
+    FINDING documented but never raised | Shut | documentedBy ['go'] | raised False
+
+Two things wrong. `go` is credited with documenting a refusal its own javadoc never mentions, which
+is the criterion "documented refusals are read from the source's own documentation rather than
+guessed at" failing — this is guessed at. And a module that promised nothing carries a finding
+naming a method that promised nothing, which is "a module whose documentation and implementation
+agree produces no finding" failing.
+
+Note what does **not** trigger it, so you fix the right thing: an intervening javadoc'd **field**
+is fine (`[('go', ())]`), and an intervening javadoc'd **method** is fine — attempt 2 probed both
+and they still pass. The member occupies an offset and stops the search. What does not stop it is a
+javadoc block with no `@throws` in it, because that block was never put in the list.
+
+The docstring's claim that "this member documents no refusal" and "this member has no javadoc" are
+the same answer holds for the member being asked about, but not for the nearest-block search that
+runs underneath it: an empty block still has to occupy its offset so the search stops there. Keeping
+every javadoc's `ends_at` in the list and storing `()` for the tagless ones is the direction the
+rest of the file leans — where a name is ambiguous, read nothing rather than guess.
+
+Latent here too: I checked all 13 refusals on this source and every one of the 7 documented ones is
+attributed to the right method.
+
+### 3. `new AmountOfMoney(-1)` does not refuse, and has never existed
+
+The paragraph justifying the decision to read a constructor's `@throws` — the decision attempt 1
+asked for and attempt 2 made — rests on a named example from this repository.
+`scripts/module_depth_map/README.md:252`:
+
+    The other answer says something false about the source —
+    `new AmountOfMoney(-1)` refuses, and a caller has that to learn — and validating in a
+    constructor is the sanctioned way to give a Java value an invariant [...]
+
+`backend/src/main/java/io/dataroots/savingstreak/deposits/AmountOfMoney.java` is a `final class`
+whose **only** constructor is
+
+    private AmountOfMoney() {
+    }
+
+— no arguments, empty body, throws nothing. `new AmountOfMoney(-1)` does not compile and never did:
+`git log --all -S "new AmountOfMoney(" -- backend/src` returns nothing on any branch. The class's
+own javadoc says the opposite of what the README claims for it: *"It answers with the reason rather
+than refusing, because who refuses differs"*. The tool's documentation picks, as its example of a
+constructor that refuses, the one class in this repository that deliberately does not.
+
+Reproduce:
+
+    grep -rn "AmountOfMoney(" backend/src         # one hit: private AmountOfMoney() {
+    git log --all --oneline -S "new AmountOfMoney(" -- backend/src   # no output
+
+The same sentence is written into four shipped files and a test:
+
+    scripts/module_depth_map/scoring.py:46
+    scripts/module_depth_map/scoring.py:573        (_documenters_of's own docstring)
+    scripts/module_depth_map/README.md:252
+    scripts/module_depth_map/javasource.py:302     (_constructors_of's own docstring)
+    scripts/module_depth_map/tests/refusalsastheirownband/test_refusals_are_their_own_band.py:1059
+
+so the docstrings of the two functions that implement the constructor rule, and of the test class
+that pins it, all justify themselves with something that is not there. Attempt 1 sent this ticket
+back (point 4) for a `graph.py` comment gone stale against the committed output; attempt 3 sent it
+back (point 2) for a README count that said "one" where the parser said "two". This is the same
+defect a third time and larger than either.
+
+**The honest replacement.** No constructor in this repository refuses at all — I checked all 43 the
+parser sees, `documented_refusals` empty on every one and none of them throws:
+
+    python3 -c 'import sys,pathlib; sys.path.insert(0,"scripts")
+    from module_depth_map import javasource
+    for p in sorted(pathlib.Path("backend/src/main/java").rglob("*.java")):
+        for t in javasource.parse(p.read_text(), p.name).types:
+            for c in t.constructors: print(t.name, c.name, c.documented_refusals)'
+
+So the constructor rule is exactly where the bodiless-`@throws` bullet already is two paragraphs
+later, and that bullet is worded honestly: *"Nothing in this repository writes one today; it is the
+shape a participant is most likely to add next, and `tests/refusalsastheirownband` pins it."* Say
+that. `Deposit` is not a substitute — its `IllegalArgumentException` comes from `reduceBy`, a
+method, not from either of its two constructors. Do not guess another example; whatever replaces
+this will be checked.
+
+### 4. Minor: `refusalsNotChecked` does not count what README:304 sends a reader to it for
+
+    Neither is a finding and neither is a module keeping its word, so they are counted apart,
+    as `refusalsNotChecked` in the graph and on the page
+
+An unnameable `throw` is counted only in `DeclaredType.throws_not_read`, which is never emitted —
+`grep throws_not_read docs/module-depth-map.json` finds nothing. It reaches `refusalsNotChecked`
+only indirectly, by withholding a check from some documented refusal, and only when that refusal is
+not also raised. `ScheduledJobs` has `throws_not_read = 2` while the graph's
+`scoring.refusals.refusalsNotChecked` is `0`, so a reader who follows that sentence to the graph
+finds the count is not there. Either publish the number or reword the claim to say what is actually
+carried.
+
+### What I checked and found good, so you do not re-do it
+
+Nothing below needs doing again. Six of the eight criteria are proven; the two I unticked are
+falsified by points 1 and 2 above and by nothing else.
+
+- **All three attempt-3 defects fixed, reproduced on my own trees.** The reviewer's `Box`
+  (`class Box<T extends RuntimeException>`, `private T make()`, `throw make()`) now gives
+  `cost=3 (1 + 2)`, one refusal `RuntimeException` `documented=True raised=False checked=False`,
+  **no findings**, and no `T` on the band or in the price. `Boxed` (method-level `<T>`) is
+  identical. Six further shapes, all right: `Pair<K, V extends RuntimeException>` declines;
+  `throw this.make()` in a generic class declines; a `<T>` on a **nested** class declines;
+  `<T extends Comparable<T>>` parses as `('T','E')`; a generic interface and a generic record
+  behave; and `BoxStale<T>` — a generic class with a genuinely stale `@throws` — still fires
+  **both** findings, so the decline did not switch the check off. At the parser seam, class-,
+  method- and nested-level `<T>` all give `raises=() throws_not_read=1`.
+- **The `_thrown_through` shape change is safe.** `private <U> Shut refusing(U why)` is now read
+  rather than declined, which is correct — a generic method handing back a concrete refusal throws
+  that refusal. Ambiguity still declines. The only way a hole could slip through is a type variable
+  introduced somewhere neither the type's nor the candidates' `<...>` covers, and for a top-level
+  module the JLS allows no such place.
+- **The README count is right now**: parser gives `ScheduledJobs 2`, `SavingsAccountController 1`;
+  the DEBUG run writes exactly 3 `throw not read as a refusal` lines. **The page count has its
+  noun**: "13 refusals are read across this page" on this source, and a one-refusal tree I built
+  renders "1 refusal is read across this page". **The `graph.py` comment attempt 1 flagged is now a
+  rule, not a stale observation.**
+- **The band, on the real source.** 13 refusals over 71 modules — the 7 `@throws` this repository
+  writes, each attributed to the right method, plus the 6 raised-and-undocumented. On all 71:
+  `cost == costWithoutRefusals + refusalCost`, `refusalCost == 2 x len(refusals)`, and every finding
+  names a refusal on that module's band. Against `ticket/04-the-deletion-test`'s committed graph,
+  `costWithoutRefusals` equals the parent's `cost` for **all 71** and no reach or deletion-test
+  verdict moved — the band is purely additive.
+- **All six findings on this source are true, driven against the running application.**
+  `POST /api/savings-accounts/1/withdrawals {"amount":"5000.00","toCurrentAccountId":1}` -> 400 and
+  `WARN i.d.s.deposits.WithdrawalsService : withdrawal rejected savingsAccountId=1 ... amount=5000.00`
+  then `Resolved [io.dataroots.savingstreak.deposits.WithdrawalRefused: ...]`. All three
+  controllers' `ResponseStatusException` too: `GET /api/savings-accounts/9999/deposits` -> 404;
+  `POST .../withdrawals {"amount":"nope"}` -> 400 with
+  `WARN i.d.s.web.SavingsAccountController : withdrawal rejected savingsAccountId=1 amount=nope reason="nope" is...`;
+  `GET /api/customers/9999/accounts` -> 404; `POST /api/dev/clock/advance {}` -> 400. The kept-word
+  side too: `ClockRefused` (days=0 and days=100000), `JobRefused` and `DepositRefused` (amount 0.00)
+  all resolved, all documented, no finding on any. Deposit 12.34 -> 201, redemption -> 201.
+- **Both finding directions and the unchecked case render.** A five-module tree (`Kept`, `Stale`,
+  `Silent`, `Port` as a bodiless interface, `Shut`): `Kept` plain in band ink, titled "documented by
+  go, and raised by this module"; `Port` `refusal unchecked`, `underline dotted`, band ink, titled
+  "whether this module raises it is not something this tool could read"; `Silent` and `Stale`
+  `refusal found` in alarm ink with one finding line each naming both sides. Identical in light and
+  dark, zero console output. Worth having, because `refusalsNotChecked` and `documentedNeverRaised`
+  are both 0 on the real source.
+- **The page.** Playwright (chromium, sync API, console/pageerror/requestfailed all subscribed) over
+  `docs/module-depth-map.html` at light+dark x 1024+1280: 71 `li.module` cards each,
+  `scrollWidth - clientWidth == 0` at every width, and **zero** console messages, page errors or
+  failed requests across every load. All 71 cards cross-checked against the graph at all four
+  combinations — refusal names and order, band classes `["learn","refuse"]`, both band widths
+  against `widestInterface`, bar title, the `found` class exactly where a finding names that
+  refusal, the `unchecked` class exactly where `checked` is false, finding-line count —
+  **0 problems**. Screenshots read, not just taken: `ScheduledJobs` (14 = 8 + 6, a wide gold band)
+  reads as honestly wide beside `SavingsAccountController` (33 = 31 + 2, a gold sliver) as merely
+  wide, in both themes.
+- **The rule is in the file, not the analyser.** With my own configs: `refusal` at 5 moved
+  `ScheduledJobs` to 23 = 8 + 15; rewording `raisedNeverDocumented.finding` rewrote every graph
+  finding and 8 places in the page; deleting the `refusals` section exits 4, writes nothing, and
+  says `refusals is missing, and it has to be an object. Nothing is scored with a rule nobody
+  wrote`. No finding string is spelled anywhere in the `.py` files.
+- **Checks.** `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — 455
+  tests, OK. `cd backend && ./mvnw test` — 113 tests, BUILD SUCCESS. `cd frontend && npm run
+  typecheck` — clean. Two fresh runs into separate files: graph and page byte-identical to each
+  other **and** to the committed `docs/module-depth-map.{json,html}` (4 silent `cmp`s).
+- **Logging.** Full `--log-level DEBUG` run: 581 lines, **0 WARNING, 0 ERROR**.
+  `refusals checked read=13 notChecked=0 modulesWithFindings=6 findings=6` at INFO, one INFO line
+  per finding naming both sides, `refusals read module=... refusals=... findings=N notChecked=N` at
+  DEBUG for all 71 modules, the rule once at DEBUG, and `interface read name=... refusals=N
+  cost=... refusalCost=...` per module. No `print()` in the tool.
+- **Three mutations, all caught, each reverted.** Dropping the class's own `type_parameters` out of
+  `_thrown_through`'s `holes` — 3 failures. Restoring the bare concatenation in `page.py` — 2
+  failures including the byte-identical-page test. Dropping refusals out of `cost` — 7 failures
+  across four suites.
+
+### What I left ticked
+
+Everything except "documented refusals are read from the source's own documentation rather than
+guessed at" (broken by 2, which credits a method with a promise its javadoc never made) and "a
+module whose documentation and implementation agree produces no finding" (broken by 1 and 2). The
+band, its pricing, its separate reporting, the page, the config-driven rule, the constructor
+reading, the bodiless-signature reading, the `this.` reading, the enum-constructor reading, the
+type-variable reading, the fixtures for the three directions and the logging are all real and all
+verified — none of them needs doing again.
