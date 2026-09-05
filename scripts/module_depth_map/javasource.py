@@ -376,11 +376,6 @@ class ParsedFile:
         return sorted(names)
 
 
-def masked_source(text):
-    """The masked text on its own, for a caller with no interest in where the javadoc was."""
-    return _masked(text)[0]
-
-
 def _masked(text):
     """The same text with everything that must not be read as source blanked out.
 
@@ -635,9 +630,9 @@ def _refusals_documented_in(text, documentation):
 
     A block promising nothing is left out rather than carried as an empty entry, so that
     "this member documents no refusal" and "this member has no javadoc" are the same
-    answer — which they are. Emitted in the order the blocks were written, which is the
-    order `documentation` arrives in, so that the search below can be a walk backwards
-    through the file rather than a guess at which block is nearest.
+    answer — which they are. The offsets come out sorted, because `documentation` arrives
+    in the order the blocks were written, which is what lets the search below be a search
+    rather than a scan of every block in the file.
     """
     ends_at_of = []
     names_of = []

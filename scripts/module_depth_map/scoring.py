@@ -30,6 +30,16 @@ nothing a keyboard can do to it. What an adapter is, what a persistent record is
 establishes a transaction are three more rules in the file rather than three judgements
 written down here.
 
+Every refusal a module can answer with is interface too, and is priced with the rest of
+it — a caller who does not know a module can answer with `WithdrawalRefused` has not
+learned the module. It is then carried as a band of its own, `refusalCost` beside
+`costWithoutRefusals`, so that a module whose interface is wide because it is honest about
+how it can fail can be told apart from one that is merely wide. Both sides are read from
+the source's own words: the `@throws` written over a method a caller can reach, and what
+the body throws. Where the two disagree the module carries a finding naming both of them,
+under one of two names the file gives — because a stale comment caught by a machine is
+only worth as much as the rule a reader can point at behind it.
+
 The deletion test is the verdict those two halves add up to: would deleting this module
 concentrate complexity, or merely move it to its callers? A module coordinating no more
 things than the methods it presents concentrates nothing, and when two or more modules go
