@@ -449,26 +449,31 @@ class Rules:
         Almost everything left out is left out in the same direction, so reach reads as a
         floor: a collaborator handed in as a parameter rather than held as a field, and a
         record this module loads and mutates rather than creates, are coordination this
-        tool cannot see and does not guess at. So are three spellings of a call — one
-        written out in full, one through something itself reached through something else,
-        and a statically imported member whose name the module's own body also declares.
+        tool cannot see and does not guess at. So are the spellings of a call named on the
+        page — one written out in full, one through something itself reached through
+        something else, and a statically imported member whose name the module's own body
+        also declares.
 
-        Three readings err the other way, and they are the reason this paragraph says
+        Some readings err the other way, and they are the reason this paragraph says
         "almost". A call is followed through a field by the *name* it is written against,
-        and a parameter or a local can borrow a field's name: `void go(Other repo)` in a
-        module holding a `Repo repo` puts `repo.ping()` down as a call on the field's type.
-        An enum constant carrying arguments is written the way a call is, so a file that
+        and an inner scope can borrow a field's name: `void go(Other repo)` in a module
+        holding a `Repo repo` puts `repo.ping()` down as a call on the field's type, and a
+        local, a `catch`'s variable and a nested class's own field do it the same way. An
+        enum constant carrying arguments is written the way a call is, so a file that
         statically imports a member of that spelling is read as calling it. And a supertype
         this graph does not hold cannot be read at all, so a member type it would have
         shadowed a name with is not seen — where it is a *method* that would have been
         shadowed, the static-import reading is declined outright instead.
 
-        Each of the three needs something this reading does not have: which declaration was
-        in scope where a call was written, or the body of a type outside this source tree.
-        So they are named on the page instead, beside the omissions above and marked as the
-        ones that can overstate. A floor whose edge a reader cannot see is not one they can
-        trust, and neither is a page that promises a floor while holding a reading that is
-        not one.
+        Each needs something this reading does not have: which declaration was in scope
+        where a call was written, or the body of a type outside this source tree. So they
+        are named on the page instead, beside the omissions above and marked as the ones
+        that can overstate. They are named without a count in front of them, deliberately:
+        naming is what makes the floor's edge visible, while a count is a claim about every
+        reading nobody has found yet, and three counts written here have each been
+        falsified by the next person to look. A floor whose edge a reader cannot see is not
+        one they can trust, and neither is a page that promises a floor while holding a
+        reading that is not one.
         """
         reached = {}
 

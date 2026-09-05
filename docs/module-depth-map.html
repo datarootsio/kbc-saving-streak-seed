@@ -5516,26 +5516,28 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "for the JDK or for a framework reaches nothing here and cannot raise its own score "
     + "by importing more of either. Nor is a collaborator handed in as an argument rather "
     + "than held, or a record this module loads and changes rather than keeps: neither is "
-    + "coordination this tool can see, and it does not guess at them. Three spellings of "
-    + "a call are missed the same way: a call written out in full, package and all "
-    + "(a.b.C.d()), a call through something reached through something else (a.b.c()), "
-    + "and a call to a statically imported member whose name the module's own body "
-    + "declares, which is read as the declaration it also is. Each leaves a fan shorter "
-    + "than the source, which is the direction this page is willing to be wrong in.");
+    + "coordination this tool can see, and it does not guess at them. Spellings of a call "
+    + "go missed the same way, and the ones known are named here rather than left to be "
+    + "found: a call written out in full, package and all (a.b.C.d()), a call through "
+    + "something reached through something else (a.b.c()), and a call to a statically "
+    + "imported member whose name the module's own body declares, which is read as the "
+    + "declaration it also is. Each leaves a fan shorter than the source, which is the "
+    + "direction this page is willing to be wrong in.");
   add(fans, "p", null,
-    "Three readings go the other way, and they are named here rather than left to be "
-    + "found. Each one can draw a line to a card the source calls nothing on, and each is "
-    + "a name this tool cannot settle without reading Java the way javac reads it — "
-    + "which declaration was in scope where a call was written, and what a type outside "
-    + "this source tree declares. A floor whose edge a reader cannot see is not one they "
-    + "can trust, and neither is a page that promises a floor while holding a reading "
-    + "that is not one:");
+    "Readings that go the other way — the ones known, named here rather than left "
+    + "to be found. Each one can draw a line to a card the source calls nothing on, and "
+    + "each is a name this tool cannot settle without reading Java the way javac reads "
+    + "it — which declaration was in scope where a call was written, and what a type "
+    + "outside this source tree declares. A floor whose edge a reader cannot see is not "
+    + "one they can trust, and neither is a page that promises a floor while holding a "
+    + "reading that is not one:");
   var overstating = add(fans, "ul");
   [
-    "a parameter or a local variable that borrows a field's name — a call is "
-    + "followed through a field by the name it is written against, so void go(Other repo) "
-    + "in a module holding a Repo repo puts repo.ping() down as a call on the Repo, and "
-    + "can leave the Other undrawn",
+    "a name in an inner scope that borrows a field's name — a call is followed "
+    + "through a field by the name it is written against, and a parameter, a local, a "
+    + "catch's variable and a nested class's own field can each be spelled the way a "
+    + "field here is. So void go(Other repo) in a module holding a Repo repo puts "
+    + "repo.ping() down as a call on the Repo, and can leave the Other undrawn",
     "an enum constant written with arguments — RED(1) declares a constant and is "
     + "spelled the way a call to RED(1) is. It can only be followed anywhere when the "
     + "same file statically imports a member of that exact name, and then it is read as "

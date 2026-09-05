@@ -690,6 +690,82 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             "shop.stock.Receipt", modules["Till"]["reach"]["reaches"][0]["moduleId"]
         )
 
+    def test_a_qualified_new_is_not_a_call_on_the_module_it_is_nested_in(self):
+        """`new Prices.Line()` calls nothing on `Prices`. It builds what `Prices` nests.
+
+        Those are the same four tokens a static call is written with — a name, a dot, a
+        name, a bracket — so the receiver reading matched `Prices.Line(` and put `Prices`
+        in the fan under `called on Prices`, a sentence a reader can check against the
+        file and find wrong. The construction reading already reports `Prices.Line`, and
+        a nested type is not a module, so it reaches nothing. The receiver reading has to
+        decline it too, or the enclosing module is credited for a call nobody wrote.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public Object ring() { return new Prices.Line(); }\n}"),
+            ("Prices", "public class Prices {\n"
+                       "    public static class Line { public Line() {} }\n"
+                       "    public long of(long id) { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_call_really_written_on_that_module_is_still_read(self):
+        """The control: declining a qualified `new` must not decline a static call.
+
+        Same two files, `new` taken off the front. `Prices.of(1)` is a call on `Prices`
+        and reaches it, so the guard above is narrow enough to be about the `new` rather
+        than about the shape of the name.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public long ring() { return Prices.of(1); }\n}"),
+            ("Prices", "public class Prices {\n"
+                       "    public static class Line { public Line() {} }\n"
+                       "    public long of(long id) { return 0; }\n}"),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
+
+    def test_a_call_written_with_its_type_arguments_is_not_read_as_a_declaration(self):
+        """`Shelf.<String>take(1)` is unmistakably a call, and was read as a declaration.
+
+        What decides between the two readings is the character in front of the name, and
+        a type-argument list written on a call puts a `>` there — the same character the
+        end of a return type puts there. So `take` went into the module's *declarations*,
+        and a statically imported member of that name went uncounted on the strength of
+        a DEBUG line saying this module declares something it does not declare.
+
+        Written that way the name sits behind a dot, which makes it neither a bare call
+        nor a declaration; the dot is what the reading looks for now, past the list.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.stock.Shelf.of;\n\npublic class Till {\n"
+                     "    public long ring() {\n"
+                     "        java.util.List.<String>of();\n"
+                     "        return of(1);\n    }\n}"),
+            Shelf=("shop.stock", "public class Shelf {\n"
+                                 "    public static long of(long id) { return 0; }\n}"),
+        )
+
+        self.assertEqual([("module", "Shelf")], self.reached(modules["Till"]))
+
+    def test_a_return_type_ending_in_a_type_argument_list_is_still_a_declaration(self):
+        """The control for the reading above: `Map<String, Long> of(...)` declares `of`.
+
+        Both spellings end in `>`. Only one of them has a dot behind the list, and if
+        looking past the list stopped telling them apart, a module declaring a generic
+        method would be credited with calling whatever an import of that name came from.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.stock.Shelf.of;\n\npublic class Till {\n"
+                     "    public java.util.Map<String, Long> of(long id) { return null; }\n}"),
+            Shelf=("shop.stock", "public class Shelf {\n"
+                                 "    public static long of(long id) { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
     def test_a_new_written_out_in_full_that_names_nothing_here_reaches_nothing(self):
         """`new java.util.ArrayList<>()` is not this source tree's business."""
         modules = self.modules(
@@ -946,7 +1022,7 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
         self.assertEqual([], self.reached(modules["Till"]))
 
     def test_a_parameter_borrowing_a_field_name_is_read_as_the_field_and_the_page_says_so(self):
-        """The one reading that can overstate a fan, stated on the page rather than hidden.
+        """A reading that can overstate a fan, stated on the page rather than hidden.
 
         A call is followed through a field by the name it is written against, and
         `public long ring(Shelf prices)` borrows the name of a field holding a `Prices`.
@@ -970,10 +1046,32 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
         )
 
         self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
-        self.assertIn("borrows a field's name", rendered)
-        self.assertIn("Three readings go the other way", rendered)
+        self.assertIn("a name in an inner scope that borrows a field's name", rendered)
         self.assertIn("an enum constant written with arguments", rendered)
         self.assertIn("outside this source tree declares", rendered)
+
+    def test_the_readings_that_overstate_are_named_on_the_page_and_never_counted(self):
+        """The page names them; it does not say how many there are.
+
+        Three times this page has carried a number in front of that list — "the one place
+        a fan can be longer than the source", then "three readings go the other way" —
+        and three times the next reader found one more. A count is a claim about every
+        reading nobody has found yet, and this tool reads Java with regular expressions:
+        it is not in a position to make that claim. The naming is what makes the floor's
+        edge visible; the number in front of it was only ever something to falsify.
+
+        So this asserts the shape of the sentence rather than its contents: whatever the
+        list holds, no numeral introduces it.
+        """
+        _, rendered = self.rendered(("Till", A_MODULE_TO_CALL))
+
+        self.assertIn("Readings that go the other way", rendered)
+        self.assertIn("the ones known, named here rather than left", rendered)
+        self.assertIn("the ones known are named here rather than left to be", rendered)
+        for counted in ("One reading", "Two readings", "Three readings", "Four readings",
+                        "Five readings", "the one place", "One spelling", "Two spellings",
+                        "Three spellings", "Four spellings", "names all three"):
+            self.assertNotIn(counted, rendered)
 
     def test_a_call_written_in_a_comment_reaches_nothing(self):
         modules = self.modules(
@@ -1078,6 +1176,63 @@ class WhatAModuleHoldsIsReadHoweverItIsSpelledTest(unittest.TestCase):
         self.assertEqual(
             [("prices", "Prices"), ("items", "long")],
             [(field.name, field.written) for field in basket.fields],
+        )
+
+    def test_several_names_declared_at_once_are_declined_with_a_line(self):
+        """`private Repo a = null, b = null;` was read as the field `a`, silently.
+
+        Everything from the first `=` onwards was cut off before the name was looked
+        for, so the second declarator went past without a word — in the one file whose
+        promise is that a member it declines says which member and why. The uninitialised
+        spelling was already declined; this makes both answer the same, and both leave a
+        line. The cost is a call through either name reaching nothing, which leaves a fan
+        shorter than the source, and it is paid out loud.
+        """
+        for spelling in ("private Repo a = null, b = null;", "private Repo a, b;"):
+            with self.subTest(spelling=spelling):
+                with self.assertLogs(
+                    "module_depth_map.javasource", level=logging.DEBUG
+                ) as logged:
+                    till = self.parsed("public class Till {\n    %s\n}" % spelling)
+
+                self.assertEqual((), till.fields)
+                self.assertTrue(
+                    any("declares several names at once" in line for line in logged.output),
+                    logged.output,
+                )
+
+    def test_a_comma_inside_a_field_is_not_read_as_a_second_name(self):
+        """The control: only a comma at the top of the member separates declarators.
+
+        A type argument list, an initialiser's arguments and an array initialiser all
+        write commas, and none of them declares a second name. Reading any of them as one
+        would drop an ordinary field and lose every call written through it.
+        """
+        for spelling, expected in (
+            ("private java.util.Map<String, Long> counts;", ("counts", "java.util.Map<String, Long>")),
+            ("private final Prices prices = Prices.of(1, 2);", ("prices", "Prices")),
+            ("private final int[] xs = {1, 2, 3};", ("xs", "int[]")),
+        ):
+            with self.subTest(spelling=spelling):
+                till = self.parsed("public class Till {\n    %s\n}" % spelling)
+
+                self.assertEqual(
+                    [expected], [(field.name, field.written) for field in till.fields]
+                )
+
+    def test_a_qualified_new_is_not_read_as_a_receiver_and_says_so(self):
+        """`new Prices.Line()` reaches through `constructed`, never through `receivers`."""
+        with self.assertLogs("module_depth_map.javasource", level=logging.DEBUG) as logged:
+            till = self.parsed(
+                "public class Till {\n"
+                "    public Object ring() { return new Prices.Line(); }\n}"
+            )
+
+        self.assertEqual((), till.receivers)
+        self.assertEqual(("Prices.Line",), till.constructed)
+        self.assertTrue(
+            any("name not read as a receiver" in line for line in logged.output),
+            logged.output,
         )
 
     def test_a_member_that_is_not_a_field_at_all_is_declined_with_a_line(self):

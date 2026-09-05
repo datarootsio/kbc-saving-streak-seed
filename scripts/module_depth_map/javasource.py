@@ -60,7 +60,19 @@ _IMPORT = re.compile(r"^\s*import\s+(static\s+)?([\w.]+(?:\.\*)?)\s*;", re.M)
 # A call written against something the source names: `deposits.save(...)`, `Money.of(...)`.
 # Only the name in front of the dot is taken, because that is the thing being reached; what
 # is called on it is its own business.
+#
+# `new Holder.Row()` writes those same characters — a name, a dot, a name, a bracket — and
+# calls nothing on `Holder`. It builds a type nested inside it, which `_CONSTRUCTED` below
+# already reports as `Holder.Row` and which whoever resolves it declines, a nested type
+# being no module. Read as a receiver as well, the enclosing name went into the fan under
+# the evidence string `called on Holder` for a file that calls nothing on `Holder`
+# anywhere. `_PRECEDED_BY_NEW` is asked about every match, so the ones declined can be
+# said out loud rather than dropped in silence.
 _A_RECEIVER = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*\s*\(")
+
+# The `new` in front of `new Holder.Row()`, looked for behind a receiver rather than
+# folded into the pattern above so that a declined match can be logged with its name.
+_PRECEDED_BY_NEW = re.compile(r"(?<![\w.$])new$")
 
 # `new Deposit(...)`, `new java.util.ArrayList<>()`: the type a body builds one of, kept
 # exactly as it was written. A name written out in full is carried with its package on it
@@ -851,10 +863,28 @@ def _field_in(member, line):
     member holding a declaration keyword is a type. What is left has a type and a name,
     and anything that does not read that way — an initialiser block, several names
     declared at once — is declined with a line, never repaired into a guess.
+
+    `private Repo a = null, b = null;` is the second of those, and it used to be read as
+    the single field `a`: everything from the first `=` onwards was cut off before the
+    name was looked for, so the second declarator went past without a word in the one
+    file whose whole promise is that nothing is dropped in silence. The names are
+    counted first now, and a member declaring more than one is declined the way the
+    uninitialised spelling `private Repo a, b;` already was. That costs a call through
+    either name reaching nothing, which leaves a fan shorter than the source — the
+    direction this reading errs in — and it costs it out loud.
     """
     text = _without_annotations(member)
     before = text.split("=", 1)[0]
     if "(" in before or _TYPE.search(before):
+        return None
+    if _declares_several_names(text):
+        log.debug(
+            "member not read as a field line=%d reason=%s member=%s",
+            line,
+            "it declares several names at once, and which type each of them holds is "
+            "not read from a header written that way",
+            _one_line(member),
+        )
         return None
     _, rest = _modifiers_in(before)
     rest = _without_type_parameters(rest)
@@ -887,6 +917,49 @@ def _field_in(member, line):
     return Field(name.group(1), written)
 
 
+def _without_a_type_argument_list(before):
+    """What is in front of a name, a type-argument list written on the name taken off.
+
+    `List.<String>of()` and `this.<T>go()` write their type arguments between the dot
+    and the name, so what stands immediately in front of the name is `>` rather than the
+    `.` that says a member is being accessed. Taking the list off puts the dot back where
+    it can be seen. Only a list that closes is taken off: a `>` with no `<` to match it
+    is a shift or a comparison, and what is in front of it is left exactly as it was.
+    """
+    if not before.endswith(">"):
+        return before
+    depth = 0
+    for index in range(len(before) - 1, -1, -1):
+        if before[index] == ">":
+            depth += 1
+        elif before[index] == "<":
+            depth -= 1
+            if depth == 0:
+                return before[:index].rstrip()
+    return before
+
+
+def _declares_several_names(text):
+    """Whether this member declares more than one name: `private Repo a = null, b;`.
+
+    A comma written at the top of a member is the separator between its declarators.
+    Every other comma a field can write sits inside brackets of one kind or another —
+    the type arguments of `Map<String, Long>`, the arguments of an initialiser's call,
+    the elements of an array initialiser — so only depth zero is looked at and only the
+    separator is found. Comments and literals are already blanked out by the time this
+    reads a member, so a comma inside either is not one of these.
+    """
+    depth = 0
+    for character in text:
+        if character in "([{<":
+            depth += 1
+        elif character in ")]}>":
+            depth = max(0, depth - 1)
+        elif character == "," and depth == 0:
+            return True
+    return False
+
+
 def _reached_in(body):
     """What this module's implementation reaches for, by name and never by volume.
 
@@ -896,7 +969,9 @@ def _reached_in(body):
 
     - `receivers`: what a call was written against, `deposits` in `deposits.save(...)`
       and `AmountOfMoney` in `AmountOfMoney.whyItIsNotOne(...)`. Whether that name is a
-      field, a type or a local is not this file's business to decide.
+      field, a type or a local is not this file's business to decide. The one spelling
+      held out is a qualified `new`: `new Holder.Row()` writes the same characters and
+      calls nothing on `Holder`, so it is reported under `constructed` alone.
     - `constructed`: the types a `new` builds one of, spelled the way the source spelled
       them — `Deposit`, `other.Receipt`, `java.util.ArrayList`. An array creation is not
       one of them: `new Receipt[10]` builds no `Receipt`.
@@ -931,18 +1006,49 @@ def _reached_in(body):
         name = found.group(1)
         if name in _NOT_A_CALL:
             continue
-        if body[:found.start(1)].rstrip().endswith("."):
+        if _without_a_type_argument_list(body[:found.start(1)].rstrip()).endswith("."):
             # `this . of(1)` and `a . of(1)`: a member access with space around the dot,
             # which the pattern's lookbehind cannot see past. Neither a bare call nor a
             # declaration, so it belongs in neither list.
+            #
+            # `List.<String>of()` is the same member access with the type arguments
+            # written out, and the lookbehind cannot see past those either. Read without
+            # them it reached `_declares_rather_than_calls`, which answers "declaration"
+            # for anything behind a `>` — so a file writing that spelling was told at
+            # DEBUG that it declares a member it does not declare, and a statically
+            # imported member of the same name went uncounted on the strength of it.
             continue
         (declares if _declares_rather_than_calls(body, found.start(1)) else called).append(name)
     return {
-        "receivers": sorted({found.group(1) for found in _A_RECEIVER.finditer(plain)}),
+        "receivers": sorted(_receivers_in(plain)),
         "constructed": sorted(_constructed_in(plain)),
         "called": sorted(set(called)),
         "declares": sorted(set(declares)),
     }
+
+
+def _receivers_in(plain):
+    """What calls in this body were written against, a qualified `new` left out.
+
+    `new Holder.Row()` is spelled exactly the way a static call on `Holder` is, and is
+    neither: it builds the type `Holder` nests, and nothing at all is called on `Holder`.
+    Read as a receiver it put the enclosing module in the fan with an evidence string a
+    reader could check against the file and find wrong — the one failure this file exists
+    to make impossible. The construction reading already reports `Holder.Row`, and
+    whoever resolves it declines a nested name, so leaving it out here loses nothing.
+    """
+    found = set()
+    for match in _A_RECEIVER.finditer(plain):
+        if _PRECEDED_BY_NEW.search(plain[:match.start(1)].rstrip()):
+            log.debug(
+                "name not read as a receiver name=%s reason=%s",
+                match.group(1),
+                "new is written in front of it, so it qualifies the type being built "
+                "rather than holding something a call was written on",
+            )
+            continue
+        found.add(match.group(1))
+    return found
 
 
 def _constructed_in(plain):
@@ -975,6 +1081,13 @@ def _declares_rather_than_calls(text, at):
     `int[] of(...)` are declarations, while `of(...)`, `= of(...)`, `return of(...)` and
     `x -> of(...)` are calls. A word in front is a type or a modifier unless it is one of
     the words Java lets a statement begin with, which `_NOT_A_CALL` already lists.
+
+    The one `>` that ends no type never arrives here. `List.<String>of()` writes its type
+    arguments between the dot and the name, so the character in front of the name is `>`
+    while the thing being written is plainly a call; the caller looks past the list to
+    the dot behind it, and a name behind a dot goes in neither list. Read here instead,
+    it was answered "declaration", and the file was told at DEBUG that it declares a
+    member it does not declare.
 
     Nothing here fails and nothing here is repaired into a guess: the two readings are
     the same handful of characters apart, and where they cannot be told apart this

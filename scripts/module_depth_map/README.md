@@ -233,7 +233,11 @@ Building a collaborator is coordinating it, whatever it turns out to be: `new B(
 a fan — and the leverage figure over it — turn on which spelling somebody preferred.
 `new B[10]` is not one of them: it builds an array of nulls and no `B` at all, and reading
 it as a construction put a record in a fan under an evidence string saying the module had
-written one.
+written one. Nor is a qualified `new` a call: `new Holder.Row()` spells a name, a dot, a
+name and a bracket exactly the way `Holder.row()` does, and calls nothing on `Holder` — it
+builds the type nested inside it, which is not a module and reaches nothing. Read as both,
+the enclosing module went into the fan under `called on Holder` for a file that calls
+nothing on `Holder` anywhere.
 
 A fan is a floor on what a module coordinates, the way a bar is a floor on what a caller
 must learn. A collaborator handed in as an argument rather than held as a field, and a
@@ -242,7 +246,7 @@ cannot see; it leaves them out rather than guessing. A record's components are h
 handed in: they are written in its header rather than its body, and they are read as the
 fields they are.
 
-Three spellings of a call are missed for the same reason, and the page names all three so
+Spellings of a call go missed for the same reason, and the page names the ones known so
 that the edge of the floor can be seen rather than discovered:
 
 - a call written out in full — `io.dataroots.savingstreak.accounts.AccountsService.of(x)`
@@ -263,18 +267,22 @@ Each of these leaves a fan shorter than the source, never longer. That is the di
 this tool is willing to be wrong in: a number a reader can check and find understated is
 worth more than one they can check and find false.
 
-Three readings go the other way, and the page names all three beside the omissions above.
-Each one needs something this tool does not read — which declaration was in scope where a
-call was written, or what a type outside this source tree declares — and each is admitted
-rather than guessed at or quietly left, because a page promising a floor while holding a
-reading that is not one is worse than a page with no promise on it:
+Readings that go the other way are named on the page too, beside the omissions above —
+the ones known, named rather than left to be found. Each needs something this tool does not
+read — which declaration was in scope where a call was written, or what a type outside this
+source tree declares — and each is admitted rather than guessed at or quietly left, because
+a page promising a floor while holding a reading that is not one is worse than a page with
+no promise on it. There is no count in front of that list, and there should not be: what
+makes the floor's edge visible is the naming, and a number in front of it is a claim about
+every reading nobody has found yet.
 
-- a call written on a name a **parameter or a local variable borrowed from a field** —
+- a call written on **a name in an inner scope that borrowed a field's name** —
   `void go(Other repo)` in a module holding a `Repo repo` — is read against the field's
-  type, so the fan draws a line to the `Repo` and can miss the `Other`. A call is followed
-  through a field by the name it is written against, and telling that name from a
-  parameter's means knowing which declaration was in scope where the call was written,
-  which this reading does not track;
+  type, so the fan draws a line to the `Repo` and can miss the `Other`. A parameter, a
+  local, a `catch`'s variable and a nested class's own field can each be spelled that way.
+  A call is followed through a field by the name it is written against, and telling that
+  name from an inner one means knowing which declaration was in scope where the call was
+  written, which this reading does not track;
 - an **enum constant written with arguments** — `RED(1)` — which declares a constant with
   punctuation in front of it, exactly the way a call to `RED(1)` is written. It reaches
   nothing on its own; it can only be followed when the same file statically imports a
