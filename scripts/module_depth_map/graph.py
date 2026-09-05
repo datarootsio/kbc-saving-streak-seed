@@ -334,13 +334,25 @@ def _measure_depth(read, rules):
 
     The nested names already on the module are handed over with the rest, because they are
     part of how a name is followed: a type a module declares inside itself shadows the
-    package and every import above it, exactly as it does for the compiler.
+    package and every import above it, exactly as it does for the compiler. So is what
+    every *other* module was written among, since a module inherits the declarations and
+    the member types of whatever it is built on, and those shadow the same way.
     """
     declared_by_id = {module["id"]: declared for module, declared, _ in read}
+    # What each module was written among, by id: the package it sits in, the imports of
+    # its file, and the types it nests. Reach needs this for the modules *above* the one
+    # it is reading as well as for that one — a supertype's method shadows a static import
+    # of its name, and a supertype's nested type shadows the package — and which module a
+    # supertype's own name means is settled by the file that names it rather than by the
+    # file being read.
+    written_among = {
+        module["id"]: (parsed.package, parsed.imports, module["nested"])
+        for module, _, parsed in read
+    }
     for module, declared, parsed in read:
         module["reach"] = rules.reach_of(
             declared, module["id"], parsed.package, parsed.imports, declared_by_id,
-            module["nested"],
+            module["nested"], written_among,
         )
         module["depth"] = rules.depth_of(module["reach"], module["interface"])
 

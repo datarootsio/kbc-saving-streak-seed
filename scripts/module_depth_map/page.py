@@ -309,7 +309,9 @@ _SCRIPT = """
     add(item, "span", null, " \u2014 " + named_.because);
   });
   add(fans, "p", null,
-    "Everything else a module calls is a module it calls. A transaction is established by "
+    "Everything else a module calls is a module it calls, and building one is calling it: "
+    + "new B(a) and B.of(a) are the same collaborator coordinated, spelled two ways, so "
+    + "they count the same. A transaction is established by "
     + document_.scoring.reach.transactionAnnotations.join(", ") + " on the module or on one "
     + "of its methods. All three rules live in " + document_.scoring.configuration
     + ", beside the weights: change one and the fans change with it.");
@@ -334,15 +336,29 @@ _SCRIPT = """
     + "declares, which is read as the declaration it also is. Each leaves a fan shorter "
     + "than the source, which is the direction this page is willing to be wrong in.");
   add(fans, "p", null,
-    "One reading goes the other way, and it is named here rather than left to be found. "
-    + "A call is followed through a field by the name it is written against, so a "
-    + "parameter or a local variable that borrows a field's name is read against the "
-    + "field's type: void go(Other repo) in a module holding a Repo repo puts repo.ping() "
-    + "down as a call on the Repo. That draws a line to a card the source calls nothing "
-    + "on, and can leave the real one undrawn. Telling a parameter from a field means "
-    + "knowing which declaration was in scope where each call was written, which this "
-    + "reading does not track \u2014 so it is admitted instead. It is the one place a fan "
-    + "can be longer than the source rather than shorter.");
+    "Three readings go the other way, and they are named here rather than left to be "
+    + "found. Each one can draw a line to a card the source calls nothing on, and each is "
+    + "a name this tool cannot settle without reading Java the way javac reads it \u2014 "
+    + "which declaration was in scope where a call was written, and what a type outside "
+    + "this source tree declares. A floor whose edge a reader cannot see is not one they "
+    + "can trust, and neither is a page that promises a floor while holding a reading "
+    + "that is not one:");
+  var overstating = add(fans, "ul");
+  [
+    "a parameter or a local variable that borrows a field's name \u2014 a call is "
+    + "followed through a field by the name it is written against, so void go(Other repo) "
+    + "in a module holding a Repo repo puts repo.ping() down as a call on the Repo, and "
+    + "can leave the Other undrawn",
+    "an enum constant written with arguments \u2014 RED(1) declares a constant and is "
+    + "spelled the way a call to RED(1) is. It can only be followed anywhere when the "
+    + "same file statically imports a member of that exact name, and then it is read as "
+    + "a call to it",
+    "a name something outside this source tree declares \u2014 a module built on a "
+    + "framework class inherits its member types, and a type this graph does not hold "
+    + "cannot be read, so a name javac binds to one of them is followed to a module of "
+    + "that name here instead. Where the same is true of a method, the statically "
+    + "imported reading is refused outright rather than guessed at"
+  ].forEach(function (reading) { add(overstating, "li", null, reading); });
 
   var named = add(rules, "ul");
   var because = {};

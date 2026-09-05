@@ -222,8 +222,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 30,
-        "leverage": 0.13,
-        "reach": 4
+        "leverage": 0.17,
+        "reach": 5
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.AccountsService",
@@ -378,7 +378,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/AccountsService.java",
       "reach": {
-        "count": 4,
+        "count": 5,
         "reaches": [
           {
             "kind": "adapter",
@@ -397,6 +397,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
             "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
             "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
             "name": "SavingsAccountRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.accounts.CustomerAccounts",
+            "name": "CustomerAccounts"
           },
           {
             "kind": "transaction",
@@ -934,8 +940,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.0,
-        "reach": 0
+        "leverage": 0.1,
+        "reach": 1
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
@@ -993,8 +999,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockConfiguration.java",
       "reach": {
-        "count": 0,
-        "reaches": []
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.MovableClock",
+            "name": "MovableClock"
+          }
+        ]
       },
       "root": "backend/src/main/java"
     },
@@ -1142,8 +1155,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 5,
-        "leverage": 0.6,
-        "reach": 3
+        "leverage": 1.0,
+        "reach": 5
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockService",
@@ -1186,13 +1199,25 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockService.java",
       "reach": {
-        "count": 3,
+        "count": 5,
         "reaches": [
           {
             "kind": "adapter",
             "matched": "called through the field offsets, which holds a ClockOffsetRepository",
             "moduleId": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
             "name": "ClockOffsetRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockRefused",
+            "name": "ClockRefused"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
+            "name": "HowFarTheClockHasMoved"
           },
           {
             "kind": "module",
@@ -1666,8 +1691,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.6,
-        "reach": 6
+        "leverage": 0.8,
+        "reach": 8
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsService",
@@ -1731,7 +1756,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositsService.java",
       "reach": {
-        "count": 6,
+        "count": 8,
         "reaches": [
           {
             "kind": "adapter",
@@ -1753,9 +1778,21 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
           },
           {
             "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositRefused",
+            "name": "DepositRefused"
+          },
+          {
+            "kind": "module",
             "matched": "called through the field points, which holds a PointsService",
             "moduleId": "io.dataroots.savingstreak.points.PointsService",
             "name": "PointsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedDeposit",
+            "name": "RecordedDeposit"
           },
           {
             "kind": "record",
@@ -2261,8 +2298,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 8,
-        "leverage": 1.0,
-        "reach": 8
+        "leverage": 1.38,
+        "reach": 11
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
@@ -2317,7 +2354,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalsService.java",
       "reach": {
-        "count": 8,
+        "count": 11,
         "reaches": [
           {
             "kind": "adapter",
@@ -2348,6 +2385,24 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
             "matched": "called on AmountOfMoney",
             "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
             "name": "AmountOfMoney"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
+            "name": "RecordedWithdrawalAllocation"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+            "name": "WithdrawalRefused"
           },
           {
             "kind": "record",
@@ -2553,8 +2608,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 8,
-        "leverage": 0.0,
-        "reach": 0
+        "leverage": 0.5,
+        "reach": 4
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
@@ -2614,8 +2669,33 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/ScheduledJobs.java",
       "reach": {
-        "count": 0,
-        "reaches": []
+        "count": 4,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.AJobThatRan",
+            "name": "AJobThatRan"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.AScheduledJob",
+            "name": "AScheduledJob"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.JobFailed",
+            "name": "JobFailed"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.JobRefused",
+            "name": "JobRefused"
+          }
+        ]
       },
       "root": "backend/src/main/java"
     },
@@ -3035,8 +3115,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 12,
-        "leverage": 0.08,
-        "reach": 1
+        "leverage": 0.17,
+        "reach": 2
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.Redemption",
@@ -3094,8 +3174,14 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/Redemption.java",
       "reach": {
-        "count": 1,
+        "count": 2,
         "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.rewards.ClaimedReward",
+            "name": "ClaimedReward"
+          },
           {
             "kind": "module",
             "matched": "called through the field reward, which holds a Reward",
@@ -3276,8 +3362,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.6,
-        "reach": 6
+        "leverage": 0.7,
+        "reach": 7
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardsService",
@@ -3338,7 +3424,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/RewardsService.java",
       "reach": {
-        "count": 6,
+        "count": 7,
         "reaches": [
           {
             "kind": "adapter",
@@ -3363,6 +3449,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
             "matched": "called on Reward",
             "moduleId": "io.dataroots.savingstreak.rewards.Reward",
             "name": "Reward"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.rewards.RewardRefused",
+            "name": "RewardRefused"
           },
           {
             "kind": "record",
@@ -3703,8 +3795,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 11,
-        "leverage": 0.27,
-        "reach": 3
+        "leverage": 0.36,
+        "reach": 4
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.CustomerController",
@@ -3768,13 +3860,19 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/CustomerController.java",
       "reach": {
-        "count": 3,
+        "count": 4,
         "reaches": [
           {
             "kind": "module",
             "matched": "called through the field accounts, which holds a AccountsService",
             "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
             "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.web.CustomerAccountsResponse",
+            "name": "CustomerAccountsResponse"
           },
           {
             "kind": "module",
@@ -4491,8 +4589,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     {
       "depth": {
         "interfaceCost": 31,
-        "leverage": 0.29,
-        "reach": 9
+        "leverage": 0.32,
+        "reach": 10
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.SavingsAccountController",
@@ -4613,7 +4711,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/SavingsAccountController.java",
       "reach": {
-        "count": 9,
+        "count": 10,
         "reaches": [
           {
             "kind": "module",
@@ -4656,6 +4754,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
             "matched": "called through the field rewards, which holds a RewardsService",
             "moduleId": "io.dataroots.savingstreak.rewards.RewardsService",
             "name": "RewardsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.web.SavingsAccountResponse",
+            "name": "SavingsAccountResponse"
           },
           {
             "kind": "module",
@@ -5221,7 +5325,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "typeToLearn": 2
     },
     "widestInterface": 31,
-    "widestReach": 9
+    "widestReach": 11
   },
   "source": {
     "filesParsed": 71,
@@ -5392,7 +5496,9 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     add(item, "span", null, " — " + named_.because);
   });
   add(fans, "p", null,
-    "Everything else a module calls is a module it calls. A transaction is established by "
+    "Everything else a module calls is a module it calls, and building one is calling it: "
+    + "new B(a) and B.of(a) are the same collaborator coordinated, spelled two ways, so "
+    + "they count the same. A transaction is established by "
     + document_.scoring.reach.transactionAnnotations.join(", ") + " on the module or on one "
     + "of its methods. All three rules live in " + document_.scoring.configuration
     + ", beside the weights: change one and the fans change with it.");
@@ -5417,15 +5523,29 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "declares, which is read as the declaration it also is. Each leaves a fan shorter "
     + "than the source, which is the direction this page is willing to be wrong in.");
   add(fans, "p", null,
-    "One reading goes the other way, and it is named here rather than left to be found. "
-    + "A call is followed through a field by the name it is written against, so a "
-    + "parameter or a local variable that borrows a field's name is read against the "
-    + "field's type: void go(Other repo) in a module holding a Repo repo puts repo.ping() "
-    + "down as a call on the Repo. That draws a line to a card the source calls nothing "
-    + "on, and can leave the real one undrawn. Telling a parameter from a field means "
-    + "knowing which declaration was in scope where each call was written, which this "
-    + "reading does not track — so it is admitted instead. It is the one place a fan "
-    + "can be longer than the source rather than shorter.");
+    "Three readings go the other way, and they are named here rather than left to be "
+    + "found. Each one can draw a line to a card the source calls nothing on, and each is "
+    + "a name this tool cannot settle without reading Java the way javac reads it — "
+    + "which declaration was in scope where a call was written, and what a type outside "
+    + "this source tree declares. A floor whose edge a reader cannot see is not one they "
+    + "can trust, and neither is a page that promises a floor while holding a reading "
+    + "that is not one:");
+  var overstating = add(fans, "ul");
+  [
+    "a parameter or a local variable that borrows a field's name — a call is "
+    + "followed through a field by the name it is written against, so void go(Other repo) "
+    + "in a module holding a Repo repo puts repo.ping() down as a call on the Repo, and "
+    + "can leave the Other undrawn",
+    "an enum constant written with arguments — RED(1) declares a constant and is "
+    + "spelled the way a call to RED(1) is. It can only be followed anywhere when the "
+    + "same file statically imports a member of that exact name, and then it is read as "
+    + "a call to it",
+    "a name something outside this source tree declares — a module built on a "
+    + "framework class inherits its member types, and a type this graph does not hold "
+    + "cannot be read, so a name javac binds to one of them is followed to a module of "
+    + "that name here instead. Where the same is true of a method, the statically "
+    + "imported reading is refused outright rather than guessed at"
+  ].forEach(function (reading) { add(overstating, "li", null, reading); });
 
   var named = add(rules, "ul");
   var because = {};

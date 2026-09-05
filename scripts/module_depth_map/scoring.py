@@ -38,6 +38,7 @@ excluded without a rule saying so: the graph records the rule and the fact that 
 it, so "why was this ignored?" always has an answer a reader can point at.
 """
 
+import collections
 import json
 import logging
 import os
@@ -63,6 +64,24 @@ VISIBILITIES = ("public", "protected", "package-private", "private")
 # stronger reading wins, so that one thing reached is one line in the fan whichever way it
 # was found. `transaction` is last because nothing else can ever be one.
 _REACH_KINDS = ("record", "adapter", "module", "transaction")
+
+# What a module is handed by whatever it is built on: the names declared above it, the
+# types nested above it, and whether any of it was out of this graph's sight.
+_Inherited = collections.namedtuple("_Inherited", "declares nested opaque")
+
+
+def _module_named(name, package, imports, modules):
+    """The module a simple name means in a file written with these imports, or None.
+
+    The same order Java settles it in, and the same refusal to guess: a name that matches
+    no module in this source tree is a name from outside it. Used for a supertype, which
+    is written where nothing this module declares can shadow it, so nothing shadows it
+    here either.
+    """
+    for candidate in javasource.candidate_ids(name, package, imports):
+        if candidate in modules:
+            return candidate
+    return None
 
 
 class ConfigurationRefused(Exception):
@@ -410,7 +429,7 @@ class Rules:
             "cost": cost,
         }
 
-    def reach_of(self, declared, module_id, package, imports, modules, nested=()):
+    def reach_of(self, declared, module_id, package, imports, modules, nested=(), above=None):
         """Everything this module coordinates on its caller's behalf, one entry apiece.
 
         Reach is the numerator of depth, and it is a count of *distinct things* rather
@@ -434,15 +453,22 @@ class Rules:
         written out in full, one through something itself reached through something else,
         and a statically imported member whose name the module's own body also declares.
 
-        One reading errs the other way, and it is the reason this paragraph says "almost".
-        A call is followed through a field by the *name* it is written against, and a
-        parameter or a local can borrow a field's name: `void go(Other repo)` written in a
+        Three readings err the other way, and they are the reason this paragraph says
+        "almost". A call is followed through a field by the *name* it is written against,
+        and a parameter or a local can borrow a field's name: `void go(Other repo)` in a
         module holding a `Repo repo` puts `repo.ping()` down as a call on the field's type.
-        Telling the two apart means knowing which declaration was in scope where each call
-        was written, which is scope tracking this reading does not do — so it is named on
-        the page instead, beside the three above and marked as the one that can overstate.
-        A floor whose edge a reader cannot see is not one they can trust, and neither is a
-        page that promises a floor while holding one reading that is not.
+        An enum constant carrying arguments is written the way a call is, so a file that
+        statically imports a member of that spelling is read as calling it. And a supertype
+        this graph does not hold cannot be read at all, so a member type it would have
+        shadowed a name with is not seen — where it is a *method* that would have been
+        shadowed, the static-import reading is declined outright instead.
+
+        Each of the three needs something this reading does not have: which declaration was
+        in scope where a call was written, or the body of a type outside this source tree.
+        So they are named on the page instead, beside the omissions above and marked as the
+        ones that can overstate. A floor whose edge a reader cannot see is not one they can
+        trust, and neither is a page that promises a floor while holding a reading that is
+        not one.
         """
         reached = {}
 
@@ -457,7 +483,21 @@ class Rules:
                 "matched": matched,
             }
 
-        shadowed = {name.rsplit(".", 1)[-1] for name in nested}
+        inherited = self._inherited_by(module_id, modules, above or {})
+
+        # Every name that means something other than a module here, whatever an import or
+        # the package would otherwise offer for it: a type this module declares inside
+        # itself, a type it inherits from a module above it, and one of its own type
+        # parameters. `class Till<Receipt>` holding a `Receipt held` holds one of
+        # whatever its caller filled the hole with, not the `Receipt` next door — the
+        # tool already knows a type variable is not a type to follow when it counts what
+        # crosses the seam, and forgetting it here drew a line to a card the source names
+        # nowhere.
+        shadowed = (
+            {name.rsplit(".", 1)[-1] for name in nested}
+            | set(declared.type_parameters)
+            | inherited.nested
+        )
 
         def resolve(name):
             # A name written out in full names one thing and nothing else: the module of
@@ -470,7 +510,10 @@ class Rules:
             # A type this module declares inside itself shadows every name an import or
             # the package could offer, which is how Java reads it: `Kind.of(x)` written in
             # a module that nests a `Kind` means that one, not the top-level `Kind` next
-            # door. A nested type is not a module, so the name reaches nothing.
+            # door. A nested type is not a module, so the name reaches nothing. A member
+            # type is inherited as surely as a method is, so a `Kind` nested in a module
+            # this one extends shadows the same way, and so does this module's own type
+            # parameter.
             #
             # Every nested type is read as shadowing, however deep it sits, though one
             # declared two levels down is only in scope in part of the body. That drops a
@@ -478,8 +521,9 @@ class Rules:
             # direction every reading here is willing to be wrong in.
             if name in shadowed:
                 log.debug(
-                    "name not followed name=%s in=%s, because this module declares a type "
-                    "of that name inside itself and a nested type is not a module",
+                    "name not followed name=%s in=%s, because a type of that name is "
+                    "declared inside this module or inherited by it, or is one of its "
+                    "type parameters, and none of those is a module",
                     name, declared.name,
                 )
                 return None
@@ -542,9 +586,35 @@ class Rules:
         # call goes uncounted. Reach is a floor and this keeps it one: it errs towards
         # saying less about the source than the source says, never towards saying
         # something the source does not.
-        declares = set(declared.declares) | {declared.name}
+        #
+        # A method a module inherits shadows a static import of the same name exactly as
+        # one it writes does, so the names declared by every module above it are read
+        # alongside its own, and so are the names of the types it declares inside itself:
+        # a nested type's constructor is written like a call, and its own name is what it
+        # is written with.
+        #
+        # A supertype this graph does not hold — a framework class, a JDK interface — is a
+        # body of declarations that cannot be read at all, so this reading is not made for
+        # a module that has one. The cost is a real statically imported call going
+        # uncounted on such a module; the alternative is a fan line to a card it never
+        # calls, whenever a name it inherits happens to be spelled like a member it
+        # imports.
+        declares = (
+            set(declared.declares)
+            | {declared.name}
+            | {name.rsplit(".", 1)[-1] for name in nested}
+            | inherited.declares
+        )
         for imported in imports:
             if imported.member not in declared.called:
+                continue
+            if inherited.opaque:
+                log.debug(
+                    "static import not read as a call name=%s member=%s from=%s, because "
+                    "this module is built on a type this graph does not hold and what "
+                    "that type declares cannot be read here",
+                    declared.name, imported.member, imported.type,
+                )
                 continue
             if imported.member in declares:
                 log.debug(
@@ -565,6 +635,16 @@ class Rules:
                 note(target, self._what_is_reached(modules[target]),
                      "calls %s, imported statically from it" % imported.member)
 
+        # Building a collaborator is coordinating it. `new B(a)` and `B.of(a)` are the
+        # same module reached, spelled two ways, and counting only the second made a
+        # module's reach — and the leverage the page invites a reader to check — turn on
+        # which spelling somebody happened to prefer. `SavingsAccountController` was the
+        # specimen of it: three of its reaches are response types reached through a
+        # static factory, while the one it builds with `new` in the same file counted for
+        # nothing.
+        #
+        # A record says how it was found, because "builds one" is the only evidence a
+        # record can be reached by that a reader cannot check by looking for a call.
         for built in declared.constructed:
             target = resolve(built)
             if target is None:
@@ -572,6 +652,8 @@ class Rules:
             evidence = self.reached.persistent_record.matches(modules[target])
             if evidence is not None:
                 note(target, "record", "builds one: %s" % evidence)
+            else:
+                note(target, self._what_is_reached(modules[target]), "builds one")
 
         entries = sorted(reached.values(), key=lambda entry: (entry["kind"], entry["name"]))
         establishes = self._transaction_in(declared)
@@ -593,6 +675,53 @@ class Rules:
             "yes" if establishes else "no",
         )
         return {"count": len(entries), "reaches": entries}
+
+    def _inherited_by(self, module_id, modules, above, seen=None):
+        """What a module is handed by the types it is built on, and whether all of it was read.
+
+        Java gives a subclass its supertypes' methods and their member types, and each of
+        those shadows whatever an import or the file's own package would otherwise offer
+        for that name. Read from the one file in front of it, this reading credited a
+        module with reaching the type a static import came from for calling a method it
+        inherits, and followed `Row.of(1)` to a top-level `Row` where javac binds it to
+        the `Row` nested in the class above.
+
+        `opaque` is the honest half of it. A supertype this graph does not hold — a Spring
+        class, a JDK interface — is a body of declarations that cannot be read here at
+        all, and the one reading with nothing else to stand on when a name is inherited is
+        the static import, which follows a name written with no receiver in front of it.
+        So it says so, and `reach_of` declines that reading rather than guessing.
+
+        A supertype named by a simple name is resolved against the file that names it, the
+        same way any other name is, and a cycle in the source is walked once and left.
+        """
+        seen = set() if seen is None else seen
+        declares, nested, opaque = set(), set(), False
+        if module_id in seen or module_id not in modules:
+            return _Inherited(declares, nested, opaque)
+        seen.add(module_id)
+        package, imports, _ = above.get(module_id, ("", (), ()))
+        for supertype in modules[module_id].supertypes:
+            target = _module_named(supertype, package, imports, modules)
+            if target is None or target == module_id:
+                log.debug(
+                    "supertype not read name=%s extends=%s, because this graph holds no "
+                    "module of that name and what it declares cannot be read from here",
+                    modules[module_id].name, supertype,
+                )
+                opaque = True
+                continue
+            higher = modules[target]
+            declares |= set(higher.declares) | {method.name for method in higher.methods}
+            declares.add(higher.name)
+            nested |= {
+                name.rsplit(".", 1)[-1] for name in above.get(target, ("", (), ()))[2]
+            }
+            further = self._inherited_by(target, modules, above, seen)
+            declares |= further.declares
+            nested |= further.nested
+            opaque = opaque or further.opaque
+        return _Inherited(declares, nested, opaque)
 
     def _what_is_reached(self, declared):
         """What a thing this module reaches is: a persistent record, an adapter, or a module.

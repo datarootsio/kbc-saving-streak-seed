@@ -241,6 +241,75 @@ class WhatAModuleCoordinatesIsWhatItReachesTest(SourceOfKnownShapeTest):
             modules["Till"]["reach"]["reaches"][0]["matched"],
         )
 
+    def test_a_module_it_builds_one_of_is_one_thing_reached(self):
+        """Building a collaborator is coordinating it, whatever the collaborator turns out to be."""
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public long ring(long id) { return new Prices().of(id); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
+        self.assertEqual("builds one", modules["Till"]["reach"]["reaches"][0]["matched"])
+
+    def test_building_a_collaborator_and_calling_one_count_the_same(self):
+        """`new B(a)` and `B.of(a)` are one collaborator coordinated, spelled two ways.
+
+        Counted apart, a module's reach — and the leverage the page invites a reader to
+        check by hand — turned on which spelling somebody preferred. This repository's own
+        `SavingsAccountController` was the specimen: three response types reached through a
+        static factory, and the one it builds with `new` in the same file counted for
+        nothing at all.
+        """
+        built = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public Prices make() { return new Prices(); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+        called = self.modules(
+            ("Counter", "public class Counter {\n"
+                        "    public long make() { return Prices.zero(); }\n}"),
+            ("Prices", "public class Prices {\n"
+                       "    public static long zero() { return 0; }\n}"),
+        )
+
+        self.assertEqual(self.reached(built["Till"]), self.reached(called["Counter"]))
+        self.assertEqual(1, built["Till"]["reach"]["count"])
+
+    def test_an_array_of_a_record_is_none_of_that_record_built(self):
+        """`new Receipt[10]` builds ten nulls and no `Receipt` at all.
+
+        Read as a construction it put a persistent record in the fan under "builds one:
+        annotated with Entity" — criterion one read literally, counting a record nothing
+        had written.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    public Object ring() { return new Receipt[10]; }\n}"),
+            ("Receipt", A_PERSISTENT_RECORD),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_record_reaches_through_a_component_it_holds(self):
+        """A record's components are held, and they are written in its header.
+
+        Read from the body alone a record held nothing, so a call through a component was
+        resolved as though the name were a type, found nothing, and the fan lost a
+        collaborator the source names in its first line.
+        """
+        modules = self.modules(
+            ("Basket", "public record Basket(Prices prices, long items) {\n"
+                       "    public long total() { return prices.of(items); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Basket"]))
+        self.assertEqual(
+            "called through the field prices, which holds a Prices",
+            modules["Basket"]["reach"]["reaches"][0]["matched"],
+        )
+
     def test_the_transaction_it_establishes_is_one_thing_reached(self):
         modules = self.modules(
             ("Till", "import org.springframework.transaction.annotation.Transactional;\n\n"
@@ -606,6 +675,8 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
         Cut back to `Receipt`, this built the record in its own package: the wrong
         module, a kind the module it named does not have, and an evidence string —
         "builds one: annotated with Entity" — about a class carrying no such annotation.
+        The module it names is reached, because building one is coordinating one; what it
+        must never be is the persistent `Receipt` sitting next door.
         """
         modules = self.modules(
             ("Till", "public class Till {\n"
@@ -614,7 +685,10 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             Receipt=("shop.stock", A_RECORD_THAT_IS_NOT_PERSISTENT),
         )
 
-        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertEqual([("module", "Receipt")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "shop.stock.Receipt", modules["Till"]["reach"]["reaches"][0]["moduleId"]
+        )
 
     def test_a_new_written_out_in_full_that_names_nothing_here_reaches_nothing(self):
         """`new java.util.ArrayList<>()` is not this source tree's business."""
@@ -757,6 +831,120 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
             "shop.till.Helper", modules["Till"]["reach"]["reaches"][0]["moduleId"]
         )
 
+    def test_a_member_imported_statically_that_a_supertype_declares_reaches_nothing(self):
+        """A method a module inherits shadows a static import of its name, as its own does.
+
+        `Till extends Base` and `Base` declares `of`, so `javac` binds the bare `of(1)`
+        in `Till` to the inherited method and the import is not consulted at all. Read
+        from the one file in front of it, this module was credited with reaching the type
+        the import came from — a fan line to a card it never calls, under an evidence
+        string saying it calls it.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\n"
+                     "public class Till extends Base {\n"
+                     "    public long ring(long id) { return of(id); }\n}"),
+            ("Base", "public class Base {\n    public long of(long id) { return id; }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_supertype_that_declares_no_such_name_leaves_the_static_import_read(self):
+        """The control for the test above: inheriting is not on its own a reason to drop one.
+
+        `Base` declares `zero` and nothing called `of`, so the bare `of(id)` really is the
+        statically imported member and the module really does reach the type it came from.
+        A guard that dropped the reading for every module with a supertype would pass the
+        test above and quietly cost this one its only collaborator.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\n"
+                     "public class Till extends Base {\n"
+                     "    public long ring(long id) { return of(id); }\n}"),
+            ("Base", "public class Base {\n    public long zero() { return 0; }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "calls of, imported statically from it",
+            modules["Till"]["reach"]["reaches"][0]["matched"],
+        )
+
+    def test_a_static_import_is_not_read_at_all_when_a_supertype_cannot_be_read(self):
+        """A module built on something outside this tree is built on declarations nobody here can see.
+
+        `Runnable` is the JDK's, so what it declares cannot be read and the tool cannot
+        tell an inherited `of` from a statically imported one. It declines the reading and
+        says why, which costs a real call and leaves the fan shorter than the source —
+        the direction this measure is willing to be wrong in.
+        """
+        modules, rendered = self.rendered(
+            ("Till", "import static shop.till.Prices.of;\n\n"
+                     "public class Till implements Runnable {\n"
+                     "    public void run() {}\n"
+                     "    public long ring(long id) { return of(id); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+        self.assertIn("outside this source tree", rendered)
+
+    def test_a_call_written_through_this_is_never_a_statically_imported_member(self):
+        """`this.of(1)` calls a method this module has, which is the one thing an import is not.
+
+        Written straight, the `this.` was taken off before the bare-call reading ran and
+        the call arrived as `of(1)` — so a module calling its own inherited method was
+        credited with reaching the type an import came from.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.till.Prices.of;\n\n"
+                     "public class Till extends Base {\n"
+                     "    public long ring(long id) { return this.of(id); }\n}"),
+            ("Base", "public class Base {\n    public long of(long id) { return id; }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_name_a_supertypes_nested_type_shadows_is_not_followed_next_door(self):
+        """A member type is inherited as surely as a method, and shadows the same way.
+
+        `Till extends Holder`, and `Holder` nests a `Kind`, so `Kind.of(s)` written in
+        `Till` means `Holder.Kind` — not the top-level `Kind` in the same package. Read
+        only against the types `Till` nests itself, the fan drew a line to a card `Till`
+        never calls, with the wrong kind on it.
+        """
+        modules = self.modules(
+            ("Till", "public class Till extends Holder {\n"
+                     "    public long ring(String s) { return Kind.of(s); }\n}"),
+            ("Holder", "public class Holder {\n"
+                       "    public static class Kind {\n"
+                       "        public static long of(String s) { return 1; }\n    }\n}"),
+            ("Kind", "public class Kind {\n"
+                     "    public static long of(String s) { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_type_parameter_is_not_followed_to_the_module_of_that_name(self):
+        """`class Till<Prices>` holds whatever its caller filled the hole with.
+
+        A type variable is not a type to follow — the tool already knows that where it
+        counts what crosses a seam — and forgetting it here drew a line to a module the
+        source names nowhere.
+        """
+        modules = self.modules(
+            ("Till", "public class Till<Prices> {\n"
+                     "    private final Prices held;\n"
+                     "    Till(Prices held) { this.held = held; }\n"
+                     "    public String ring() { return held.toString(); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
     def test_a_parameter_borrowing_a_field_name_is_read_as_the_field_and_the_page_says_so(self):
         """The one reading that can overstate a fan, stated on the page rather than hidden.
 
@@ -783,6 +971,9 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
 
         self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
         self.assertIn("borrows a field's name", rendered)
+        self.assertIn("Three readings go the other way", rendered)
+        self.assertIn("an enum constant written with arguments", rendered)
+        self.assertIn("outside this source tree declares", rendered)
 
     def test_a_call_written_in_a_comment_reaches_nothing(self):
         modules = self.modules(
@@ -832,6 +1023,61 @@ class WhatAModuleHoldsIsReadHoweverItIsSpelledTest(unittest.TestCase):
         self.assertEqual(
             [(field.name, field.written) for field in before.fields],
             [(field.name, field.written) for field in after.fields],
+        )
+
+    def test_a_call_written_on_this_is_not_read_as_a_bare_one(self):
+        """`this.of(1)` has a receiver, and `of(1)` has none: only the second can be an import.
+
+        Read over a body with `this.` already stripped off, the two arrived here as the
+        same name, and a module calling its own method was credited with reaching the type
+        a static import came from. The receiver reading still sees through `this.`, which
+        is what it is stripped for: `this.deposits.save(x)` reaches `deposits`.
+        """
+        through_this = self.parsed(
+            "public class Till {\n    public long ring() { return this.of(1); }\n}"
+        )
+        bare = self.parsed(
+            "public class Till {\n    public long ring() { return of(1); }\n}"
+        )
+        spaced = self.parsed(
+            "public class Till {\n    public long ring() { return this . of(1); }\n}"
+        )
+
+        self.assertNotIn("of", through_this.called)
+        self.assertNotIn("of", spaced.called)
+        self.assertIn("of", bare.called)
+
+    def test_a_call_through_a_field_is_still_read_through_this(self):
+        """The other half of it: `this.deposits.save(x)` and `deposits.save(x)` reach one thing."""
+        through_this = self.parsed(
+            "public class Till {\n    public void ring() { this.deposits.save(1); }\n}"
+        )
+
+        self.assertEqual(("deposits",), tuple(through_this.receivers))
+
+    def test_an_array_creation_is_not_read_as_building_one_and_says_so(self):
+        """`new Receipt[10]` builds no `Receipt`, and the reading declined leaves a line."""
+        with self.assertLogs("module_depth_map.javasource", level=logging.DEBUG) as logged:
+            till = self.parsed(
+                "public class Till {\n    public Object ring() { return new Receipt[10]; }\n}"
+            )
+
+        self.assertEqual((), till.constructed)
+        self.assertTrue(
+            any("new not read as building one" in line for line in logged.output),
+            logged.output,
+        )
+
+    def test_a_records_components_are_read_as_the_fields_they_are(self):
+        """They are written in the header rather than the body, and they are still held."""
+        basket = self.parsed(
+            "public record Basket(Prices prices, long items) {\n"
+            "    public long total() { return prices.of(items); }\n}"
+        )
+
+        self.assertEqual(
+            [("prices", "Prices"), ("items", "long")],
+            [(field.name, field.written) for field in basket.fields],
         )
 
     def test_a_member_that_is_not_a_field_at_all_is_declined_with_a_line(self):

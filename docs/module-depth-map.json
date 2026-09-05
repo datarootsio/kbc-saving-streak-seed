@@ -76,8 +76,8 @@
     {
       "depth": {
         "interfaceCost": 30,
-        "leverage": 0.13,
-        "reach": 4
+        "leverage": 0.17,
+        "reach": 5
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.accounts.AccountsService",
@@ -232,7 +232,7 @@
       "package": "io.dataroots.savingstreak.accounts",
       "path": "io/dataroots/savingstreak/accounts/AccountsService.java",
       "reach": {
-        "count": 4,
+        "count": 5,
         "reaches": [
           {
             "kind": "adapter",
@@ -251,6 +251,12 @@
             "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
             "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
             "name": "SavingsAccountRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.accounts.CustomerAccounts",
+            "name": "CustomerAccounts"
           },
           {
             "kind": "transaction",
@@ -788,8 +794,8 @@
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.0,
-        "reach": 0
+        "leverage": 0.1,
+        "reach": 1
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
@@ -847,8 +853,15 @@
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockConfiguration.java",
       "reach": {
-        "count": 0,
-        "reaches": []
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.MovableClock",
+            "name": "MovableClock"
+          }
+        ]
       },
       "root": "backend/src/main/java"
     },
@@ -996,8 +1009,8 @@
     {
       "depth": {
         "interfaceCost": 5,
-        "leverage": 0.6,
-        "reach": 3
+        "leverage": 1.0,
+        "reach": 5
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.clock.ClockService",
@@ -1040,13 +1053,25 @@
       "package": "io.dataroots.savingstreak.clock",
       "path": "io/dataroots/savingstreak/clock/ClockService.java",
       "reach": {
-        "count": 3,
+        "count": 5,
         "reaches": [
           {
             "kind": "adapter",
             "matched": "called through the field offsets, which holds a ClockOffsetRepository",
             "moduleId": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
             "name": "ClockOffsetRepository"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.ClockRefused",
+            "name": "ClockRefused"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
+            "name": "HowFarTheClockHasMoved"
           },
           {
             "kind": "module",
@@ -1520,8 +1545,8 @@
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.6,
-        "reach": 6
+        "leverage": 0.8,
+        "reach": 8
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.DepositsService",
@@ -1585,7 +1610,7 @@
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/DepositsService.java",
       "reach": {
-        "count": 6,
+        "count": 8,
         "reaches": [
           {
             "kind": "adapter",
@@ -1607,9 +1632,21 @@
           },
           {
             "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.DepositRefused",
+            "name": "DepositRefused"
+          },
+          {
+            "kind": "module",
             "matched": "called through the field points, which holds a PointsService",
             "moduleId": "io.dataroots.savingstreak.points.PointsService",
             "name": "PointsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedDeposit",
+            "name": "RecordedDeposit"
           },
           {
             "kind": "record",
@@ -2115,8 +2152,8 @@
     {
       "depth": {
         "interfaceCost": 8,
-        "leverage": 1.0,
-        "reach": 8
+        "leverage": 1.38,
+        "reach": 11
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
@@ -2171,7 +2208,7 @@
       "package": "io.dataroots.savingstreak.deposits",
       "path": "io/dataroots/savingstreak/deposits/WithdrawalsService.java",
       "reach": {
-        "count": 8,
+        "count": 11,
         "reaches": [
           {
             "kind": "adapter",
@@ -2202,6 +2239,24 @@
             "matched": "called on AmountOfMoney",
             "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
             "name": "AmountOfMoney"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
+            "name": "RecordedWithdrawalAllocation"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+            "name": "WithdrawalRefused"
           },
           {
             "kind": "record",
@@ -2407,8 +2462,8 @@
     {
       "depth": {
         "interfaceCost": 8,
-        "leverage": 0.0,
-        "reach": 0
+        "leverage": 0.5,
+        "reach": 4
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
@@ -2468,8 +2523,33 @@
       "package": "io.dataroots.savingstreak.jobs",
       "path": "io/dataroots/savingstreak/jobs/ScheduledJobs.java",
       "reach": {
-        "count": 0,
-        "reaches": []
+        "count": 4,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.AJobThatRan",
+            "name": "AJobThatRan"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.AScheduledJob",
+            "name": "AScheduledJob"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.JobFailed",
+            "name": "JobFailed"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.jobs.JobRefused",
+            "name": "JobRefused"
+          }
+        ]
       },
       "root": "backend/src/main/java"
     },
@@ -2889,8 +2969,8 @@
     {
       "depth": {
         "interfaceCost": 12,
-        "leverage": 0.08,
-        "reach": 1
+        "leverage": 0.17,
+        "reach": 2
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.Redemption",
@@ -2948,8 +3028,14 @@
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/Redemption.java",
       "reach": {
-        "count": 1,
+        "count": 2,
         "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.rewards.ClaimedReward",
+            "name": "ClaimedReward"
+          },
           {
             "kind": "module",
             "matched": "called through the field reward, which holds a Reward",
@@ -3130,8 +3216,8 @@
     {
       "depth": {
         "interfaceCost": 10,
-        "leverage": 0.6,
-        "reach": 6
+        "leverage": 0.7,
+        "reach": 7
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.rewards.RewardsService",
@@ -3192,7 +3278,7 @@
       "package": "io.dataroots.savingstreak.rewards",
       "path": "io/dataroots/savingstreak/rewards/RewardsService.java",
       "reach": {
-        "count": 6,
+        "count": 7,
         "reaches": [
           {
             "kind": "adapter",
@@ -3217,6 +3303,12 @@
             "matched": "called on Reward",
             "moduleId": "io.dataroots.savingstreak.rewards.Reward",
             "name": "Reward"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.rewards.RewardRefused",
+            "name": "RewardRefused"
           },
           {
             "kind": "record",
@@ -3557,8 +3649,8 @@
     {
       "depth": {
         "interfaceCost": 11,
-        "leverage": 0.27,
-        "reach": 3
+        "leverage": 0.36,
+        "reach": 4
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.CustomerController",
@@ -3622,13 +3714,19 @@
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/CustomerController.java",
       "reach": {
-        "count": 3,
+        "count": 4,
         "reaches": [
           {
             "kind": "module",
             "matched": "called through the field accounts, which holds a AccountsService",
             "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
             "name": "AccountsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.web.CustomerAccountsResponse",
+            "name": "CustomerAccountsResponse"
           },
           {
             "kind": "module",
@@ -4345,8 +4443,8 @@
     {
       "depth": {
         "interfaceCost": 31,
-        "leverage": 0.29,
-        "reach": 9
+        "leverage": 0.32,
+        "reach": 10
       },
       "excludedBy": null,
       "id": "io.dataroots.savingstreak.web.SavingsAccountController",
@@ -4467,7 +4565,7 @@
       "package": "io.dataroots.savingstreak.web",
       "path": "io/dataroots/savingstreak/web/SavingsAccountController.java",
       "reach": {
-        "count": 9,
+        "count": 10,
         "reaches": [
           {
             "kind": "module",
@@ -4510,6 +4608,12 @@
             "matched": "called through the field rewards, which holds a RewardsService",
             "moduleId": "io.dataroots.savingstreak.rewards.RewardsService",
             "name": "RewardsService"
+          },
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "io.dataroots.savingstreak.web.SavingsAccountResponse",
+            "name": "SavingsAccountResponse"
           },
           {
             "kind": "module",
@@ -5075,7 +5179,7 @@
       "typeToLearn": 2
     },
     "widestInterface": 31,
-    "widestReach": 9
+    "widestReach": 11
   },
   "source": {
     "filesParsed": 71,

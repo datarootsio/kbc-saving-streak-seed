@@ -68,7 +68,17 @@ _A_RECEIVER = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*
 # read as building this package's own `Receipt`, a different module, of a different kind,
 # with an evidence string saying so. Whoever resolves it decides what a dotted spelling
 # can mean; this file only reports what the source wrote.
+#
+# `new Receipt[10]` is not one of these. It writes the same three tokens and builds zero
+# `Receipt`s — an array of that many nulls — so reading it as a construction credited a
+# module with writing a record nothing had written. What follows the name is what tells
+# the two apart, and `_AN_ARRAY_CREATION` below is asked about every match rather than
+# folded into this pattern, so the ones declined can be said out loud.
 _CONSTRUCTED = re.compile(r"(?<![\w.$])new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
+
+# What stands between the type of an array creation and its size: nothing but space, and
+# then the bracket. `new Receipt[10]`, `new Receipt[] {a, b}`, `new int[n][m]`.
+_AN_ARRAY_CREATION = re.compile(r"\s*\[")
 
 # A name with a call's brackets after it and nothing in front of the name. Read only so
 # that a member imported statically — `asMoney(amount)` — can be followed back to the type
@@ -102,7 +112,11 @@ _NOT_A_CALL = frozenset(
 )
 
 # `this.deposits.save(...)` reaches exactly what `deposits.save(...)` reaches. Taken off
-# before anything is read, so one module writing both spellings is not two collaborators.
+# before a receiver or a construction is read, so one module writing both spellings is not
+# two collaborators. Never before a *bare* call is read: `this.of(1)` calls a method this
+# module has, declared or inherited, and stripping the `this.` first made it look like a
+# call to a statically imported `of` — a fan line to the type the import came from, which
+# is the one thing `this.of(1)` cannot mean.
 _THROUGH_THIS = re.compile(r"(?<![\w.$])this[ \t\r\n]*\.[ \t\r\n]*")
 
 # An annotation, wherever one can be written: on a declaration, on a member, on a
@@ -624,7 +638,7 @@ def _declared_types(masked, depths):
             methods=() if owner is not None
             else _methods_of(masked, kind, header, body_starts_at, body_ends_at, line),
             fields=() if owner is not None
-            else _fields_of(masked, kind, body_starts_at, body_ends_at),
+            else _fields_of(masked, kind, header, body_starts_at, body_ends_at, line),
             **({} if owner is not None
                else _reached_in(masked[body_starts_at:body_ends_at])),
         )
@@ -802,17 +816,27 @@ def _components_in(header, line):
     )
 
 
-def _fields_of(masked, kind, body_starts_at, body_ends_at):
+def _fields_of(masked, kind, header, body_starts_at, body_ends_at, line):
     """Every value this type holds, by the name it holds it under.
+
+    A record's components are among them. They are written in its header rather than in
+    its body, and reading only the body said that a record holds nothing at all: a
+    `record Basket(Register register, long items)` whose `total()` writes
+    `register.tally(items)` was calling something the module was not holding, so the name
+    was resolved as a type instead, found nothing, and the fan lost a collaborator the
+    source names in its first line. A component is held, exactly the way a field is.
 
     Nothing is failed on here, and that is the difference from reading a method. A method
     this parser declines leaves an interface cheaper than the source makes it — a claim
     about a caller — while a field it declines leaves a module reaching for one thing
     fewer, which understates it. Both are logged; only the first is worth stopping a run
-    for, and stopping on an initialiser block or a `record` component would fail files
-    that are perfectly readable.
+    for, and stopping on an initialiser block would fail files that are perfectly
+    readable.
     """
     found = []
+    if kind == "record":
+        for spelled, name, dots in _components_in(header, line):
+            found.append(Field(name, spelled + ("[]" if dots else "")))
     for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
         field = _field_in(member, _line_of(masked, at))
         if field is not None:
@@ -874,9 +898,13 @@ def _reached_in(body):
       and `AmountOfMoney` in `AmountOfMoney.whyItIsNotOne(...)`. Whether that name is a
       field, a type or a local is not this file's business to decide.
     - `constructed`: the types a `new` builds one of, spelled the way the source spelled
-      them — `Deposit`, `other.Receipt`, `java.util.ArrayList`.
-    - `called`: a name with a call's brackets after it and nothing in front of it, so
-      that a member imported statically can be followed back to the type it came from.
+      them — `Deposit`, `other.Receipt`, `java.util.ArrayList`. An array creation is not
+      one of them: `new Receipt[10]` builds no `Receipt`.
+    - `called`: a name with a call's brackets after it and nothing in front of it — no
+      receiver, and no dot — so that a member imported statically can be followed back to
+      the type it came from. `this.of(1)` is therefore not one: it calls a method this
+      module has, declared or inherited, which is the one thing a static import of that
+      name cannot be.
     - `declares`: the names in that same shape that this body *declares* rather than
       calls — every method, constructor and nested record header in it, however deep,
       the ones inside a nested class and an anonymous class included. It is read
@@ -894,20 +922,52 @@ def _reached_in(body):
     plain = _THROUGH_THIS.sub("", body)
     called = []
     declares = []
-    for found in _A_CALL.finditer(plain):
+    # Over the body as it was written, `this.` and all, because `this.of(1)` is a call on
+    # this object — its own method, or one it inherits — and never the statically imported
+    # `of` that `called` exists to find. Read over `plain` instead, the `this.` came off
+    # first and the call arrived here as a bare `of(1)`, which is how a module was credited
+    # with reaching the type an import came from for calling its own method.
+    for found in _A_CALL.finditer(body):
         name = found.group(1)
         if name in _NOT_A_CALL:
             continue
-        (declares if _declares_rather_than_calls(plain, found.start(1)) else called).append(name)
+        if body[:found.start(1)].rstrip().endswith("."):
+            # `this . of(1)` and `a . of(1)`: a member access with space around the dot,
+            # which the pattern's lookbehind cannot see past. Neither a bare call nor a
+            # declaration, so it belongs in neither list.
+            continue
+        (declares if _declares_rather_than_calls(body, found.start(1)) else called).append(name)
     return {
         "receivers": sorted({found.group(1) for found in _A_RECEIVER.finditer(plain)}),
-        "constructed": sorted({found.group(1) for found in _CONSTRUCTED.finditer(plain)}),
+        "constructed": sorted(_constructed_in(plain)),
         "called": sorted(set(called)),
         "declares": sorted(set(declares)),
     }
 
 
-def _declares_rather_than_calls(plain, at):
+def _constructed_in(plain):
+    """The types this body builds one of, array creations left out and said out loud.
+
+    `new Receipt[10]` builds no `Receipt` at all — it builds an array of ten nulls — and
+    reading it as a construction put a persistent record into a module's fan under an
+    evidence string saying the module built one. What follows the type name is the whole
+    of the difference, so it is looked at here rather than guessed at, and the ones
+    declined are logged: this file drops nothing without a word.
+    """
+    found = set()
+    for match in _CONSTRUCTED.finditer(plain):
+        if _AN_ARRAY_CREATION.match(plain, match.end(1)):
+            log.debug(
+                "new not read as building one type=%s reason=%s",
+                match.group(1),
+                "it creates an array of them, and an array of a type holds none of it",
+            )
+            continue
+        found.add(match.group(1))
+    return found
+
+
+def _declares_rather_than_calls(text, at):
     """Whether the name at this offset is being declared rather than called.
 
     What is written immediately in front of it decides, because a declaration writes a
@@ -926,12 +986,12 @@ def _declares_rather_than_calls(plain, at):
     an enum constant carrying arguments — `RED(1),` — and a constructor with no modifiers
     on it, which a nested type can have. Neither can reach anything on its own; both can
     only be followed through the static-import reading, and only when a static import in
-    the same file names a member of that exact spelling. The module's own constructor is
-    already held out there by name; an enum constant of the same name as an imported
-    member is the one shape left, and Java's naming conventions are what make it unlikely
-    rather than anything here.
+    the same file names a member of that exact spelling. Whoever makes that reading holds
+    out the module's own name and the names of every type it declares inside itself, which
+    covers both constructors. The enum constant is the one shape left over, and it is named
+    on the page as a reading that can overstate rather than left here to be found.
     """
-    before = plain[:at].rstrip()
+    before = text[:at].rstrip()
     if before.endswith(_A_LAMBDA_ARROW):
         return False
     if before.endswith(_ENDS_A_TYPE):

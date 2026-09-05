@@ -218,16 +218,29 @@ keeps every line in a fan pointing at a card on the same page, and what stops a 
 raising its own score by importing more of the JDK. The nested type comes first because
 Java puts it first: `Kind.of(x)` written in a module that nests a `Kind` means that one
 rather than the top-level `Kind` next door, and a nested type is not a module, so the name
-reaches nothing at all. A name written out in full — `new other.Receipt()`, a field
+reaches nothing at all. A type a module *inherits* shadows the same way, since Java hands
+a subclass its supertypes' member types as surely as their methods, so the modules above
+one are read with it — as are its own type parameters, because `class Till<Receipt>` holds
+whatever its caller filled the hole with rather than the `Receipt` next door. A name
+written out in full — `new other.Receipt()`, a field
 declared `private final other.Receipt receipt`, the type a static import names — means the
 module of that id and no other; the package in front of it is the answer rather than
 something to cut off. The transaction is the one thing reached with no module behind it,
 and it says so by carrying no module id.
 
+Building a collaborator is coordinating it, whatever it turns out to be: `new B(a)` and
+`B.of(a)` are the same module reached, spelled two ways, and counting only the second made
+a fan — and the leverage figure over it — turn on which spelling somebody preferred.
+`new B[10]` is not one of them: it builds an array of nulls and no `B` at all, and reading
+it as a construction put a record in a fan under an evidence string saying the module had
+written one.
+
 A fan is a floor on what a module coordinates, the way a bar is a floor on what a caller
 must learn. A collaborator handed in as an argument rather than held as a field, and a
 record this module loads and changes rather than creates, are coordination this tool
-cannot see; it leaves them out rather than guessing.
+cannot see; it leaves them out rather than guessing. A record's components are held, not
+handed in: they are written in its header rather than its body, and they are read as the
+fields they are.
 
 Three spellings of a call are missed for the same reason, and the page names all three so
 that the edge of the floor can be seen rather than discovered:
@@ -250,17 +263,30 @@ Each of these leaves a fan shorter than the source, never longer. That is the di
 this tool is willing to be wrong in: a number a reader can check and find understated is
 worth more than one they can check and find false.
 
-One reading goes the other way, and the page names it too, in the same paragraph and as
-what it is:
+Three readings go the other way, and the page names all three beside the omissions above.
+Each one needs something this tool does not read — which declaration was in scope where a
+call was written, or what a type outside this source tree declares — and each is admitted
+rather than guessed at or quietly left, because a page promising a floor while holding a
+reading that is not one is worse than a page with no promise on it:
 
 - a call written on a name a **parameter or a local variable borrowed from a field** —
   `void go(Other repo)` in a module holding a `Repo repo` — is read against the field's
   type, so the fan draws a line to the `Repo` and can miss the `Other`. A call is followed
   through a field by the name it is written against, and telling that name from a
   parameter's means knowing which declaration was in scope where the call was written,
-  which this reading does not track. It is admitted rather than guessed at or quietly
-  left: a page promising a floor while holding one reading that is not one is worse than a
-  page with no promise on it.
+  which this reading does not track;
+- an **enum constant written with arguments** — `RED(1)` — which declares a constant with
+  punctuation in front of it, exactly the way a call to `RED(1)` is written. It reaches
+  nothing on its own; it can only be followed when the same file statically imports a
+  member of that exact spelling, and it is then read as a call to it. A module's own
+  constructor and the constructors of the types it nests are held out by name, and an enum
+  constant is the shape left over;
+- a name **something outside this source tree declares**. A module built on a framework
+  class inherits that class's member types, and this tool cannot read a type the graph
+  does not hold, so a name javac binds to one of them is followed to a module of that name
+  here instead. Where the same is true of a *method*, the statically imported reading is
+  refused outright for that module rather than guessed at — the cost is a real static call
+  going uncounted, which is the direction the rest of this list errs in.
 
 The three rules deciding what a reached thing *is* live in `scoring.json` beside the
 weights, each with the sentence it is argued for, which the page prints. Change what counts
