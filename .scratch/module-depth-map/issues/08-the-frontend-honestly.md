@@ -11,14 +11,14 @@ frontend as one tidy box would be a picture that lies by omission.
 
 **Blocked by:** 03 (Reach, and the fan).
 
-Status: needs-review
+Status: needs-info
 
 - [x] Frontend source is analysed at file grain and appears on the page beside the backend modules
-- [x] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
-- [x] What a frontend module exports, and what it reaches, are both derived from the source
+- [ ] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
+- [ ] What a frontend module exports, and what it reaches, are both derived from the source
 - [x] A large frontend module presenting a small interface is not reported as deep on account of its size
 - [x] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
-- [x] Frontend source the tool cannot parse is reported loudly and named, as backend source is
+- [ ] Frontend source the tool cannot parse is reported loudly and named, as backend source is
 - [x] Test code, build output and dependencies are excluded from the graph
 
 ## Review feedback - attempt 1
@@ -269,3 +269,252 @@ Java and in TypeScript — two methods, one documented refusal, three collaborat
 cost 8, refusalCost 2, reach 3, leverage 0.38, verdict "earns its keep" on **both** sides, with the
 same methods, refusals and reaches. That much of "the same rules" is real; points 6, 7 and 8 above
 are where it stops being.
+
+
+## Review feedback - attempt 2
+
+**All nine points from attempt 1 are genuinely fixed.** I reproduced every one of them against this
+branch and every one now behaves; the list is under "What I confirmed fixed" at the bottom so you do
+not redo any of it. Determinism, the no-regression diff against ticket/07, both lab checks and the
+672-test suite are all green, and the page itself is right.
+
+What sends this back is that the TypeScript reader still refuses or misreads legal, ordinary
+TypeScript in shapes the suite does not cover. Attempt 1 sent this back for three of those; there are
+nine more, four of which take a whole module off the page. I reproduced **every** item below myself
+against this branch with the exact source shown — none is a code reading, all are runs.
+
+`README.md:252` says "And legal TypeScript is never failed, which matters more here than on the Java
+side: a failed file is a whole module off the page and every fan line into it gone with it." That
+sentence is the standard this is being held to, and it is the sentence that is not yet true.
+
+### File-fatal: the whole module leaves the page
+
+**1. A `function` whose return type contains `=>`.**
+
+    $ printf 'export function useToggle(): [boolean, () => void] { return [true, () => {}] }\n' > /tmp/src/x.ts
+    $ python3 scripts/module-depth-map.py --source /tmp/src --graph /tmp/g.json --page /tmp/p.html
+    WARNING module_depth_map.graph could not parse source file root=src language=typescript
+      path=x.ts reason=the return type of useToggle on line 1 could not be read: nothing closes it
+
+All of these fail, and `frontend/node_modules/.bin/tsc --noEmit --strict` compiles every one without
+a word — I checked that too:
+
+    export function f(): () => void { return () => {} }
+    export function f(): (x: number) => number { return x => x }
+    export function f(): (() => void) { return () => {} }
+    export function f(): Array<() => void> { return [] }
+    export function f(): Promise<(x: number) => number> { return null as any }
+    export async function f(): Promise<() => void> { return () => {} }
+    export function useDebounce(fn: () => void, ms: number): () => void { return fn }
+
+The `const`-bound arrow form works, and `test_a_return_type_written_as_a_function_is_read_rather_
+than_declined` (test_the_frontend_is_drawn_honestly.py:974) holds it. That test is the whole coverage
+for this shape and it only exercises the arrow path; the `function` path is untested and broken.
+`README.md:266-267` already lists this shape as fixed — "a return type … **written as a function
+type**, whose `=>` was counted as a bracket closing". It is fixed in one of the two places it lives.
+
+**2. A side-effect import that is not the last import, in a file without semicolons.** This is the
+stock Vite `react-ts` scaffold ordering:
+
+    $ cat /tmp/src/main.tsx
+    import { StrictMode } from 'react'
+    import { createRoot } from 'react-dom/client'
+    import './index.css'
+    import App from './App.tsx'
+    ...
+    WARNING ... path=main.tsx reason=the import on line 4 could not be read: it names no module
+      in either of the two forms this tool reads
+
+`_IMPORT_FROM` (typescriptsource.py:112) has a `([^;]*?)` clause that spans newlines, so a
+side-effect import swallows the statement after it. This repository's own `frontend/src/main.tsx`
+survives only because `import './index.css'` happens to be written last. Move that one line up and
+`frontend/src/main` leaves the page, taking the only fan line into `App` with it. Reordering two
+imports is about as ordinary an edit as a participant can make.
+
+**3. An apostrophe in JSX prose written on the same line as a real string.**
+
+    $ cat /tmp/src/x.tsx
+    function label(k: string): string { return k }
+    export function Note(): JSX.Element {
+      return <p>Don't miss it</p> && {label('key')}
+    }
+    WARNING ... path=x.tsx reason=braces do not balance: a closing brace with nothing open on line 4
+
+`_mask_quoted` (typescriptsource.py:1570) pairs the apostrophe in `Don't` with the `'` that opens
+`'key'`, blanking `</p> && {label(` — the `{` disappears and the `}` does not. The reason the tool
+gives is false about the file. This is the same hazard `README.md:238-242` says the JSX-prose rule
+exists to handle, one step further along.
+
+**4. `export abstract class`.**
+
+    $ printf 'export abstract class Shape { abstract area(): number }\n' > /tmp/src/x.ts
+    WARNING ... reason=the export on line 1 is written `export abstract`, which this tool has no
+      reading of: what it describes is declared somewhere this tool was not pointed at
+
+`abstract` is on `_NOT_READ_HERE` (typescriptsource.py:237) beside `declare` and `namespace`, but it
+does not belong there: the body is right in the file, and a plain `export class Shape {}` is merely
+`_decline`d and named on the module. The reason printed is not true of the source, and one abstract
+class anywhere in a file takes the file off the page.
+
+### Read wrongly, with nothing reported
+
+**5. The same return type on one line as its body is silently corrupted, and invents a type called
+`return`.**
+
+    $ printf 'export function makeFetcher(): (url: string) => Promise<Response> { return async u => fetch(u) }\n' > /tmp/src/x.ts
+    -> no warning at all; the graph says:
+       methods:              [{"name": "makeFetcher", "returns": "(url: string) => Promise<Response> { return"}]
+       typesCrossingTheSeam:  Promise, Response, string, and **return (mustBeLearned: true)**
+       interface cost 3
+
+Attempt 1's point 6 in the same words: the card names a type a reader can go looking for and will
+never find, and the inflated cost is the denominator leverage is divided by.
+
+**6. A parameter list collapses when a generic argument holds an `=>`, so the interface is cheaper
+than the source.** The same shape in the two languages, everything else equal:
+
+    // shop/Till.java
+    public void ring(Map<String, Supplier<String>> m, int n) { }
+    -> Java: cost 5, parameters ['Map<String, Supplier<String>>', 'int']       <- two parameters
+
+    // src/x.ts
+    export function ring(m: Map<string, () => string>, n: number): void {}
+    -> TS:   cost 2, parameters ['Map<string, () => string>, n: number']       <- one parameter
+
+Take the `=>` out and TypeScript gets it right (cost 3, two parameters), so this is the arrow and
+nothing else. `_parameters_in`'s own docstring: "a misread parameter leaves an interface cheaper than
+the source makes it." This is also the plainest failure of "by the same rules as for backend
+modules": the Java reader handles a nested generic and the TypeScript one does not.
+
+**7. Only the first declarator of an exported `const` is read, and the rest are not even declined.**
+
+    $ printf 'export const a = 1, b = () => {}\n' > /tmp/src/x.ts
+    -> methods: []
+    -> DEBUG ... export not read as a method line=1 export=a reason=what is assigned to it is a value …
+
+`b` is a function a caller can import. It is not in `methods`, not in `types`, and not in the
+`export not read as a method` log that `_decline`'s docstring promises is the complete list of what
+was skipped. `_binding_from` (typescriptsource.py:804) stops at the first declarator.
+
+**8. A fan line whose evidence a reader can check and find false.**
+
+    $ cat /tmp/src/uses.ts
+    import * as api from './api'
+    export function make(): number { const t = new api.Thing(); return 1 }
+
+    src/uses reach: [{"kind":"module","matched":"called on api","moduleId":"src/api","name":"api"}]
+
+Nothing is called on `api`. `javasource._receivers_in` (javasource.py:1615) declines exactly this
+reading, with a comment calling it "the one failure this file exists to make impossible";
+`_reached_in` (typescriptsource.py:1358) reintroduces it by building receivers with no `new` guard.
+
+**9. One type spelled two ways stays two strings, where Java collapses them.**
+
+    export function a(m: Record<string,number>): void {}
+    export function b(m: Record<string, number>): void {}
+    -> TS parameters:   ['Record<string,number>'] and ['Record<string, number>']
+
+    public void a(Map<String,Long> m) { }
+    public void b(Map<String, Long> m) { }
+    -> Java parameters: ['Map<String, Long>'] and ['Map<String, Long>']   <- one spelling
+
+`javasource._normalised` (javasource.py:2204) names this exact hazard in its docstring; the
+TypeScript copy at typescriptsource.py:1753 dropped the comma handling.
+
+### Where it comes from
+
+Findings 1, 5 and 6 are one concept in two helpers, both of which treat `<`/`>` as a bracket pair:
+
+- `_first_at_depth_zero` (typescriptsource.py:1142) — line 1152 counts `>` in `")>]"`, so the `>` of
+  an `=>` drops depth to -1 and line 1155 returns None. `_first_brace_at_depth_zero` (1138) wraps it,
+  and `_returns_and_body` (1056) calls that at line 1098, then raises "nothing closes it" at 1104.
+- `_split_on_commas` (typescriptsource.py:1736) — line 1744 counts `>` the same way, so the comma
+  between two parameters is seen at a negative depth and never splits. Note that the javasource
+  original clamps with `max(0, depth - 1)` and this copy dropped the clamp.
+
+`_first_in_the_open` (1213), added on this attempt, already gets it right by not treating angle
+brackets as brackets at all, and `_up_to_the_arrow` (975) and `_up_to_the_assignment` (1288)
+special-case `=>` by hand. Four scanners, two of which know and two of which do not. Settle it in one
+place: the `>` of an `=>` closes nothing.
+
+Findings 8 and 9 are the same shape of problem one level up: `_split_on_commas`, `_normalised` and
+`_line_of` are hand-copies of javasource's private helpers, while `after_balanced` and
+`in_evaluation_order` were deliberately made shared because "a second account of it would be one that
+could drift". These three drifted, and two of the findings above are what the drift cost. Either
+share them the same way or say in the file why these three are different.
+
+### How to know you are done
+
+`tests/thefrontendhonestly` is good work — the both-languages-same-numbers test and the padding test
+are exactly right — so add to it rather than starting over. Every item above is a fixture the suite
+does not have. In particular, beside the existing
+`test_a_return_type_written_as_a_function_is_read_rather_than_declined`, which today covers only the
+`const`-bound arrow, hold at minimum, as `function` declarations:
+
+- a bare function return type, one inside a generic and one inside a tuple —
+  `() => void`, `Promise<() => void>`, `[boolean, () => void]`;
+- one written on the same line as its body, asserting the return reads
+  `(url: string) => Promise<Response>` and that no type called `return` is on the seam;
+- two parameters where the first is a generic holding an `=>`, asserting two parameters and the same
+  numbers the equivalent Java shape gets;
+- the stock Vite import ordering with `import './index.css'` third of four and no semicolons;
+- an apostrophe in JSX prose on a line that also carries a quoted string;
+- `export abstract class`, declined and named rather than failed;
+- `export const a = 1, b = () => {}`, with `b` either measured or named in the declined log;
+- `new api.Thing()` on a namespace import, reaching nothing;
+- one type written `Record<string,number>` and `Record<string, number>`, coming out as one string.
+
+Then correct `README.md:252` and `README.md:266-267` once the code keeps what they promise.
+
+### What I confirmed fixed, so you do not redo it
+
+Every point from attempt 1, reproduced by me on this branch:
+
+1. Destructured parameter — `export function Banking({ customer, onSignOut }: Props)` parses; cost 4,
+   one parameter `Props`. I also copied the real `frontend/src` and exported `SignIn`, `Banking`,
+   `TopBar`, `Home` and `DepositForm` from the real 1545-line `App.tsx` — multi-line patterns and
+   inline object types included — and got `filesUnparsed=0`, `src/App cost 21`, six methods read.
+   That is the scenario attempt 1 said would take all 1545 lines off the page.
+2. `export default () => {…}` is a method called `default`; `export default connect(App)` and
+   `export default 42` are declined and named at DEBUG.
+3. `export const total = (1 + 2)` no longer fails; it is declined as a value with a reason.
+4. `import { fetchDeposits as fd }` then `fd(id)` gives `reach 1 -> src/api`, "calls fd, which this
+   file imports from it"; `import App from './App'` called as `App()` gives `reach 1 -> src/App`.
+5. A JSDoc `@throws` above a `const`-bound arrow and above a `function` now give identical output:
+   methods `[(name,'number',['Refused'])]`, refusal documented=True raised=True, findings [].
+6. `export function first<T>(items: T[]): T` -> cost 2, no type `T` on the seam.
+7. `export function f(): { id: number }` -> returns `{ id: number }`, `number` charged as familiar.
+8. `typesEveryCallerAlreadyKnows` is `{"java": [...], "typescript": [...]}`; a Java `Till` with a
+   domain type named `Response` is charged for it again (cost 4, mustBeLearned true). The Java list
+   gains only `Date`, `Error` and `Record` relative to ticket/07, all real JDK types.
+9. The java-only lede reads "written in java" and carries no TypeScript grain sentence; a run whose
+   longest module is never scored renders "no interface cost is printed for it because a rule on this
+   page never scored it" rather than "null"; `--source frontend/node_modules` gives "source not read
+   root=frontend/node_modules path=the root itself" and 0 modules; `javasource` is gone from both
+   `scoring.py` and `graph.py`; `_refuse_unreadable_imports` lost its unused argument.
+
+And the properties this branch must not have broken, all checked by me:
+
+- `cd backend && ./mvnw test` exit 0, 113 tests. `npm run typecheck` exit 0 on Node 24.16.0.
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — 672 tests, OK.
+- Two fresh runs are `cmp`-identical for graph and page, both equal the committed
+  `docs/module-depth-map.{json,html}` byte for byte, neither holds an absolute path, and `git status`
+  is clean after a run.
+- Diffed all 74 modules against `ticket/07:docs/module-depth-map.json`: **no backend module moved**,
+  exactly three added (`frontend/src/App`, `frontend/src/api`, `frontend/src/main`), flows identical.
+- 500 lines of padding added to a copy of the real `App.tsx` moved `lines` 1545 -> 2046 and nothing
+  else on any of the three modules.
+- The page at 1280 wide, light and dark, over six loads (committed, java-only, declined-root,
+  largest-never-scored): zero console errors, zero pageerrors, zero failed requests,
+  `scrollWidth == clientWidth`. `frontend/src` draws first with three FILE cards; `App` is a bar of 1
+  over a fan of 1 at 1545 lines and is fourth by leverage behind three much smaller Java modules;
+  `api` is the widest bar on the page (49) over no fan. Panels open and Escape closes them; the flow
+  buttons and Clear still work.
+- Exclusions: `node_modules`, `dist`, `build`, `__tests__`, `*.test.ts`, `*.spec.ts`, `*.d.ts` all
+  named with the rule and what matched, and `WARNING module_depth_map.cli the page is drawn from 1 of
+  2 source files` when one file would not parse.
+- The running application is untouched by this branch (`git diff --name-only ticket/07..ticket/08 --
+  backend frontend` is empty) and still works: an unknown address gives "No customer banks here under
+  that email address", `anke.peeters@example.be` signs in and shows both savings accounts and the
+  rewards catalogue, with `i.d.s.deposits.DepositsService : money balance summed from what remains
+  savingsAccountId=1 deposits=0 balance=0.00` in the backend log and no WARN or ERROR from it.
