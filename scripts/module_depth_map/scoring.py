@@ -86,7 +86,7 @@ import logging
 import os
 import re
 
-from . import javasource
+from . import javasource, languages
 
 log = logging.getLogger("module_depth_map.scoring")
 
@@ -104,7 +104,11 @@ log = logging.getLogger("module_depth_map.scoring")
 # It moved to /5 when they gained a `flows` section: a /4 file names no business event at
 # all, so the page would draw no flow and say nothing about why — which reads as an
 # application that does nothing worth tracing rather than as a file that was never asked.
-SCHEMA = "module-depth-map-scoring/5"
+# It moved to /6 when they gained a `sourcesNotRead` section, which is what keeps test
+# code, build output and installed dependencies out of the graph: a /5 file names none of
+# them, and read with no rule at all the tool would walk into a `node_modules` and put
+# somebody else's source on the page as though this repository had written it.
+SCHEMA = "module-depth-map-scoring/6"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
@@ -122,15 +126,16 @@ _REACH_KINDS = ("record", "adapter", "module", "transaction")
 _Inherited = collections.namedtuple("_Inherited", "declares nested opaque")
 
 
-def _module_named(name, package, imports, modules):
-    """The module a simple name means in a file written with these imports, or None.
+def _module_named(name, package, imports, modules, language):
+    """The module a name means in a file written with these imports, or None.
 
-    The same order Java settles it in, and the same refusal to guess: a name that matches
-    no module in this source tree is a name from outside it. Used for a supertype, which
-    is written where nothing this module declares can shadow it, so nothing shadows it
-    here either.
+    The same order the language settles it in, and the same refusal to guess: a name that
+    matches no module in this source tree is a name from outside it. Used for a supertype,
+    which is written where nothing this module declares can shadow it, so nothing shadows
+    it here either. The language is the file's own rather than the reader's, because which
+    module `Till` means is decided by the file that wrote the word.
     """
-    for candidate in javasource.candidate_ids(name, package, imports):
+    for candidate in language.followed(name, package, imports):
         if candidate in modules:
             return candidate
     return None
@@ -190,12 +195,18 @@ def evidence_for(when, declared):
 # would otherwise be a rule that looks like a judgement and does nothing.
 
 def _known_kinds(kinds, where):
-    unknown = [kind for kind in kinds if kind not in javasource.KINDS]
+    """Refuse a rule written about a kind no language here reports.
+
+    Every language's kinds, not one's: this file scores a Java class and a TypeScript
+    file by the same weights, and a rule refused for naming `file` would be a rule refused
+    for being about the frontend.
+    """
+    unknown = [kind for kind in kinds if kind not in languages.KINDS]
     if unknown:
         raise ConfigurationRefused(
             "%s names %s, and a module is %s: a condition on any other kind could never "
             "hold, and a rule that can never fire is not one anybody could argue with"
-            % (where, ", ".join(sorted(unknown)), " or ".join(javasource.KINDS))
+            % (where, ", ".join(sorted(unknown)), " or ".join(languages.KINDS))
         )
     return kinds
 
@@ -350,7 +361,7 @@ class Condition:
         self.valid = valid
 
 
-def _java_kinds(value, where):
+def _kinds(value, where):
     return _known_kinds(_strings(value, where), where)
 
 
@@ -366,7 +377,7 @@ def _java_kinds(value, where):
 # arguments — could never match anything. `nameEndsWith` matches part of such a name, so
 # it is checked against what a name may end in instead.
 CONDITIONS = {
-    "kind": Condition(_is_of_kind, _java_kinds),
+    "kind": Condition(_is_of_kind, _kinds),
     "annotatedWith": Condition(_is_annotated_with, _simple_names),
     "extendsOrImplements": Condition(_extends_or_implements, _simple_names),
     "nameEndsWith": Condition(_name_ends_with, _name_endings),
@@ -468,6 +479,37 @@ class Finding:
         self.because = because
 
 
+class SourcesNotRead:
+    """What is under a source root and is not the application's own source.
+
+    Three things, and each of them would put modules on the page that nobody in this
+    repository wrote: test code, which is written to check a module rather than to be one;
+    build output, which is derived from source that has already been read; and an
+    installed dependency, which is somebody else's source entirely. Left in, the frontend
+    alone would arrive as tens of thousands of files under `node_modules`, and the finding
+    would be buried under them.
+
+    Matched two ways because the two are written differently. A directory is named
+    outright and never walked into, so it costs one line in the graph rather than
+    everything inside it. A file is matched on what its name ends with, which is how both
+    languages here spell a test — `App.test.tsx`, `DepositsServiceTest.java` — and how
+    TypeScript spells a generated declaration.
+    """
+
+    def __init__(self, rule, because, directories, names_ending_with):
+        self.rule = rule
+        self.because = because
+        self.directories = frozenset(directories)
+        self.names_ending_with = tuple(sorted(names_ending_with))
+
+    def ending_of(self, name):
+        """The ending this file's name matched, or None when it matched none."""
+        for ending in self.names_ending_with:
+            if name.endswith(ending):
+                return ending
+        return None
+
+
 class Flow:
     """One business event, named by the single call a caller makes to enter it.
 
@@ -496,7 +538,7 @@ class Rules:
     """The scoring rules one configuration file holds, ready to be applied to a module."""
 
     def __init__(self, path, weights, reachable_from_outside, already_known, exclusions,
-                 reached, deletion_test, refusals, flows):
+                 reached, deletion_test, refusals, flows, sources_not_read):
         self.path = path
         self.weights = weights
         self.reachable_from_outside = reachable_from_outside
@@ -506,6 +548,7 @@ class Rules:
         self.deletion_test = deletion_test
         self.refusals = refusals
         self.flows = flows
+        self.sources_not_read = sources_not_read
 
     def excluded_by(self, declared):
         """The first rule that says this module is never scored, or None if it is scored.
@@ -529,7 +572,7 @@ class Rules:
                 return {"rule": exclusion.rule, "matched": evidence}
         return None
 
-    def interface_of(self, declared, scored):
+    def interface_of(self, declared, scored, language):
         """Everything a caller must learn to use this module, and what that costs.
 
         The methods, the types and the refusals are recorded whether or not the module is
@@ -552,7 +595,7 @@ class Rules:
             (method for method in declared.methods if method.visibility in self.reachable_from_outside),
             key=lambda method: (method.name, method.parameters),
         )
-        crossing = self._types_crossing_the_seam(methods, declared.type_parameters)
+        crossing = self._types_crossing_the_seam(methods, declared.type_parameters, language)
         refusals = self._refusals_of(declared, methods)
         cost = None
         refusal_cost = None
@@ -736,7 +779,7 @@ class Rules:
             )
         return findings
 
-    def reach_of(self, declared, module_id, package, imports, modules, nested=(), above=None):
+    def reach_of(self, declared, module_id, package, imports, modules, nested, above, language):
         """Everything this module coordinates on its caller's behalf, one entry apiece.
 
         Reach is the numerator of depth, and it is a count of *distinct things* rather
@@ -795,9 +838,9 @@ class Rules:
                 "matched": matched,
             }
 
-        inherited = self._inherited_by(module_id, modules, above or {})
+        inherited = self._inherited_by(module_id, modules, above)
         resolve = self._resolves_names_for(
-            declared, module_id, package, imports, modules, nested, inherited
+            declared, module_id, package, imports, modules, nested, inherited, language
         )
 
         held = {field.name: field for field in declared.fields}
@@ -818,7 +861,7 @@ class Rules:
                 written = held[receiver].written
                 found = [
                     (name, "called through the field %s, which holds a %s" % (receiver, written))
-                    for name in javasource.written_names_in(written)
+                    for name in language.written_names_in(written)
                 ]
             else:
                 found = [(receiver, "called on %s" % receiver)]
@@ -901,7 +944,7 @@ class Rules:
             target = resolve(imported.type)
             if target is not None:
                 note(target, self._what_is_reached(modules[target]),
-                     "calls %s, imported statically from it" % imported.member)
+                     language.IMPORTED_EVIDENCE % imported.member)
 
         # Building a collaborator is coordinating it. `new B(a)` and `B.of(a)` are the
         # same module reached, spelled two ways, and counting only the second made a
@@ -945,7 +988,7 @@ class Rules:
         return {"count": len(entries), "reaches": entries}
 
     def _resolves_names_for(self, declared, module_id, package, imports, modules,
-                            nested, inherited):
+                            nested, inherited, language):
         """How a name written in this module's body is followed to a module, or to nothing.
 
         Exactly as the compiler follows it — through what the module declares inside
@@ -974,13 +1017,6 @@ class Rules:
         )
 
         def resolve(name):
-            # A name written out in full names one thing and nothing else: the module of
-            # that id, if this source tree holds one. `new other.Receipt()` is `other`'s
-            # `Receipt` and never this package's, and cutting the package off to look the
-            # rest up here is how it became this package's — a different module, of a
-            # different kind, with an evidence string a reader could check and find false.
-            if "." in name:
-                return name if name in modules and name != module_id else None
             # A type this module declares inside itself shadows every name an import or
             # the package could offer, which is how Java reads it: `Kind.of(x)` written in
             # a module that nests a `Kind` means that one, not the top-level `Kind` next
@@ -1001,7 +1037,12 @@ class Rules:
                     name, declared.name,
                 )
                 return None
-            for candidate in javasource.candidate_ids(name, package, imports):
+            # How a name is followed to a module is the language's own answer: Java
+            # settles a simple name by the file's imports and then by its package, and a
+            # qualified one outright; TypeScript has no package scope at all and settles
+            # every name by the import that bound it. Written here instead, the tool would
+            # hold one account of scoping and read two languages with it.
+            for candidate in language.followed(name, package, imports):
                 if candidate in modules and candidate != module_id:
                     return candidate
             return None
@@ -1009,7 +1050,7 @@ class Rules:
         return resolve
 
     def calls_from(self, method_name, declared, module_id, package, imports, modules,
-                   nested=(), above=None):
+                   nested, above, language):
         """What one named method calls, in the order the source evaluates it.
 
         The reading a flow is walked out of, and a different reading of the same source
@@ -1051,9 +1092,9 @@ class Rules:
         ]
         if not found:
             return []
-        inherited = self._inherited_by(module_id, modules, above or {})
+        inherited = self._inherited_by(module_id, modules, above)
         resolve = self._resolves_names_for(
-            declared, module_id, package, imports, modules, nested, inherited
+            declared, module_id, package, imports, modules, nested, inherited, language
         )
         held = {field.name: field for field in declared.fields}
         # What a bare call can mean here. A method this module writes is followed into;
@@ -1118,7 +1159,7 @@ class Rules:
                             target,
                             site.name,
                             site.name,
-                            "calls %s, imported statically from it" % site.name,
+                            language.IMPORTED_EVIDENCE % site.name,
                         )
                     continue
                 written = site.receiver + "." + site.name
@@ -1128,7 +1169,7 @@ class Rules:
                     # whatever shape it needs it in, and `List<AScheduledJob>` is held to
                     # reach the jobs rather than to drive a collection.
                     holds = held[site.receiver].written
-                    for name in javasource.written_names_in(holds):
+                    for name in language.written_names_in(holds):
                         target = resolve(name)
                         if target is not None:
                             landing(
@@ -1176,9 +1217,12 @@ class Rules:
         if module_id in seen or module_id not in modules:
             return _Inherited(declares, nested, opaque)
         seen.add(module_id)
-        package, imports, _ = above.get(module_id, ("", (), ()))
+        written_among = above.get(module_id, languages.NOTHING_AROUND_IT)
         for supertype in modules[module_id].supertypes:
-            target = _module_named(supertype, package, imports, modules)
+            target = _module_named(
+                supertype, written_among.package, written_among.imports, modules,
+                written_among.language,
+            )
             if target is None or target == module_id:
                 log.debug(
                     "supertype not read name=%s extends=%s, because this graph holds no "
@@ -1191,7 +1235,8 @@ class Rules:
             declares |= set(higher.declares) | {method.name for method in higher.methods}
             declares.add(higher.name)
             nested |= {
-                name.rsplit(".", 1)[-1] for name in above.get(target, ("", (), ()))[2]
+                name.rsplit(".", 1)[-1]
+                for name in above.get(target, languages.NOTHING_AROUND_IT).nested
             }
             further = self._inherited_by(target, modules, above, seen)
             declares |= further.declares
@@ -1313,7 +1358,7 @@ class Rules:
     def _cost_of(self, method):
         return self.weights["method"] + len(method.parameters) * self.weights["parameter"]
 
-    def _types_crossing_the_seam(self, methods, of_the_module):
+    def _types_crossing_the_seam(self, methods, of_the_module, language):
         """Every distinct type a caller meets in a parameter or a return, counted once.
 
         A type is named by the simple name it is written with and stripped of the shapes
@@ -1333,12 +1378,11 @@ class Rules:
         names = set()
         for method in methods:
             variables = set(of_the_module) | set(method.type_parameters)
-            crossing = list(method.parameters)
-            if method.returns != javasource.NOTHING_RETURNED:
-                crossing.append(method.returns)
-            for written in crossing:
+            for written in list(method.parameters) + [method.returns]:
                 names.update(
-                    name for name in javasource.names_in(written) if name not in variables
+                    name
+                    for name in language.crosses_the_seam(written)
+                    if name not in variables
                 )
         return [
             {"name": name, "mustBeLearned": name not in self.already_known}
@@ -1383,7 +1427,7 @@ def load(path=None):
     _only(
         document,
         ("schema", "interfaceCost", "refusals", "reach", "deletionTest", "flows",
-         "exclusions"),
+         "exclusions", "sourcesNotRead"),
         "the configuration",
     )
 
@@ -1438,9 +1482,10 @@ def load(path=None):
     deletion_test = _deletion_test(document.get("deletionTest"))
     flows = _flows(document.get("flows"))
     exclusions = _exclusions(document.get("exclusions"))
+    sources_not_read = _sources_not_read(document.get("sourcesNotRead"))
     rules = Rules(
         path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached,
-        deletion_test, refusals, flows,
+        deletion_test, refusals, flows, sources_not_read,
     )
     log.debug(
         "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
@@ -1479,7 +1524,56 @@ def load(path=None):
             flow.module,
             flow.method,
         )
+    log.debug(
+        "sources not read rule=%s directories=%s namesEndingWith=%s",
+        sources_not_read.rule,
+        ",".join(sorted(sources_not_read.directories)) or "none",
+        ",".join(sources_not_read.names_ending_with) or "none",
+    )
     return rules
+
+
+def _sources_not_read(entry):
+    """What a named rule says is under a source root and is not this application's source.
+
+    Required rather than defaulted, like every other rule here: a file that names none of
+    this has decided nothing, and reading that as "read everything" would walk the tool
+    into a `node_modules` and put somebody else's source on the page as this repository's.
+    Both lists may be empty, and that is a position somebody can hold — "read whatever I
+    point you at" — which is why it is a pair of empty lists somebody wrote rather than a
+    key nobody did.
+    """
+    _an_object(entry, "sourcesNotRead")
+    _only(entry, ("rule", "because", "directories", "namesEndingWith"), "sourcesNotRead")
+    if not isinstance(entry.get("rule"), str) or not entry["rule"].strip():
+        raise ConfigurationRefused(
+            "sourcesNotRead.rule is %r, and a path skipped by a rule nobody can name is "
+            "one nobody can ask about" % (entry.get("rule"),)
+        )
+    rule = entry["rule"]
+    because = _a_sentence(entry, "sourcesNotRead")
+    directories = _strings(
+        entry.get("directories"), "sourcesNotRead.directories", may_be_empty=True
+    )
+    endings = _strings(
+        entry.get("namesEndingWith"), "sourcesNotRead.namesEndingWith", may_be_empty=True
+    )
+    for named, where in ((directories, "sourcesNotRead.directories"),
+                         (endings, "sourcesNotRead.namesEndingWith")):
+        repeated = sorted({name for name in named if named.count(name) > 1})
+        if repeated:
+            raise ConfigurationRefused(
+                "%s names %s twice, and a path skipped once is skipped"
+                % (where, ", ".join(repeated))
+            )
+    separated = [name for name in directories if "/" in name or os.sep in name]
+    if separated:
+        raise ConfigurationRefused(
+            "sourcesNotRead.directories names %s, and a directory is matched by its own "
+            "name rather than by a path: the walk meets one directory at a time, so a "
+            "rule written as a path could never fire" % ", ".join(sorted(separated))
+        )
+    return SourcesNotRead(rule, because, directories, endings)
 
 
 def _flows(listed):

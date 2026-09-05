@@ -54,7 +54,7 @@ class RulesFromAFileTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", A_MODULE)
         tree.java("shop.till", "Receipt", A_DATA_CARRIER)
-        return graph.java_root(tree.root)
+        return graph.source_root(tree.root)
 
     def modules(self, root, path=None):
         document = graph.build([root], scoring.load(path))
@@ -100,7 +100,7 @@ class ChangingAWeightChangesTheScoreTest(RulesFromAFileTest):
         tree.java("shop.till", "Till", A_MODULE)
 
         document = graph.build(
-            [graph.java_root(tree.root)], scoring.load(self.weights(method=7))
+            [graph.source_root(tree.root)], scoring.load(self.weights(method=7))
         )
 
         self.assertEqual(7, document["scoring"]["weights"]["method"])
@@ -111,7 +111,7 @@ class ChangingAWeightChangesTheScoreTest(RulesFromAFileTest):
             "shop.till", "Till",
             "class Till {\n    public void ring() {}\n    void countTheDrawer() {}\n}",
         )
-        root = graph.java_root(tree.root)
+        root = graph.source_root(tree.root)
         cost = dict(self.as_committed["interfaceCost"], reachableFromOutside=["public"])
 
         self.assertEqual(2, self.modules(root)["Till"]["interface"]["cost"])
@@ -123,7 +123,7 @@ class ChangingAWeightChangesTheScoreTest(RulesFromAFileTest):
     def test_a_type_named_as_already_known_stops_being_a_type_to_learn(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", A_MODULE)
-        root = graph.java_root(tree.root)
+        root = graph.source_root(tree.root)
         cost = dict(
             self.as_committed["interfaceCost"],
             typesEveryCallerAlreadyKnows=self.as_committed["interfaceCost"][
@@ -204,7 +204,7 @@ class ChangingAnExclusionChangesWhatIsScoredTest(RulesFromAFileTest):
         ]
 
         document = graph.build(
-            [graph.java_root(tree.root)], scoring.load(self.rules(exclusions=renamed))
+            [graph.source_root(tree.root)], scoring.load(self.rules(exclusions=renamed))
         )
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -363,7 +363,7 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
         tree.java("shop.till", "Till2", "public class Till2 {\n    public void ring() {}\n}")
 
         modules = self.modules(
-            graph.java_root(tree.root), self.rules(**self.with_a_rule({"nameEndsWith": ["2"]}))
+            graph.source_root(tree.root), self.rules(**self.with_a_rule({"nameEndsWith": ["2"]}))
         )
 
         self.assertEqual("the rule under test", modules["Till2"]["excludedBy"]["rule"])
@@ -389,7 +389,7 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
             **self.with_a_rule({"annotatedWith": ["SpringBootApplication"]})
         )
 
-        modules = self.modules(graph.java_root(tree.root), rules)
+        modules = self.modules(graph.source_root(tree.root), rules)
 
         self.assertEqual("the rule under test", modules["Application"]["excludedBy"]["rule"])
         self.assertEqual(
@@ -466,7 +466,7 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         tree.java("shop.till", "Till", A_MODULE)
         cost = dict(self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows=[])
 
-        modules = self.modules(graph.java_root(tree.root), self.rules(interfaceCost=cost))
+        modules = self.modules(graph.source_root(tree.root), self.rules(interfaceCost=cost))
 
         self.assertEqual(
             [{"name": "Receipt", "mustBeLearned": True}, {"name": "long", "mustBeLearned": True}],
@@ -577,7 +577,7 @@ class AnEnumConstantIsNotScoredAsAMethodTest(RulesFromAFileTest):
         ]
 
         modules = self.modules(
-            graph.java_root(tree.root), self.rules(exclusions=without_data_carriers)
+            graph.source_root(tree.root), self.rules(exclusions=without_data_carriers)
         )
 
         self.assertIsNone(modules["Kind"]["excludedBy"])

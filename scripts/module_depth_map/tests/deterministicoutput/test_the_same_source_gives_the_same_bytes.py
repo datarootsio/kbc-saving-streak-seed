@@ -8,7 +8,13 @@ import os
 import re
 
 from ... import cli, graph, page, scoring
-from ..support.sourcetrees import BACKEND_SOURCE, SourceTree, SourceTreeTest, bytes_of
+from ..support.sourcetrees import (
+    BACKEND_SOURCE,
+    FRONTEND_SOURCE,
+    SourceTree,
+    SourceTreeTest,
+    bytes_of,
+)
 
 
 class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
@@ -18,21 +24,29 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
         tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
         tree.java("shop.stock", "Shelf", "interface Shelf {\n    void restock();\n}")
         tree.java("shop.stock", "Aisle", "public enum Aisle {\n    LEFT\n}")
+        # A second language in the same tree, because determinism has to hold over what
+        # the tool actually reads rather than over the half of it that came first: a set
+        # iterated somewhere in the TypeScript reading would move bytes between runs.
+        tree.typescript("web", "till.ts", "export function ring(id: number): void {}")
+        tree.typescript("web", "page.tsx",
+                        "import { ring } from './till'\n\n"
+                        "export default function Page() {\n  return <button onClick={() "
+                        "=> ring(1)}>Ring</button>\n}")
         return tree
 
     def test_the_graph_document_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = graph.serialise(graph.build([graph.java_root(tree.root)], scoring.load()))
-        second = graph.serialise(graph.build([graph.java_root(tree.root)], scoring.load()))
+        first = graph.serialise(graph.build([graph.source_root(tree.root)], scoring.load()))
+        second = graph.serialise(graph.build([graph.source_root(tree.root)], scoring.load()))
 
         self.assertEqual(first, second)
 
     def test_the_page_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = _rendered(graph.build([graph.java_root(tree.root)], scoring.load()))
-        second = _rendered(graph.build([graph.java_root(tree.root)], scoring.load()))
+        first = _rendered(graph.build([graph.source_root(tree.root)], scoring.load()))
+        second = _rendered(graph.build([graph.source_root(tree.root)], scoring.load()))
 
         self.assertEqual(first, second)
 
@@ -49,13 +63,19 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
 
         self.assertEqual(first, second)
 
+    def test_the_command_writes_the_same_two_files_twice_over_this_frontend(self):
+        first = self.run_command(FRONTEND_SOURCE, "first-web")
+        second = self.run_command(FRONTEND_SOURCE, "second-web")
+
+        self.assertEqual(first, second)
+
     def test_every_collection_in_the_graph_is_sorted(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Zebra", "public class Zebra {}")
         tree.java("shop.till", "Ant", "public class Ant {}")
         tree.java("shop.aisle", "Middle", "public class Middle {}")
 
-        document = graph.build([graph.java_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
 
         self.assertEqual(
             ["shop.aisle.Middle", "shop.till.Ant", "shop.till.Zebra"],
@@ -81,7 +101,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
     def written(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {}")
-        document = graph.build([graph.java_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
         return tree, graph.serialise(document).decode("utf-8"), _rendered(document).decode("utf-8")
 
     def test_neither_output_names_a_directory_on_this_machine(self):
@@ -98,7 +118,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         self.assertIn('"fixture"', written_graph)
 
     def test_this_repository_is_named_by_its_own_layout_rather_than_its_location(self):
-        document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
 
         self.assertEqual(["backend/src/main/java"], document["source"]["roots"])
 
@@ -132,7 +152,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         for root in (clone, worktree):
             SourceTree(root).java("shop.till", "Till", "public class Till {}")
 
-        written = [graph.serialise(graph.build([graph.java_root(r)], scoring.load())) for r in (clone, worktree)]
+        written = [graph.serialise(graph.build([graph.source_root(r)], scoring.load())) for r in (clone, worktree)]
 
         self.assertEqual(written[0], written[1])
 

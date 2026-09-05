@@ -1,14 +1,16 @@
 # Module depth map
 
-A deterministic picture of what this application is made of. One command reads the source
-and writes two files: a graph document naming every module, and a self-contained page that
-is a pure rendering of that document.
+A deterministic picture of what this application is made of — both halves of it. One
+command reads the source, backend and frontend together, and writes two files: a graph
+document naming every module, and a self-contained page that is a pure rendering of that
+document.
 
 Run it from the repository root:
 
     python3 scripts/module-depth-map.py
 
-It writes `docs/module-depth-map.json` and `docs/module-depth-map.html`. Open the HTML file
+It reads `backend/src/main/java` and `frontend/src`, and writes
+`docs/module-depth-map.json` and `docs/module-depth-map.html`. Open the HTML file
 directly — there is no server to start and nothing is fetched from the network.
 
 Run its tests with the standard library's own runner, also from the repository root:
@@ -23,11 +25,11 @@ Run its tests with the standard library's own runner, also from the repository r
 - **The page contains nothing the graph does not.** The page carries the graph document
   verbatim and draws itself from it, so there is no second place for a fact to come from.
 - **Source it cannot read is named, not scored as empty.** Parsing is targeted pattern
-  matching rather than a full Java grammar. Anything it cannot make sense of is logged as a
-  warning with the reason, counted in the graph, and shown on the page, because a parse
-  failure that looked like an empty module would be indistinguishable from a real finding.
-  Silence has to mean nothing was missed, so a file is failed by name whenever the parser
-  can tell it has stopped reading what the compiler would read:
+  matching rather than a full grammar, on both sides. Anything it cannot make sense of is
+  logged as a warning with the reason, counted in the graph, and shown on the page, because
+  a parse failure that looked like an empty module would be indistinguishable from a real
+  finding. Silence has to mean nothing was missed, so a file is failed by name whenever the
+  parser can tell it has stopped reading what the compiler would read. On the Java side:
 
   - it will not open at all — a dangling symlink, no read permission, deleted since the
     walk — or it is not UTF-8;
@@ -56,6 +58,12 @@ Run its tests with the standard library's own runner, also from the repository r
   raise, found by review rather than by the suite; there is a test for the shape now,
   because an alarm that cries wolf stops being read.
 
+  The TypeScript side is failed on the same shapes, spelled its own way, and the section
+  on the frontend below names each of them: braces that do not balance, a block comment or
+  a template literal or a regular expression that is never closed, an `export` it has no
+  reading of, a parameter with no type written on it, and a return type it cannot tell from
+  the body that follows it.
+
   One decision cannot be failed on, and it is where every fault found so far got in:
   deciding that a member which reads like a method is not one. A field, a constructor and
   a nested record all read like one and legitimately are not, so there is nothing to fail
@@ -67,8 +75,9 @@ Run its tests with the standard library's own runner, also from the repository r
   records — short enough to read and check.
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
   beside this file holds the interface-cost weights, every exclusion rule, what makes a
-  reached thing an adapter or a record, where the deletion test draws its line, and what
-  each disagreement between a documented refusal and a raised one is called. Change a
+  reached thing an adapter or a record, where the deletion test draws its line, what each
+  disagreement between a documented refusal and a raised one is called, and what under a
+  source root is not the application's own source and is never read. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
   is edited, and no rule name or weight is written into it to fall back on. Every name a
   rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
@@ -116,7 +125,11 @@ Run its tests with the standard library's own runner, also from the repository r
   be traced, each with the path walked for it or the reason there is none — and to
   `module-depth-map/7` when that walk became a walk of the calls the entry method makes
   rather than of the entry module's reach, so every step gained the `calledFrom` and the
-  `call` that put the flow there.
+  `call` that put the flow there, and to `module-depth-map/8` when the document stopped
+  being a document about the backend: `source` gained the `languages` it was read in and
+  the paths a named rule declined to read at all, `scoring` gained the `largest` module and
+  the numbers it was measured at, and a module's `language` became a thing a reader has to
+  look at rather than a constant.
   The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
@@ -127,10 +140,11 @@ Run its tests with the standard library's own runner, also from the repository r
 
 ## What is on it so far
 
-Every top-level type in the backend source, at class grain, grouped by its package. Types
-declared inside another are listed on the module that holds them rather than becoming
-modules of their own, each named by where it sits inside that module — `Body.Kind`, not a
-second `Kind` a reader cannot tell from the first.
+Every top-level type in the backend source, at class grain, grouped by its package, and
+every file of the frontend source, at file grain, grouped by the directory it sits in.
+Types declared inside another are listed on the module that holds them rather than
+becoming modules of their own, each named by where it sits inside that module —
+`Body.Kind`, not a second `Kind` a reader cannot tell from the first.
 
 Each module is drawn as a bar whose width is what its interface costs a caller — in two
 bands, the refusals it can answer with and everything else — over a fan with one line out
@@ -141,6 +155,129 @@ is what the rest of this file is about. Above the cards, three flows — a depos
 withdrawal with the deposits it draws down, and a reward claimed — each highlight the
 modules that business event passes through, in order. Nothing is ranked, and nothing is
 proposed for change.
+
+## The frontend, at the grain its interfaces are written at
+
+A module is anything with an interface and an implementation, and where that sits is a
+fact about the language rather than a preference. A Java module is a class, because that
+is where a Java interface is written. A **TypeScript module is a file**, because that is
+what an import names: whoever writes `import { fetchDeposits } from './api'` gets whatever
+that file exports, and nothing else in it is reachable from anywhere. So the file is the
+thing with an interface and an implementation, its card says `file` where a Java card says
+`class`, and its id is the path it sits at — `frontend/src/App` — which is the same string
+an import next door resolves to. A fan line is then checkable against an import statement
+rather than against this tool's opinion of one.
+
+Everything after the grain is the same measure. What a caller must learn is what the file
+exports; what the file coordinates is what it imports and then uses; depth is the second
+over the first; the deletion test runs on it; the refusal band is read from its JSDoc and
+its throws. There is no rule anywhere that asks which language a module is written in
+before scoring it, and `tests/thefrontendhonestly` writes one shape in both languages and
+asserts the two come out at the same numbers, because "the frontend is measured the same
+way" is worth nothing if only the frontend is checked.
+
+What a TypeScript file offers a caller is read from `export` and from nothing else:
+
+- **an exported function** — `export function`, `export async function`, `export default
+  function`, and an arrow or function expression bound to an exported `const` — is a
+  method, under the name the source gives it.
+- **its parameters** are the types written on them. A destructured parameter is one
+  parameter however many names the caller's object is taken apart into, and `this` is a
+  receiver rather than something a caller passes.
+- **a type it declares** — `type`, `interface`, `enum`, and an exported `class` — is named
+  on the module and not measured, which is the same answer the Java side gives a type
+  declared inside a module. Its members are read nowhere.
+- **an exported value that is not a function** is named nowhere and priced nowhere, which
+  is the same answer the Java side gives a public field. So is a re-export, whose
+  signature is written in the file it came from. Both are logged: run with
+  `--log-level DEBUG` and `grep "export not read as a method"` for every one, with its
+  line and the reason.
+
+What it coordinates is read from the imports and the body together. TypeScript has no
+package scope at all, so an import is the *only* way one file names another: a name means
+what an import bound it to, or the file declares it, or it is a global. That makes the
+reading shorter than Java's rather than longer — there is nothing to fall back to and so
+nothing to guess at. Three spellings reach a module:
+
+- **a name the file imports and then calls** — `fetchDeposits(id)`, and
+  `useState<Customer>(null)` with its type arguments written out;
+- **a name it imports and then builds** — `new SignInFailed(...)`;
+- **a component it writes as a JSX element** — `<Card />`, which is what React compiles to
+  a call building a `Card` and is coordination exactly as `new` is. Only a capitalised
+  name can be one, which is React's own rule and the whole of what tells `<div>` from
+  `<Deposits>`, and only in a `.tsx` file, because `<X>` in a `.ts` file is a type argument
+  list and never a tag.
+
+A dependency reaches nothing: `react` is somebody else's source, this graph does not hold
+it, and a module cannot raise its own reach by installing more packages any more than a
+Java module can by importing more of the JDK.
+
+Two readings on this side are looser than the Java side's, and both are named on the page
+rather than left to be found. **JSX text is read as source**: a `.tsx` file is prose and
+code inside the same braces, and telling them apart needs a JSX parser whose mistakes
+would blank real code rather than merely add to a fan — so a word in a paragraph with a
+bracket after it can be read as a call, and it draws a line only where the file also
+imports something of exactly that name. And **a quote in prose is not a string**: a `'`
+opens a string only where a matching one follows on the same line, because JavaScript
+strings do not span lines and JSX prose is full of apostrophes. That rule cannot be wrong
+about legal source, and without it one `account's` in a paragraph blanked out the rest of
+the file and took every module after it along.
+
+A file this reading cannot make sense of is failed by name, exactly as a Java one is:
+braces that do not balance, a block comment or a template literal or a regular expression
+that is never closed, an `export` it has no reading of — the one reserved word that must
+open something readable, since it is the whole of what a caller can reach — a parameter
+with no type written on it, and a return type that cannot be told from the body after it.
+The last two are where a misread shape would leave an interface *cheaper* than the source
+makes it, and a cheap interface over a fan is what this page calls deep.
+
+## What a line count is worth here
+
+Nothing, and the page says so with a section of its own, because the one thing it can be
+misread as saying is that a big module is a deep one. `scoring.largest` in the graph names
+the longest module in the document and prints the numbers it was measured at beside its
+line count — read off the module's own entry, so the page states them rather than working
+anything out.
+
+On this repository that is `frontend/src/App`: 1,545 lines, one export, one thing
+coordinated. It is drawn as the narrowest bar over one of the narrowest fans on the page,
+and it is the clearest demonstration available of what the whole page is for. Under a
+measure of implementation lines over interface lines it would be the deepest module in the
+repository; under this one its length went into nothing at all. That result is shown
+rather than smoothed over: drawing the frontend as one tidy box instead would be a picture
+that lies by omission.
+
+`frontend/src/api` is the other half of the same lesson, in the other direction: 272 lines
+presenting eleven methods over seven domain types, which is the widest bar on the page,
+and coordinating nothing this graph holds.
+
+## What is not read at all
+
+`sourcesNotRead` in `scoring.json` names what is under a source root and is not the
+application's own source, and it is a rule with a sentence behind it like every other
+exclusion here. Test code is written to check a module rather than to be one; build output
+is derived from source that has already been read; an installed dependency is somebody
+else's source, which nobody in this repository can act on and which arrives by the tens of
+thousands of files. Each would put modules on the page that nobody here wrote.
+
+A **directory** is matched by its own name and never walked into — `node_modules`, `dist`,
+`build`, `target`, `coverage`, `__tests__` — which is what keeps a `node_modules` to one
+line in the graph instead of everything inside it. Every name on that list is one nothing
+but a tool ever writes; a bare `test` or `tests` is deliberately not among them, because
+that is a legal Java package name and a rule that quietly took a package of the
+application's own source off the page would be worse than one that misses a directory
+somebody can add to the list. A **file** is
+matched on what its name ends with: `.test.ts`, `.spec.tsx`, `.d.ts`, `Test.java`,
+`Tests.java`, `IT.java`. Every path skipped is recorded in `source.notRead` with the rule
+and the fact that matched it, logged at INFO, and printed on the page — apart from the
+files that could not be *parsed*, because "this is not the application's source" and "this
+file would not read" are different findings and painting them the same colour would have a
+`node_modules` reading as an alarm.
+
+Where the tool is pointed matters more than the rule does, and both defaults are chosen so
+that nothing has to be skipped: `backend/src/main/java` is not `src/test/java`, and
+`frontend/src` is not `frontend/node_modules`. On this repository the rule matches nothing,
+and the page says so in as many words.
 
 ## What an interface costs
 
@@ -712,7 +849,7 @@ published in parts is still a score for a module the document says has none:
 
 ## Arguments
 
-    --source DIR     a directory of source to read (repeatable; default backend/src/main/java)
+    --source DIR     a directory of source to read (repeatable; default backend/src/main/java and frontend/src)
     --graph FILE     where to write the graph document
     --page FILE      where to write the page
     --scoring FILE   the weights, exclusion rules and flows to apply (default scoring.json beside the tool)
@@ -724,8 +861,17 @@ published in parts is still a score for a module the document says has none:
     scripts/module_depth_map/
         cli.py                        arguments, and writing both outputs from one document
         graph.py                      source roots in, the graph document out
+        languages.py                  the seam every reading is asked through, and who answers it
         javasource.py                 reading one Java file well enough to name its modules
+        typescriptsource.py           reading one TypeScript file well enough to name the module it is
         scoring.py                    what an interface costs, and what is never scored
         scoring.json                  the weights, the rules and the flows — edit this
         page.py                       the graph document rendered as one self-contained file
         tests/                        one package per property being established
+
+A source root is a directory rather than a language: which language a file under it is read
+with is decided by its own ending, the way `.java` already decided it when there was only
+one. So a directory holding both is read as both, nothing has to be said on the command
+line, and `languages.py` is the one place that knows there is more than one reading — the
+graph and the scoring rules never name a language, which is what makes "one measure over
+the whole application" structural rather than a claim.

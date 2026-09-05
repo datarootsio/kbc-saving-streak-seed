@@ -383,6 +383,383 @@
   "modules": [
     {
       "callers": {
+        "count": 1,
+        "moduleIds": [
+          "frontend/src/main"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 1,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 1.0,
+        "reach": 1
+      },
+      "excludedBy": null,
+      "findings": [],
+      "id": "frontend/src/App",
+      "interface": {
+        "cost": 1,
+        "costWithoutRefusals": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "documentedRefusals": [],
+            "name": "App",
+            "parameters": [],
+            "returns": "(inferred)",
+            "visibility": "public"
+          }
+        ],
+        "refusalCost": 0,
+        "refusals": [],
+        "typesCrossingTheSeam": []
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 1545,
+      "name": "App",
+      "nested": [
+        "Celebration",
+        "SavingsAccountView"
+      ],
+      "package": "frontend/src",
+      "path": "App.tsx",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "calls claimReward, which this file imports from it",
+            "moduleId": "frontend/src/api",
+            "name": "api"
+          }
+        ]
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "frontend/src/App"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 11,
+        "reach": 0,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 49,
+        "leverage": 0.0,
+        "reach": 0
+      },
+      "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "Error"
+        },
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "SignInFailed"
+        }
+      ],
+      "id": "frontend/src/api",
+      "interface": {
+        "cost": 49,
+        "costWithoutRefusals": 45,
+        "methods": [
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "claimReward",
+            "parameters": [
+              "number",
+              "string"
+            ],
+            "returns": "Promise<ClaimedReward>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchAccounts",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise<CustomerAccounts>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchClaimed",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise<ClaimedReward[]>",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "documentedRefusals": [],
+            "name": "fetchCustomers",
+            "parameters": [],
+            "returns": "Promise<Customer[]>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchDeposits",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise<RecordedDeposit[]>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "documentedRefusals": [],
+            "name": "fetchRewards",
+            "parameters": [
+              "AbortSignal"
+            ],
+            "returns": "Promise<Reward[]>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchSavingsAccount",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise<SavingsAccountBalances>",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchWithdrawals",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise<RecordedWithdrawal[]>",
+            "visibility": "public"
+          },
+          {
+            "cost": 4,
+            "documentedRefusals": [],
+            "name": "makeDeposit",
+            "parameters": [
+              "number",
+              "string",
+              "number"
+            ],
+            "returns": "Promise<RecordedDeposit>",
+            "visibility": "public"
+          },
+          {
+            "cost": 4,
+            "documentedRefusals": [],
+            "name": "makeWithdrawal",
+            "parameters": [
+              "number",
+              "string",
+              "number"
+            ],
+            "returns": "Promise<RecordedWithdrawal>",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "documentedRefusals": [],
+            "name": "signIn",
+            "parameters": [
+              "string"
+            ],
+            "returns": "Promise<Customer>",
+            "visibility": "public"
+          }
+        ],
+        "refusalCost": 4,
+        "refusals": [
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "Error",
+            "raised": true
+          },
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "SignInFailed",
+            "raised": true
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "AbortSignal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedReward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Customer"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "CustomerAccounts"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Promise"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedDeposit"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccountBalances"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "number"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "string"
+          }
+        ]
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 272,
+      "name": "api",
+      "nested": [
+        "ClaimedReward",
+        "CurrentAccount",
+        "Customer",
+        "CustomerAccounts",
+        "RecordedDeposit",
+        "RecordedWithdrawal",
+        "Reward",
+        "SavingsAccount",
+        "SavingsAccountBalances",
+        "SignInFailed"
+      ],
+      "package": "frontend/src",
+      "path": "api.ts",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 0,
+        "reach": 1,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 2,
+        "leverage": 0.5,
+        "reach": 1
+      },
+      "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "Error"
+        }
+      ],
+      "id": "frontend/src/main",
+      "interface": {
+        "cost": 2,
+        "costWithoutRefusals": 0,
+        "methods": [],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "Error",
+            "raised": true
+          }
+        ],
+        "typesCrossingTheSeam": []
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 15,
+      "name": "main",
+      "nested": [],
+      "package": "frontend/src",
+      "path": "main.tsx",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "frontend/src/App",
+            "name": "App"
+          }
+        ]
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
         "count": 0,
         "moduleIds": []
       },
@@ -6925,6 +7302,14 @@
   "packages": [
     {
       "moduleIds": [
+        "frontend/src/App",
+        "frontend/src/api",
+        "frontend/src/main"
+      ],
+      "name": "frontend/src"
+    },
+    {
+      "moduleIds": [
         "io.dataroots.savingstreak.SavingStreakApplication"
       ],
       "name": "io.dataroots.savingstreak"
@@ -7035,7 +7420,7 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/7",
+  "schema": "module-depth-map/8",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "deletionTest": {
@@ -7053,7 +7438,7 @@
           "verdict": "earns its keep"
         },
         {
-          "modules": 22,
+          "modules": 25,
           "verdict": "no finding"
         }
       ],
@@ -7088,8 +7473,19 @@
         "rule": "entry point"
       }
     ],
+    "largest": {
+      "interfaceCost": 1,
+      "language": "typescript",
+      "leverage": 1.0,
+      "lines": 1545,
+      "methods": 1,
+      "moduleId": "frontend/src/App",
+      "name": "App",
+      "package": "frontend/src",
+      "reach": 1
+    },
     "modulesNeverScored": 36,
-    "modulesScored": 35,
+    "modulesScored": 38,
     "reach": {
       "adapter": "An interface whose implementation Spring Data generates at run time is how this application reaches its database. A module that drives one coordinates storage its caller never has to open, which is the plainest kind of reach there is.",
       "persistentRecord": "A type marked as an entity is a row that outlives the call it was written in. A module reaching one is keeping a record on its caller's behalf: it decides what goes into it, and the caller learns neither the table nor the identifier it was written under.",
@@ -7116,18 +7512,20 @@
         },
         {
           "finding": "raised but never documented",
-          "findings": 6
+          "findings": 9
         }
       ],
-      "modulesWithFindings": 6,
+      "modulesWithFindings": 8,
       "raisedNeverDocumented": {
         "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
         "finding": "raised but never documented"
       },
       "refusalsNotChecked": 0,
-      "refusalsRead": 13
+      "refusalsRead": 16
     },
     "typesEveryCallerAlreadyKnows": [
+      "AbortSignal",
+      "Array",
       "BigDecimal",
       "BigInteger",
       "Boolean",
@@ -7137,8 +7535,10 @@
       "Clock",
       "Collection",
       "Comparable",
+      "Date",
       "Double",
       "Duration",
+      "Error",
       "Exception",
       "Float",
       "Instant",
@@ -7152,6 +7552,9 @@
       "Number",
       "Object",
       "Optional",
+      "Promise",
+      "Record",
+      "Response",
       "RuntimeException",
       "Set",
       "Short",
@@ -7160,6 +7563,8 @@
       "Throwable",
       "Void",
       "ZoneId",
+      "any",
+      "bigint",
       "boolean",
       "byte",
       "char",
@@ -7167,7 +7572,15 @@
       "float",
       "int",
       "long",
-      "short"
+      "never",
+      "null",
+      "number",
+      "object",
+      "short",
+      "string",
+      "symbol",
+      "undefined",
+      "unknown"
     ],
     "weights": {
       "method": 1,
@@ -7176,15 +7589,25 @@
       "typeEveryCallerAlreadyKnows": 0,
       "typeToLearn": 2
     },
-    "widestInterface": 33,
+    "widestInterface": 49,
     "widestReach": 11
   },
   "source": {
-    "filesParsed": 71,
-    "filesSeen": 71,
+    "filesParsed": 74,
+    "filesSeen": 74,
     "filesUnparsed": 0,
+    "languages": [
+      "java",
+      "typescript"
+    ],
+    "notRead": {
+      "because": "The graph covers the application's own source and nothing else. Test code is written to check a module rather than to be one, so scoring it would measure the checking; build output is derived from source that has already been read, so it would draw the same module twice; and an installed dependency is somebody else's source, which nobody in this repository can act on and which would arrive by the tens of thousands of files. Each would put modules on the page that nobody here wrote, and the finding would be buried under them. A directory is named outright and never walked into, which is what keeps a node_modules to one line in the graph instead of everything inside it; a file is matched on what its name ends with, which is how both languages here spell a test and how TypeScript spells a generated declaration. The names here are ones nothing but a tool ever writes: a bare test or tests is deliberately not among them, because that is a legal Java package name and a rule that quietly took a package of the application's own source off the page would be worse than one that misses a directory somebody can add to this list.",
+      "paths": [],
+      "rule": "not the application's own source"
+    },
     "roots": [
-      "backend/src/main/java"
+      "backend/src/main/java",
+      "frontend/src"
     ],
     "unparsed": []
   }

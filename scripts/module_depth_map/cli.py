@@ -30,7 +30,19 @@ class OutputsUnwritten(Exception):
         self.landed = tuple(landed)
 
 
-DEFAULT_SOURCE = os.path.join("backend", "src", "main", "java")
+# Both halves of the application, because a page drawn from one of them is a picture of
+# half an application that does not say which half. A root is a directory rather than a
+# language: what each file under it is read as is decided by its own ending, so pointing
+# this at a directory holding Java and TypeScript together needs nothing said here.
+#
+# Where each points is the whole of how test code and build output stay out of the graph
+# by default — `src/main/java` is not `src/test/java`, and `frontend/src` is not
+# `frontend/node_modules` — and `sourcesNotRead` in the scoring file is what holds when
+# somebody points this somewhere wider.
+DEFAULT_SOURCES = (
+    os.path.join("backend", "src", "main", "java"),
+    os.path.join("frontend", "src"),
+)
 DEFAULT_GRAPH = os.path.join("docs", "module-depth-map.json")
 DEFAULT_PAGE = os.path.join("docs", "module-depth-map.html")
 
@@ -44,7 +56,8 @@ def parser():
         "--source",
         action="append",
         metavar="DIR",
-        help="a directory of source to read (repeatable; default %s)" % DEFAULT_SOURCE,
+        help="a directory of source to read, in any language this tool knows the file "
+             "endings of (repeatable; default %s)" % ", ".join(DEFAULT_SOURCES),
     )
     it.add_argument("--graph", default=DEFAULT_GRAPH, metavar="FILE", help="where to write the graph document")
     it.add_argument("--page", default=DEFAULT_PAGE, metavar="FILE", help="where to write the page")
@@ -75,7 +88,7 @@ def main(argv=None):
         force=True,
     )
 
-    sources = arguments.source or [DEFAULT_SOURCE]
+    sources = arguments.source or list(DEFAULT_SOURCES)
     missing = [directory for directory in sources if not os.path.isdir(directory)]
     if missing:
         log.warning("refused to run: no such source directory %s", ", ".join(missing))
@@ -100,7 +113,7 @@ def main(argv=None):
         return 4
 
     try:
-        document = graph.build([graph.java_root(directory) for directory in sources], rules)
+        document = graph.build([graph.source_root(directory) for directory in sources], rules)
     except graph.DuplicateModules as clash:
         log.warning(
             "refused to run: %d module id(s) are declared more than once (%s), and a page "
@@ -146,12 +159,15 @@ def main(argv=None):
             )
         return 5
     log.info(
-        "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
-        "scored=%d neverScored=%d flows=%d flowsTraced=%d",
+        "run finished graphBytes=%d pageBytes=%d languages=%s filesParsed=%d "
+        "filesUnparsed=%d pathsNotRead=%d modules=%d scored=%d neverScored=%d flows=%d "
+        "flowsTraced=%d",
         written[arguments.graph],
         written[arguments.page],
+        ",".join(document["source"]["languages"]) or "none, nothing was read",
         document["source"]["filesParsed"],
         document["source"]["filesUnparsed"],
+        len(document["source"]["notRead"]["paths"]),
         len(document["modules"]),
         document["scoring"]["modulesScored"],
         document["scoring"]["modulesNeverScored"],

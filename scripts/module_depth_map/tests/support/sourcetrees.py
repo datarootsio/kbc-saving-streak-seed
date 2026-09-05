@@ -11,6 +11,7 @@ import unittest
 
 REPOSITORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 BACKEND_SOURCE = os.path.join(REPOSITORY, "backend", "src", "main", "java")
+FRONTEND_SOURCE = os.path.join(REPOSITORY, "frontend", "src")
 
 
 class SourceTreeTest(unittest.TestCase):
@@ -46,6 +47,20 @@ class SourceTree:
         path = os.path.join(directory, name + ".java")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("package %s;\n\n%s\n" % (package, body))
+        return path
+
+    def typescript(self, directory, name, body):
+        """Write one TypeScript file under this directory and return its path.
+
+        The name carries its own extension, because `.ts` and `.tsx` are read differently
+        — JSX is legal in one of them and not in the other — and a fixture about JSX has
+        to be able to say which it is writing.
+        """
+        under = os.path.join(self.root, *directory.split("/")) if directory else self.root
+        os.makedirs(under, exist_ok=True)
+        path = os.path.join(under, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(body if body.endswith("\n") else body + "\n")
         return path
 
     def raw(self, relative, text):

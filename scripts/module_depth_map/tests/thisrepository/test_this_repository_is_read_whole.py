@@ -14,7 +14,7 @@ class ThisRepositoryIsReadWholeTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
 
     def test_every_source_file_is_either_read_or_reported_as_unparseable(self):
         """Nothing under the source root goes missing without the document saying so.
@@ -83,7 +83,7 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
 
     def test_every_module_is_either_scored_or_excluded_and_never_both(self):
         for module in self.document["modules"]:
@@ -261,7 +261,7 @@ class TheDeletionTestHoldsOnThisRepositoryTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
         self.by_id = {module["id"]: module for module in self.document["modules"]}
         self.rule = self.document["scoring"]["deletionTest"]
 

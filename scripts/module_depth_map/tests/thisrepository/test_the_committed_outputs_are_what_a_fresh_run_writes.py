@@ -9,7 +9,13 @@ the only test that fails when the outputs in `docs/` no longer describe the sour
 import os
 
 from ... import cli
-from ..support.sourcetrees import BACKEND_SOURCE, REPOSITORY, SourceTreeTest, bytes_of
+from ..support.sourcetrees import (
+    BACKEND_SOURCE,
+    FRONTEND_SOURCE,
+    REPOSITORY,
+    SourceTreeTest,
+    bytes_of,
+)
 
 COMMITTED_GRAPH = os.path.join(REPOSITORY, "docs", "module-depth-map.json")
 COMMITTED_PAGE = os.path.join(REPOSITORY, "docs", "module-depth-map.html")
@@ -21,9 +27,12 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
         super().setUp()
         self.graph_path = os.path.join(self.scratch, "fresh", "module-depth-map.json")
         self.page_path = os.path.join(self.scratch, "fresh", "module-depth-map.html")
+        # Both halves of the application, because the committed page is a page about
+        # both: a run given one of them would be compared against a document holding the
+        # other and would fail for a reason that is nothing to do with the source.
         exit_code = cli.main(
-            ["--source", BACKEND_SOURCE, "--graph", self.graph_path, "--page", self.page_path,
-             "--log-level", "ERROR"]
+            ["--source", BACKEND_SOURCE, "--source", FRONTEND_SOURCE,
+             "--graph", self.graph_path, "--page", self.page_path, "--log-level", "ERROR"]
         )
         self.assertEqual(0, exit_code)
 

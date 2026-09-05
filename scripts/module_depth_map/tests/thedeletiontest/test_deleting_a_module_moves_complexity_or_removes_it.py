@@ -114,7 +114,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, (package, body) in elsewhere.items():
             tree.java(package, name, body)
 
-        self.document = graph.build([graph.java_root(tree.root)], scoring.load(self.rules()))
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(self.rules()))
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -466,7 +466,7 @@ class TheSameSourceAlwaysGivesTheSameVerdictTest(SourceOfKnownShapeTest):
             self.collaborators(), **self.two_callers()
         ).items():
             tree.java(package, name, body)
-        root = graph.java_root(tree.root)
+        root = graph.source_root(tree.root)
 
         first = graph.build([root], scoring.load())
         second = graph.build([root], scoring.load())

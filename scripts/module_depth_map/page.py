@@ -460,11 +460,19 @@ _SCRIPT = """
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
   add(head, "p", "lede",
-    "Every module this application is made of, at class grain, grouped by the package it "
-    + "lives in, each drawn as what its interface costs a caller over a fan of everything "
-    + "it coordinates on that caller's behalf. An observation of the source it was "
-    + "generated from, and nothing more: nothing here is ranked, and no module here is "
-    + "proposed for change.");
+    "Every module this application is made of \u2014 both halves of it, "
+    + document_.source.languages.join(" and ") + " \u2014 grouped by the package it lives "
+    + "in, each drawn as what its interface costs a caller over a fan of everything it "
+    + "coordinates on that caller's behalf. An observation of the source it was generated "
+    + "from, and nothing more: nothing here is ranked, and no module here is proposed for "
+    + "change.");
+  add(head, "p", "lede",
+    "A module is anything with an interface and an implementation, and where that sits "
+    + "differs by language rather than by anybody's preference. A Java module is a class, "
+    + "because that is where a Java interface is written. A TypeScript module is a file, "
+    + "because that is what an import names and so is the whole of what a caller of one "
+    + "gets. Each card says which it is, and every card was measured by the same rules: "
+    + "one measure over the whole application, or the picture is of half of it.");
   add(head, "p", "lede",
     "Click any module \u2014 or tab to its name and press Enter \u2014 for everything "
     + "standing behind its shape: every method with what it costs a caller, everything it "
@@ -483,8 +491,11 @@ _SCRIPT = """
     add(pair, "dd", null, value);
   }
   fact("Source read", document_.source.roots.join(", "));
+  fact("Languages", document_.source.languages.join(", "));
   fact("Files parsed", document_.source.filesParsed + " of " + document_.source.filesSeen);
   fact("Files not parsed", document_.source.filesUnparsed);
+  fact("Paths not read", document_.source.notRead.paths.length + " \u2014 "
+    + document_.source.notRead.rule);
   fact("Packages", document_.packages.length);
   fact("Modules", document_.modules.length);
   fact("Modules scored", document_.scoring.modulesScored + " of " + document_.modules.length);
@@ -500,6 +511,29 @@ _SCRIPT = """
       add(item, "code", null, entry.root + "/" + entry.path);
       add(item, "span", null, " \\u2014 " + entry.reason);
     });
+  }
+
+  // Not the alarm band above: a path a rule declined is not a failure, and painting the
+  // two the same colour would have a `node_modules` reading as source this tool could not
+  // cope with. It is here at all because "what was left out, and under which rule" is a
+  // question a reader of a picture of an application is entitled to an answer to.
+  var declined = add(root, "section", "rules");
+  add(declined, "h2", null, "What was not read at all");
+  add(declined, "p", null, document_.source.notRead.because);
+  if (document_.source.notRead.paths.length > 0) {
+    add(declined, "p", null,
+      count(document_.source.notRead.paths.length, "path", "paths") + " under the source "
+      + "read above matched that rule, and nothing inside them is drawn here:");
+    var skipped = add(declined, "ul");
+    document_.source.notRead.paths.forEach(function (entry) {
+      var item = add(skipped, "li");
+      add(item, "code", null, entry.root + "/" + entry.path);
+      add(item, "span", null, " \u2014 " + entry.matched);
+    });
+  } else {
+    add(declined, "p", null,
+      "Nothing under the source read above matched that rule: the directories this tool "
+      + "was pointed at hold the application's own source and nothing else.");
   }
 
   var rules = add(root, "section", "rules");
@@ -558,10 +592,11 @@ _SCRIPT = """
   add(band, "p", null,
     "A refusal is read from the source's own words on both sides and guessed at on "
     + "neither: what a module documents is the @throws written over a method or a "
-    + "constructor a caller can reach, and what it raises is what its body throws — "
-    + "a constructor's body included, which is why a constructor's @throws is read as "
-    + "well. Where the two disagree the card says so, naming the refusal and both sides "
-    + "of it:");
+    + "constructor a caller can reach \u2014 in a javadoc block on the Java side and in a "
+    + "JSDoc block on the TypeScript side, which spell the tag the same way \u2014 and "
+    + "what it raises is what its body throws, a constructor's body included, which is why "
+    + "a constructor's @throws is read as well. Where the two disagree the card says so, "
+    + "naming the refusal and both sides of it:");
   var disagreements = add(band, "ul");
   [
     document_.scoring.refusals.documentedNeverRaised,
@@ -655,8 +690,12 @@ _SCRIPT = """
     + "found: a call written out in full, package and all (a.b.C.d()), a call through "
     + "something reached through something else (a.b.c()), and a call to a statically "
     + "imported member whose name the module's own body declares, which is read as the "
-    + "declaration it also is. Each leaves a fan shorter than the source, which is the "
-    + "direction this page is willing to be wrong in.");
+    + "declaration it also is. On the TypeScript side there are two more of the same kind: "
+    + "an import of a directory rather than of a file (./components, where the module is "
+    + "the index inside it), and a value a caller reads rather than calls, which is named "
+    + "on its module and priced nowhere \u2014 the same answer the Java side gives a public "
+    + "field. Each leaves a fan shorter than the source, which is the direction this page "
+    + "is willing to be wrong in.");
   add(fans, "p", null,
     "Readings that go the other way \u2014 the ones known, named here rather than left "
     + "to be found. Each one can draw a line to a card the source calls nothing on, and "
@@ -680,8 +719,43 @@ _SCRIPT = """
     + "framework class inherits its member types, and a type this graph does not hold "
     + "cannot be read, so a name javac binds to one of them is followed to a module of "
     + "that name here instead. Where the same is true of a method, the statically "
-    + "imported reading is refused outright rather than guessed at"
+    + "imported reading is refused outright rather than guessed at",
+    "text inside a JSX element, which is read as source \u2014 a TypeScript file is prose "
+    + "and code in the same braces, and telling them apart needs a JSX parser whose "
+    + "mistakes would blank real code rather than merely add to a fan. So a word in a "
+    + "paragraph with a bracket after it can be read as a call, and it draws a line only "
+    + "when the file also imports something of exactly that name"
   ].forEach(function (reading) { add(overstating, "li", null, reading); });
+
+  // The one section on this page about a single module, and it is here because the one
+  // thing this page can be misread as saying is that a big module is a deep one. Every
+  // number in it is the document's own: nothing is counted here, and the line count is
+  // printed precisely because it went into none of the others.
+  if (document_.scoring.largest !== null) {
+    var largest = document_.scoring.largest;
+    var size = add(root, "section", "rules");
+    add(size, "h2", null, "What a line count is worth here");
+    add(size, "p", null,
+      "Nothing. No measure on this page reads how long a module is: an interface costs "
+      + "what a caller must learn, a fan counts what a module coordinates, and neither "
+      + "can be moved by writing more lines. That is not a detail of the implementation "
+      + "\u2014 it is the whole reason this page draws shapes rather than sizes, because "
+      + "under a measure of implementation lines over interface lines the longest file in "
+      + "a repository is always its deepest module.");
+    add(size, "p", null,
+      "The longest module here is " + largest.moduleId + ", at "
+      + count(largest.lines, "line", "lines") + " of " + largest.language + ". It presents "
+      + count(largest.methods, "method", "methods") + ", costing "
+      + count(largest.interfaceCost, "unit", "units") + " of interface, over a fan of "
+      + count(largest.reach, "thing", "things")
+      + (largest.leverage === null
+         ? ", and no leverage is printed for it because there is no interface cost to "
+           + "divide by"
+         : " \u2014 leverage " + largest.leverage)
+      + ". Its card is below, in " + largest.package + ", drawn to the same scale as every "
+      + "other card and read by the same rules. Whether that is a good shape or a bad one "
+      + "is a question for whoever reads the file; this page only says what the shape is.");
+  }
 
   var deletion = add(root, "section", "rules");
   add(deletion, "h2", null, "What the verdict says");

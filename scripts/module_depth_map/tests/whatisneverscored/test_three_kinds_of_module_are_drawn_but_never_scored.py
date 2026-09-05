@@ -20,7 +20,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -365,7 +365,7 @@ class NoModuleIsExcludedWithoutARuleThatSaysSoTest(SourceOfKnownShapeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "Receipt", "public record Receipt(long cents) {}")
 
-        document = graph.build([graph.java_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules)
 
         self.assertEqual("first", document["modules"][0]["excludedBy"]["rule"])
 

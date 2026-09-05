@@ -226,7 +226,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.gate", name, body)
 
-        self.document = graph.build([graph.java_root(tree.root)], scoring.load(self.rules()))
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(self.rules()))
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}

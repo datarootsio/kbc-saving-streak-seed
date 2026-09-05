@@ -142,7 +142,7 @@ class FlowTest(SourceTreeTest):
             ("Tills", A_PROMISE_WITH_NO_BODY_UNDER_IT),
         ):
             tree.java("shop.till", name, body)
-        self.root = graph.java_root(tree.root)
+        self.root = graph.source_root(tree.root)
 
     def rules_naming(self, *flows):
         """The tool's own configuration with these flows in place of the ones it ships."""
@@ -346,7 +346,7 @@ class AFlowIsWalkedOutOfTheCallGraphTest(FlowTest):
     def test_the_transaction_a_module_establishes_is_reached_and_is_not_a_step(self):
         """A flow passes through modules; nothing on the page could be highlighted for it."""
         document = graph.build(
-            [graph.java_root(BACKEND_SOURCE)], scoring.load()
+            [graph.source_root(BACKEND_SOURCE)], scoring.load()
         )
         by_id = {module["id"]: module for module in document["modules"]}
         deposit = [flow for flow in document["flows"] if flow["flow"] == "a deposit"][0]
@@ -568,7 +568,7 @@ class TheFlowsThisRepositoryShipsTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
         self.flows = {flow["flow"]: flow for flow in self.document["flows"]}
 
     def test_a_deposit_a_withdrawal_and_a_reward_claim_are_each_available_as_a_flow(self):

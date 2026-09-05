@@ -775,6 +775,383 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   "modules": [
     {
       "callers": {
+        "count": 1,
+        "moduleIds": [
+          "frontend/src/main"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 1,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 1,
+        "leverage": 1.0,
+        "reach": 1
+      },
+      "excludedBy": null,
+      "findings": [],
+      "id": "frontend/src/App",
+      "interface": {
+        "cost": 1,
+        "costWithoutRefusals": 1,
+        "methods": [
+          {
+            "cost": 1,
+            "documentedRefusals": [],
+            "name": "App",
+            "parameters": [],
+            "returns": "(inferred)",
+            "visibility": "public"
+          }
+        ],
+        "refusalCost": 0,
+        "refusals": [],
+        "typesCrossingTheSeam": []
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 1545,
+      "name": "App",
+      "nested": [
+        "Celebration",
+        "SavingsAccountView"
+      ],
+      "package": "frontend/src",
+      "path": "App.tsx",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "calls claimReward, which this file imports from it",
+            "moduleId": "frontend/src/api",
+            "name": "api"
+          }
+        ]
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "frontend/src/App"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 11,
+        "reach": 0,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 49,
+        "leverage": 0.0,
+        "reach": 0
+      },
+      "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "Error"
+        },
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "SignInFailed"
+        }
+      ],
+      "id": "frontend/src/api",
+      "interface": {
+        "cost": 49,
+        "costWithoutRefusals": 45,
+        "methods": [
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "claimReward",
+            "parameters": [
+              "number",
+              "string"
+            ],
+            "returns": "Promise\u003cClaimedReward\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchAccounts",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cCustomerAccounts\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchClaimed",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cClaimedReward[]\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 1,
+            "documentedRefusals": [],
+            "name": "fetchCustomers",
+            "parameters": [],
+            "returns": "Promise\u003cCustomer[]\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchDeposits",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cRecordedDeposit[]\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "documentedRefusals": [],
+            "name": "fetchRewards",
+            "parameters": [
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cReward[]\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchSavingsAccount",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cSavingsAccountBalances\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 3,
+            "documentedRefusals": [],
+            "name": "fetchWithdrawals",
+            "parameters": [
+              "number",
+              "AbortSignal"
+            ],
+            "returns": "Promise\u003cRecordedWithdrawal[]\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 4,
+            "documentedRefusals": [],
+            "name": "makeDeposit",
+            "parameters": [
+              "number",
+              "string",
+              "number"
+            ],
+            "returns": "Promise\u003cRecordedDeposit\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 4,
+            "documentedRefusals": [],
+            "name": "makeWithdrawal",
+            "parameters": [
+              "number",
+              "string",
+              "number"
+            ],
+            "returns": "Promise\u003cRecordedWithdrawal\u003e",
+            "visibility": "public"
+          },
+          {
+            "cost": 2,
+            "documentedRefusals": [],
+            "name": "signIn",
+            "parameters": [
+              "string"
+            ],
+            "returns": "Promise\u003cCustomer\u003e",
+            "visibility": "public"
+          }
+        ],
+        "refusalCost": 4,
+        "refusals": [
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "Error",
+            "raised": true
+          },
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "SignInFailed",
+            "raised": true
+          }
+        ],
+        "typesCrossingTheSeam": [
+          {
+            "mustBeLearned": false,
+            "name": "AbortSignal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "ClaimedReward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Customer"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "CustomerAccounts"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "Promise"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedDeposit"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "RecordedWithdrawal"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "Reward"
+          },
+          {
+            "mustBeLearned": true,
+            "name": "SavingsAccountBalances"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "number"
+          },
+          {
+            "mustBeLearned": false,
+            "name": "string"
+          }
+        ]
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 272,
+      "name": "api",
+      "nested": [
+        "ClaimedReward",
+        "CurrentAccount",
+        "Customer",
+        "CustomerAccounts",
+        "RecordedDeposit",
+        "RecordedWithdrawal",
+        "Reward",
+        "SavingsAccount",
+        "SavingsAccountBalances",
+        "SignInFailed"
+      ],
+      "package": "frontend/src",
+      "path": "api.ts",
+      "reach": {
+        "count": 0,
+        "reaches": []
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 0,
+        "reach": 1,
+        "verdict": "no finding"
+      },
+      "depth": {
+        "interfaceCost": 2,
+        "leverage": 0.5,
+        "reach": 1
+      },
+      "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "Error"
+        }
+      ],
+      "id": "frontend/src/main",
+      "interface": {
+        "cost": 2,
+        "costWithoutRefusals": 0,
+        "methods": [],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "checked": true,
+            "documented": false,
+            "documentedBy": [],
+            "name": "Error",
+            "raised": true
+          }
+        ],
+        "typesCrossingTheSeam": []
+      },
+      "kind": "file",
+      "language": "typescript",
+      "lines": 15,
+      "name": "main",
+      "nested": [],
+      "package": "frontend/src",
+      "path": "main.tsx",
+      "reach": {
+        "count": 1,
+        "reaches": [
+          {
+            "kind": "module",
+            "matched": "builds one",
+            "moduleId": "frontend/src/App",
+            "name": "App"
+          }
+        ]
+      },
+      "root": "frontend/src"
+    },
+    {
+      "callers": {
         "count": 0,
         "moduleIds": []
       },
@@ -7317,6 +7694,14 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   "packages": [
     {
       "moduleIds": [
+        "frontend/src/App",
+        "frontend/src/api",
+        "frontend/src/main"
+      ],
+      "name": "frontend/src"
+    },
+    {
+      "moduleIds": [
         "io.dataroots.savingstreak.SavingStreakApplication"
       ],
       "name": "io.dataroots.savingstreak"
@@ -7427,7 +7812,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/7",
+  "schema": "module-depth-map/8",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "deletionTest": {
@@ -7445,7 +7830,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
           "verdict": "earns its keep"
         },
         {
-          "modules": 22,
+          "modules": 25,
           "verdict": "no finding"
         }
       ],
@@ -7480,8 +7865,19 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
         "rule": "entry point"
       }
     ],
+    "largest": {
+      "interfaceCost": 1,
+      "language": "typescript",
+      "leverage": 1.0,
+      "lines": 1545,
+      "methods": 1,
+      "moduleId": "frontend/src/App",
+      "name": "App",
+      "package": "frontend/src",
+      "reach": 1
+    },
     "modulesNeverScored": 36,
-    "modulesScored": 35,
+    "modulesScored": 38,
     "reach": {
       "adapter": "An interface whose implementation Spring Data generates at run time is how this application reaches its database. A module that drives one coordinates storage its caller never has to open, which is the plainest kind of reach there is.",
       "persistentRecord": "A type marked as an entity is a row that outlives the call it was written in. A module reaching one is keeping a record on its caller's behalf: it decides what goes into it, and the caller learns neither the table nor the identifier it was written under.",
@@ -7508,18 +7904,20 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
         },
         {
           "finding": "raised but never documented",
-          "findings": 6
+          "findings": 9
         }
       ],
-      "modulesWithFindings": 6,
+      "modulesWithFindings": 8,
       "raisedNeverDocumented": {
         "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
         "finding": "raised but never documented"
       },
       "refusalsNotChecked": 0,
-      "refusalsRead": 13
+      "refusalsRead": 16
     },
     "typesEveryCallerAlreadyKnows": [
+      "AbortSignal",
+      "Array",
       "BigDecimal",
       "BigInteger",
       "Boolean",
@@ -7529,8 +7927,10 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "Clock",
       "Collection",
       "Comparable",
+      "Date",
       "Double",
       "Duration",
+      "Error",
       "Exception",
       "Float",
       "Instant",
@@ -7544,6 +7944,9 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "Number",
       "Object",
       "Optional",
+      "Promise",
+      "Record",
+      "Response",
       "RuntimeException",
       "Set",
       "Short",
@@ -7552,6 +7955,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "Throwable",
       "Void",
       "ZoneId",
+      "any",
+      "bigint",
       "boolean",
       "byte",
       "char",
@@ -7559,7 +7964,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "float",
       "int",
       "long",
-      "short"
+      "never",
+      "null",
+      "number",
+      "object",
+      "short",
+      "string",
+      "symbol",
+      "undefined",
+      "unknown"
     ],
     "weights": {
       "method": 1,
@@ -7568,15 +7981,25 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "typeEveryCallerAlreadyKnows": 0,
       "typeToLearn": 2
     },
-    "widestInterface": 33,
+    "widestInterface": 49,
     "widestReach": 11
   },
   "source": {
-    "filesParsed": 71,
-    "filesSeen": 71,
+    "filesParsed": 74,
+    "filesSeen": 74,
     "filesUnparsed": 0,
+    "languages": [
+      "java",
+      "typescript"
+    ],
+    "notRead": {
+      "because": "The graph covers the application's own source and nothing else. Test code is written to check a module rather than to be one, so scoring it would measure the checking; build output is derived from source that has already been read, so it would draw the same module twice; and an installed dependency is somebody else's source, which nobody in this repository can act on and which would arrive by the tens of thousands of files. Each would put modules on the page that nobody here wrote, and the finding would be buried under them. A directory is named outright and never walked into, which is what keeps a node_modules to one line in the graph instead of everything inside it; a file is matched on what its name ends with, which is how both languages here spell a test and how TypeScript spells a generated declaration. The names here are ones nothing but a tool ever writes: a bare test or tests is deliberately not among them, because that is a legal Java package name and a rule that quietly took a package of the application's own source off the page would be worse than one that misses a directory somebody can add to this list.",
+      "paths": [],
+      "rule": "not the application's own source"
+    },
     "roots": [
-      "backend/src/main/java"
+      "backend/src/main/java",
+      "frontend/src"
     ],
     "unparsed": []
   }
@@ -7631,12 +8054,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // of an older shape has no `scoring` object, and reaching into one would throw halfway
   // down a single pass — which a reader sees as a page that stopped early or never
   // started, not as a page that could not be drawn. Said out loud instead.
-  if (document_.schema !== "module-depth-map/7") {
+  if (document_.schema !== "module-depth-map/8") {
     var wrong = add(root, "div", "unread");
     add(wrong, "h2", null, "This page cannot draw the document it carries");
     add(wrong, "p", null,
       "The document carried inside this file says its shape is "
-      + document_.schema + ", and this page draws module-depth-map/7. Nothing below is drawn: "
+      + document_.schema + ", and this page draws module-depth-map/8. Nothing below is drawn: "
       + "half a document, drawn as though it were whole, is the one thing a reader "
       + "cannot check.");
     return;
@@ -7645,11 +8068,19 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
   add(head, "p", "lede",
-    "Every module this application is made of, at class grain, grouped by the package it "
-    + "lives in, each drawn as what its interface costs a caller over a fan of everything "
-    + "it coordinates on that caller's behalf. An observation of the source it was "
-    + "generated from, and nothing more: nothing here is ranked, and no module here is "
-    + "proposed for change.");
+    "Every module this application is made of — both halves of it, "
+    + document_.source.languages.join(" and ") + " — grouped by the package it lives "
+    + "in, each drawn as what its interface costs a caller over a fan of everything it "
+    + "coordinates on that caller's behalf. An observation of the source it was generated "
+    + "from, and nothing more: nothing here is ranked, and no module here is proposed for "
+    + "change.");
+  add(head, "p", "lede",
+    "A module is anything with an interface and an implementation, and where that sits "
+    + "differs by language rather than by anybody's preference. A Java module is a class, "
+    + "because that is where a Java interface is written. A TypeScript module is a file, "
+    + "because that is what an import names and so is the whole of what a caller of one "
+    + "gets. Each card says which it is, and every card was measured by the same rules: "
+    + "one measure over the whole application, or the picture is of half of it.");
   add(head, "p", "lede",
     "Click any module — or tab to its name and press Enter — for everything "
     + "standing behind its shape: every method with what it costs a caller, everything it "
@@ -7668,8 +8099,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     add(pair, "dd", null, value);
   }
   fact("Source read", document_.source.roots.join(", "));
+  fact("Languages", document_.source.languages.join(", "));
   fact("Files parsed", document_.source.filesParsed + " of " + document_.source.filesSeen);
   fact("Files not parsed", document_.source.filesUnparsed);
+  fact("Paths not read", document_.source.notRead.paths.length + " — "
+    + document_.source.notRead.rule);
   fact("Packages", document_.packages.length);
   fact("Modules", document_.modules.length);
   fact("Modules scored", document_.scoring.modulesScored + " of " + document_.modules.length);
@@ -7685,6 +8119,29 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       add(item, "code", null, entry.root + "/" + entry.path);
       add(item, "span", null, " \u2014 " + entry.reason);
     });
+  }
+
+  // Not the alarm band above: a path a rule declined is not a failure, and painting the
+  // two the same colour would have a `node_modules` reading as source this tool could not
+  // cope with. It is here at all because "what was left out, and under which rule" is a
+  // question a reader of a picture of an application is entitled to an answer to.
+  var declined = add(root, "section", "rules");
+  add(declined, "h2", null, "What was not read at all");
+  add(declined, "p", null, document_.source.notRead.because);
+  if (document_.source.notRead.paths.length > 0) {
+    add(declined, "p", null,
+      count(document_.source.notRead.paths.length, "path", "paths") + " under the source "
+      + "read above matched that rule, and nothing inside them is drawn here:");
+    var skipped = add(declined, "ul");
+    document_.source.notRead.paths.forEach(function (entry) {
+      var item = add(skipped, "li");
+      add(item, "code", null, entry.root + "/" + entry.path);
+      add(item, "span", null, " — " + entry.matched);
+    });
+  } else {
+    add(declined, "p", null,
+      "Nothing under the source read above matched that rule: the directories this tool "
+      + "was pointed at hold the application's own source and nothing else.");
   }
 
   var rules = add(root, "section", "rules");
@@ -7743,10 +8200,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   add(band, "p", null,
     "A refusal is read from the source's own words on both sides and guessed at on "
     + "neither: what a module documents is the @throws written over a method or a "
-    + "constructor a caller can reach, and what it raises is what its body throws — "
-    + "a constructor's body included, which is why a constructor's @throws is read as "
-    + "well. Where the two disagree the card says so, naming the refusal and both sides "
-    + "of it:");
+    + "constructor a caller can reach — in a javadoc block on the Java side and in a "
+    + "JSDoc block on the TypeScript side, which spell the tag the same way — and "
+    + "what it raises is what its body throws, a constructor's body included, which is why "
+    + "a constructor's @throws is read as well. Where the two disagree the card says so, "
+    + "naming the refusal and both sides of it:");
   var disagreements = add(band, "ul");
   [
     document_.scoring.refusals.documentedNeverRaised,
@@ -7840,8 +8298,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "found: a call written out in full, package and all (a.b.C.d()), a call through "
     + "something reached through something else (a.b.c()), and a call to a statically "
     + "imported member whose name the module's own body declares, which is read as the "
-    + "declaration it also is. Each leaves a fan shorter than the source, which is the "
-    + "direction this page is willing to be wrong in.");
+    + "declaration it also is. On the TypeScript side there are two more of the same kind: "
+    + "an import of a directory rather than of a file (./components, where the module is "
+    + "the index inside it), and a value a caller reads rather than calls, which is named "
+    + "on its module and priced nowhere — the same answer the Java side gives a public "
+    + "field. Each leaves a fan shorter than the source, which is the direction this page "
+    + "is willing to be wrong in.");
   add(fans, "p", null,
     "Readings that go the other way — the ones known, named here rather than left "
     + "to be found. Each one can draw a line to a card the source calls nothing on, and "
@@ -7865,8 +8327,43 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "framework class inherits its member types, and a type this graph does not hold "
     + "cannot be read, so a name javac binds to one of them is followed to a module of "
     + "that name here instead. Where the same is true of a method, the statically "
-    + "imported reading is refused outright rather than guessed at"
+    + "imported reading is refused outright rather than guessed at",
+    "text inside a JSX element, which is read as source — a TypeScript file is prose "
+    + "and code in the same braces, and telling them apart needs a JSX parser whose "
+    + "mistakes would blank real code rather than merely add to a fan. So a word in a "
+    + "paragraph with a bracket after it can be read as a call, and it draws a line only "
+    + "when the file also imports something of exactly that name"
   ].forEach(function (reading) { add(overstating, "li", null, reading); });
+
+  // The one section on this page about a single module, and it is here because the one
+  // thing this page can be misread as saying is that a big module is a deep one. Every
+  // number in it is the document's own: nothing is counted here, and the line count is
+  // printed precisely because it went into none of the others.
+  if (document_.scoring.largest !== null) {
+    var largest = document_.scoring.largest;
+    var size = add(root, "section", "rules");
+    add(size, "h2", null, "What a line count is worth here");
+    add(size, "p", null,
+      "Nothing. No measure on this page reads how long a module is: an interface costs "
+      + "what a caller must learn, a fan counts what a module coordinates, and neither "
+      + "can be moved by writing more lines. That is not a detail of the implementation "
+      + "— it is the whole reason this page draws shapes rather than sizes, because "
+      + "under a measure of implementation lines over interface lines the longest file in "
+      + "a repository is always its deepest module.");
+    add(size, "p", null,
+      "The longest module here is " + largest.moduleId + ", at "
+      + count(largest.lines, "line", "lines") + " of " + largest.language + ". It presents "
+      + count(largest.methods, "method", "methods") + ", costing "
+      + count(largest.interfaceCost, "unit", "units") + " of interface, over a fan of "
+      + count(largest.reach, "thing", "things")
+      + (largest.leverage === null
+         ? ", and no leverage is printed for it because there is no interface cost to "
+           + "divide by"
+         : " — leverage " + largest.leverage)
+      + ". Its card is below, in " + largest.package + ", drawn to the same scale as every "
+      + "other card and read by the same rules. Whether that is a good shape or a bad one "
+      + "is a question for whoever reads the file; this page only says what the shape is.");
+  }
 
   var deletion = add(root, "section", "rules");
   add(deletion, "h2", null, "What the verdict says");

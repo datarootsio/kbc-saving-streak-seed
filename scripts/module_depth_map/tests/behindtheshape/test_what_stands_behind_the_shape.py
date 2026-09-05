@@ -139,7 +139,7 @@ class BehindTheShapeTest(SourceTreeTest):
             ("Market", ANOTHER_CALLER),
         ):
             tree.java("shop.till", name, body)
-        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
         self.assertEqual([], self.document["source"]["unparsed"])
         self.modules = {module["name"]: module for module in self.document["modules"]}
         self.rendered = page.render(

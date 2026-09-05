@@ -253,6 +253,18 @@ _KINDS = {
 # condition that can never hold is a rule nobody can tell from a rule that never fired.
 KINDS = tuple(sorted(set(_KINDS.values())))
 
+# What this reading is called in the graph, and which files it is the reading of. Both are
+# read from here rather than written anywhere else, because there are now two of these
+# modules and a language named in two places is one that can be renamed in one of them.
+NAME = "java"
+SUFFIXES = (".java",)
+
+# How a fan line says that a module was reached by calling a member it imported. The
+# sentence lives beside the reading that produces it, because Java and TypeScript reach
+# each other's modules by different mechanisms and one sentence for both would describe
+# neither: `import static a.b.C.of` introduces the member `of` and never the name `C`.
+IMPORTED_EVIDENCE = "calls %s, imported statically from it"
+
 
 class ParseFailure(Exception):
     """A source file the tool could not read. Carries the reason, never just the fact."""
@@ -705,8 +717,15 @@ def _body_starts_at(offsets, position, depth):
     return offsets[after][0]
 
 
-def parse(text, path):
-    """What this Java file contains, or a ParseFailure naming why it could not be read."""
+def parse(text, path, root=None):
+    """What this Java file contains, or a ParseFailure naming why it could not be read.
+
+    `root` is the source root the file was found under, and Java does not use it: a Java
+    file says which module it declares in its own `package` line, so where the root sits
+    changes nothing about the answer. It is in the signature because the TypeScript side's
+    answer is a path, and whoever reads a file has to be able to ask either of them the
+    same question.
+    """
     masked, documentation = _masked(text)
     documented = _refusals_documented_in(text, documentation)
     lines = len(text.splitlines())
@@ -1117,7 +1136,7 @@ def _components_in(header, line):
     if opened < 0:
         return []
     return _declared_parameters(
-        header[opened + 1:_after_balanced(header, opened) - 1], line
+        header[opened + 1:after_balanced(header, opened) - 1], line
     )
 
 
@@ -1494,7 +1513,7 @@ def _calls_in(body):
             continue
         opened = match.end() - 1
         found.append(
-            (match.start(1), _after_balanced(body, opened),
+            (match.start(1), after_balanced(body, opened),
              CallSite(None if receiver == "this" else receiver, name))
         )
     for match in _A_CALL.finditer(body):
@@ -1515,7 +1534,7 @@ def _calls_in(body):
         if _declares_rather_than_calls(body, match.start(1)):
             continue
         opened = match.end() - 1
-        found.append((match.start(1), _after_balanced(body, opened), CallSite(None, name)))
+        found.append((match.start(1), after_balanced(body, opened), CallSite(None, name)))
     for match in _CONSTRUCTED.finditer(body):
         built = match.group(1)
         if _AN_ARRAY_CREATION.match(body, match.end(1)):
@@ -1524,7 +1543,7 @@ def _calls_in(body):
             (match.start(), _after_the_arguments(body, match.end(1)),
              CallSite(None, built, builds=True))
         )
-    return _in_evaluation_order(found)
+    return in_evaluation_order(found)
 
 
 def _after_the_arguments(body, after_the_name):
@@ -1552,17 +1571,22 @@ def _after_the_arguments(body, after_the_name):
         while position < len(body) and body[position] in " \t\r\n":
             position += 1
     if position < len(body) and body[position] == "(":
-        return _after_balanced(body, position)
+        return after_balanced(body, position)
     return after_the_name
 
 
-def _in_evaluation_order(found):
+def in_evaluation_order(found):
     """The sites sorted so that each one comes after everything written inside its arguments.
 
     Java evaluates a call's arguments before the call itself, so the deposit in
     `deposits.save(new Deposit(...))` is built before it is saved. Sorting on where each
     site starts says the opposite, and put a repository on a flow one step ahead of the
     record it was handed.
+
+    Public, and read by the TypeScript side as well, because this is about brackets and
+    the order arguments are evaluated in rather than about Java: JavaScript evaluates a
+    call's arguments first too, and spells both the same way. A second account of it
+    would be one that could drift.
     """
     ordered = []
     open_sites = []
@@ -1693,7 +1717,7 @@ def _member_headers(masked, kind, body_starts_at, body_ends_at):
         elif character == ")":
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
-            ends = _after_balanced(masked, position, "{", "}")
+            ends = after_balanced(masked, position, "{", "}")
             headers.append(_header(masked, start, position, masked[position:ends]))
             position = ends
             start = position
@@ -1738,7 +1762,7 @@ def _after_enum_constants(masked, start, body_ends_at):
         elif character == ")":
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
-            position = _after_balanced(masked, position, "{", "}")
+            position = after_balanced(masked, position, "{", "}")
             continue
         elif parens == 0 and character == ";":
             return position + 1
@@ -1790,7 +1814,7 @@ def _method_in(member, holder_kind, line, documented_refusals=(), body=None):
     name = _TRAILING_NAME.search(signature)
     if name is None:
         return _declined(member, line, "nothing before the brackets reads as a name")
-    closed = _after_balanced(text, opened)
+    closed = after_balanced(text, opened)
     returns = _normalised(signature[:name.start()])
     if not returns:
         return _declined(member, line, "it hands nothing back, so it is a constructor")
@@ -1874,7 +1898,7 @@ def _annotations_on(member):
             found.append(annotation.group(1).rsplit(".", 1)[-1])
             rest = rest[annotation.end():].lstrip()
             if rest.startswith("("):
-                rest = rest[_after_balanced(rest, 0):].lstrip()
+                rest = rest[after_balanced(rest, 0):].lstrip()
             continue
         word = _LEADING_WORD.match(rest)
         if word is None or word.group(1) not in _MODIFIERS:
@@ -2039,7 +2063,7 @@ def _visibility(modifiers, holder_kind, of_a_constructor=False):
 def _without_type_parameters(rest):
     """`<T extends Comparable<T>> T largest` is `T largest`: the bounds are not the type."""
     rest = rest.lstrip()
-    return rest[_after_balanced(rest, 0, "<", ">"):] if rest.startswith("<") else rest
+    return rest[after_balanced(rest, 0, "<", ">"):] if rest.startswith("<") else rest
 
 
 def _type_parameters_in(text):
@@ -2057,7 +2081,7 @@ def _type_parameters_in(text):
     text = text.lstrip()
     if not text.startswith("<"):
         return ()
-    inside = text[1:_after_balanced(text, 0, "<", ">") - 1]
+    inside = text[1:after_balanced(text, 0, "<", ">") - 1]
     names = []
     for part in _split_on_commas(inside):
         found = _LEADING_TYPE_PARAMETER.match(_without_annotations(part))
@@ -2081,7 +2105,7 @@ def _without_annotations(text):
                 while position < len(text) and text[position] in " \t\r\n":
                     position += 1
                 if position < len(text) and text[position] == "(":
-                    position = _after_balanced(text, position)
+                    position = after_balanced(text, position)
                 continue
         out.append(text[position])
         position += 1
@@ -2127,8 +2151,12 @@ def _split_on_commas(text):
     return parts
 
 
-def _after_balanced(text, position, opening="(", closing=")"):
-    """Just past the bracket that closes the one at `position`, or the end of the text."""
+def after_balanced(text, position, opening="(", closing=")"):
+    """Just past the bracket that closes the one at `position`, or the end of the text.
+
+    Public, and read by the TypeScript side too, for the same reason `in_evaluation_order`
+    is: matching a bracket to its partner is about brackets and not about Java.
+    """
     depth = 0
     while position < len(text):
         if text[position] == opening:
@@ -2144,7 +2172,7 @@ def _after_balanced(text, position, opening="(", closing=")"):
 def _before_balanced(text, opening="(", closing=")"):
     """Where the bracket that closes this text opens, or None when nothing opens it.
 
-    The mirror of `_after_balanced`, for reading backwards: the only way to find the front
+    The mirror of `after_balanced`, for reading backwards: the only way to find the front
     of an annotation's argument list from the keyword it sits in front of.
     """
     depth = 0
@@ -2210,6 +2238,50 @@ def candidate_ids(name, package, imports):
         if imported.on_demand:
             found.append(imported.type + "." + name)
     return found
+
+
+def module_id(package, name):
+    """The id a module of this name in this package is known by: its fully qualified name.
+
+    One line, and it lives here rather than in whoever builds the graph, because the two
+    languages this tool reads spell a module's identity differently — Java by the package
+    it declares, TypeScript by the path the file sits at — and a graph that composed one
+    of them itself would be a second account of what a module is called.
+    """
+    return package + "." + name if package else name
+
+
+def followed(name, package, imports):
+    """Every module id a name written in a body could mean, best first, or none at all.
+
+    Java's own order, and its own refusal to guess: a name written out in full means the
+    module of that id and nothing else, while a simple name is settled by the file's
+    imports and then by its package. Whoever asks tries them against the modules the
+    graph actually holds and takes the first that is one.
+
+    The wrapper around `candidate_ids` earns its place on the qualified branch: the
+    package in front of `new other.Receipt()` is the answer rather than something to cut
+    off and look up again, and cutting it off is how that construction was once read as
+    building this package's own `Receipt` — a different module, of a different kind, under
+    an evidence string a reader could check and find false.
+    """
+    if "." in name:
+        return [name]
+    return candidate_ids(name, package, imports)
+
+
+def crosses_the_seam(written):
+    """Every type a caller meets in this parameter or return, by the simple name of each.
+
+    `void` is answered with nothing at all, and not because of a weight: a method that
+    hands nothing back puts nothing across the seam on the way out, so there is no type
+    there for any weight to price. Java writes the word where a return type goes, which is
+    how it came to be counted — nine modules on the committed page carried it, and a
+    caller of `public void f()` was charged for one type where they meet none.
+    """
+    if written == NOTHING_RETURNED:
+        return []
+    return names_in(written)
 
 
 def written_names_in(written):

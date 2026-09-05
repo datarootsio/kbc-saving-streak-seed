@@ -9,11 +9,12 @@ source root they were found under, the source root is recorded relative to the r
 that holds it, and nothing is read from the clock.
 """
 
+import collections
 import json
 import logging
 import os
 
-from . import javasource
+from . import javasource, languages
 
 log = logging.getLogger("module_depth_map.graph")
 
@@ -33,8 +34,11 @@ log = logging.getLogger("module_depth_map.graph")
 # there is none. It moved to /7 when that walk became a walk of the *calls* the entry
 # method makes rather than of the entry module's reach, so every step gained the
 # `calledFrom` and the `call` that put the flow there — the method the call was written
-# in, and the call as the source wrote it.
-SCHEMA = "module-depth-map/7"
+# in, and the call as the source wrote it. It moved to /8 when the document stopped being
+# a document about the backend: `source` grew the paths a named rule declined to read at
+# all, `scoring` grew the `largest` module and the numbers it was measured at, and a
+# module's `language` became a thing a reader has to look at rather than a constant.
+SCHEMA = "module-depth-map/8"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -72,18 +76,33 @@ class SourceUnreadable(Exception):
         self.reason = reason
 
 
+# One module as it was read: the entry in the document, the declaration behind it, the
+# file it came out of, and the language all three were read with. A tuple of four, named,
+# because three of the passes below want a different one of them and unpacking by
+# position made the language look like an afterthought hung off the end.
+_Read = collections.namedtuple("_Read", "module declared parsed language")
+
+
 class SourceRoot:
     """A directory of source, and the name the graph will know it by.
 
     The label is what keeps an absolute path out of the output: a root is named by where
     it sits inside its repository, never by where the repository sits on this machine.
+
+    A root is a directory rather than a language. Which language a file is read with is
+    decided by its own ending, the way `.java` already decided it when there was only one:
+    nothing has to be said on a command line, a directory holding both is read as both,
+    and adding a third language is a file in `languages` rather than an argument here.
     """
 
-    def __init__(self, path, label, language, suffixes):
+    def __init__(self, path, label):
         self.path = path
         self.label = label
-        self.language = language
-        self.suffixes = suffixes
+        self.suffixes = languages.SUFFIXES
+
+    def language_of(self, path):
+        """The language this file under the root is read with."""
+        return languages.of(path)
 
 
 def label_for(path):
@@ -106,8 +125,9 @@ def label_for(path):
         walk = parent
 
 
-def java_root(path):
-    return SourceRoot(path, label_for(path), "java", (".java",))
+def source_root(path):
+    """A directory of source, read in whatever languages this tool knows the endings of."""
+    return SourceRoot(path, label_for(path))
 
 
 def _relative(whole, base):
@@ -116,17 +136,26 @@ def _relative(whole, base):
     return "" if relative == "." else relative
 
 
-def _files_under(root):
-    """Every source file under this root, and every directory that would not open.
+def _files_under(root, declined):
+    """Every source file under this root, what would not open, and what a rule declined.
 
     Nothing under a root is passed over in silence, because a directory the walk skipped
     takes every module in it off the page while every count still adds up. A directory
     that cannot be listed comes back as a named failure, and a symlinked one is followed
     rather than stepped over — once, so that a link pointing back up the tree cannot make
     the same file arrive twice under two names.
+
+    `declined` is the third answer, and the one this graph is a graph of the application
+    because of: test code, build output and installed dependencies are not the
+    application's own source, and reading them would put modules on the page that nobody
+    here wrote. It is a rule in the scoring file rather than a list in this one, so
+    "why was this not read?" has a name and a sentence behind it exactly as every other
+    exclusion here does — and so that a `node_modules` is skipped as one path rather than
+    walked into and reported as forty thousand.
     """
     found = []
     unreadable = []
+    not_read = []
     read_already = {}
 
     def refuse(error):
@@ -155,14 +184,30 @@ def _files_under(root):
         # read, so it is fixed here rather than left to the order the filesystem hands
         # back. The files themselves are sorted once, at the end.
         subdirectories.sort()
-        for name in names:
-            if name.endswith(root.suffixes):
+        walk_into = []
+        for name in subdirectories:
+            if name in declined.directories:
                 whole = os.path.join(directory, name)
-                found.append((whole, _relative(whole, root.path)))
+                not_read.append(
+                    (_relative(whole, root.path), "a directory named %s" % name)
+                )
+                continue
+            walk_into.append(name)
+        subdirectories[:] = walk_into
+        for name in names:
+            if not name.endswith(root.suffixes):
+                continue
+            whole = os.path.join(directory, name)
+            ending = declined.ending_of(name)
+            if ending is not None:
+                not_read.append((_relative(whole, root.path), "a name ending in %s" % ending))
+                continue
+            found.append((whole, _relative(whole, root.path)))
 
     found.sort(key=lambda pair: pair[1])
     unreadable.sort()
-    return found, unreadable
+    not_read.sort()
+    return found, unreadable, not_read
 
 
 def build(roots, rules):
@@ -183,12 +228,23 @@ def build(roots, rules):
     """
     modules = []
     unparsed = []
+    declined = []
     read = []
     seen = 0
 
     for root in roots:
-        log.debug("reading source root label=%s language=%s", root.label, root.language)
-        files, unreadable_directories = _files_under(root)
+        log.debug("reading source root label=%s", root.label)
+        files, unreadable_directories, not_read = _files_under(root, rules.sources_not_read)
+
+        for relative, matched in not_read:
+            log.info(
+                "source not read root=%s path=%s rule=%s matched=%s",
+                root.label,
+                relative,
+                rules.sources_not_read.rule,
+                matched,
+            )
+            declined.append({"root": root.label, "path": relative, "matched": matched})
 
         for relative, reason in unreadable_directories:
             seen += 1
@@ -215,12 +271,14 @@ def build(roots, rules):
                     {"root": root.label, "path": relative, "reason": unreadable.reason}
                 )
                 continue
+            language = root.language_of(relative)
             try:
-                parsed = javasource.parse(text, relative)
+                parsed = language.parse(text, relative, root)
             except javasource.ParseFailure as failure:
                 log.warning(
-                    "could not parse source file root=%s path=%s reason=%s",
+                    "could not parse source file root=%s language=%s path=%s reason=%s",
                     root.label,
+                    language.NAME,
                     relative,
                     failure.reason,
                 )
@@ -230,23 +288,24 @@ def build(roots, rules):
                 excluded = rules.excluded_by(declared)
                 modules.append(
                     {
-                        "id": parsed.package + "." + declared.name,
+                        "id": language.module_id(parsed.package, declared.name),
                         "name": declared.name,
                         "package": parsed.package,
                         "kind": declared.kind,
-                        "language": root.language,
+                        "language": language.NAME,
                         "root": root.label,
                         "path": relative,
                         "lines": parsed.lines,
                         "nested": parsed.nested_names(declared),
-                        "interface": rules.interface_of(declared, scored=excluded is None),
+                        "interface": rules.interface_of(declared, excluded is None, language),
                         "excludedBy": excluded,
                     }
                 )
-                read.append((modules[-1], declared, parsed))
+                read.append(_Read(modules[-1], declared, parsed, language))
 
     modules.sort(key=lambda module: (module["package"], module["name"]))
     unparsed.sort(key=lambda entry: (entry["root"], entry["path"]))
+    declined.sort(key=lambda entry: (entry["root"], entry["path"]))
     _refuse_duplicate_ids(modules)
     _check_the_refusals(modules, rules)
     _measure_depth(read, rules)
@@ -261,10 +320,20 @@ def build(roots, rules):
         "schema": SCHEMA,
         "source": {
             "roots": sorted(root.label for root in roots),
+            "languages": sorted({module["language"] for module in modules}),
             "filesSeen": seen,
             "filesParsed": seen - len(unparsed),
             "filesUnparsed": len(unparsed),
             "unparsed": unparsed,
+            # The paths a named rule declined to read at all, kept apart from the ones
+            # that could not be read: "this is not the application's own source" and
+            # "this file would not parse" are different findings, and a page that mixed
+            # them would paint its alarm band over a `node_modules` nobody wrote.
+            "notRead": {
+                "rule": rules.sources_not_read.rule,
+                "because": rules.sources_not_read.because,
+                "paths": declined,
+            },
         },
         "packages": [
             {"name": name, "moduleIds": sorted(ids)} for name, ids in sorted(packages.items())
@@ -275,12 +344,14 @@ def build(roots, rules):
     }
 
     log.info(
-        "graph built roots=%s filesSeen=%d filesParsed=%d filesUnparsed=%d packages=%d "
-        "modules=%d scored=%d neverScored=%d",
+        "graph built roots=%s languages=%s filesSeen=%d filesParsed=%d filesUnparsed=%d "
+        "pathsNotRead=%d packages=%d modules=%d scored=%d neverScored=%d",
         ",".join(document["source"]["roots"]),
+        ",".join(document["source"]["languages"]) or "none, nothing was read",
         seen,
         document["source"]["filesParsed"],
         len(unparsed),
+        len(declined),
         len(document["packages"]),
         len(modules),
         document["scoring"]["modulesScored"],
@@ -497,7 +568,7 @@ def _trace_the_flows(read, modules, rules):
     of the path.
     """
     by_id = {module["id"]: module for module in modules}
-    declared_by_id = {module["id"]: declared for module, declared, _ in read}
+    declared_by_id = {each.module["id"]: each.declared for each in read}
     written_among = _written_among(read)
     calls_of = _calls_reader(read, rules, declared_by_id, written_among)
     flows = []
@@ -560,23 +631,23 @@ def _calls_reader(read, rules, declared_by_id, written_among):
     tool can see is pointless. The answers are a pure function of the source, so a
     remembered one and a fresh one cannot differ.
     """
-    parsed_by_id = {module["id"]: parsed for module, _, parsed in read}
-    nested_by_id = {module["id"]: module["nested"] for module, _, _ in read}
+    read_by_id = {each.module["id"]: each for each in read}
     answered = {}
 
     def calls_of(module_id, method_name):
         here = answered.get((module_id, method_name))
         if here is None:
-            parsed = parsed_by_id[module_id]
+            each = read_by_id[module_id]
             here = rules.calls_from(
                 method_name,
                 declared_by_id[module_id],
                 module_id,
-                parsed.package,
-                parsed.imports,
+                each.parsed.package,
+                each.parsed.imports,
                 declared_by_id,
-                nested_by_id[module_id],
+                each.module["nested"],
                 written_among,
+                each.language,
             )
             answered[(module_id, method_name)] = here
         return here
@@ -691,8 +762,10 @@ def _written_among(read):
     the two the page was showing them.
     """
     return {
-        module["id"]: (parsed.package, parsed.imports, module["nested"])
-        for module, _, parsed in read
+        each.module["id"]: languages.WrittenAmong(
+            each.parsed.package, each.parsed.imports, each.module["nested"], each.language
+        )
+        for each in read
     }
 
 
@@ -716,14 +789,14 @@ def _measure_depth(read, rules):
     every *other* module was written among, since a module inherits the declarations and
     the member types of whatever it is built on, and those shadow the same way.
     """
-    declared_by_id = {module["id"]: declared for module, declared, _ in read}
+    declared_by_id = {each.module["id"]: each.declared for each in read}
     written_among = _written_among(read)
-    for module, declared, parsed in read:
-        module["reach"] = rules.reach_of(
-            declared, module["id"], parsed.package, parsed.imports, declared_by_id,
-            module["nested"], written_among,
+    for each in read:
+        each.module["reach"] = rules.reach_of(
+            each.declared, each.module["id"], each.parsed.package, each.parsed.imports,
+            declared_by_id, each.module["nested"], written_among, each.language,
         )
-        module["depth"] = rules.depth_of(module["reach"], module["interface"])
+        each.module["depth"] = rules.depth_of(each.module["reach"], each.module["interface"])
 
 
 def _scoring(rules, modules):
@@ -852,6 +925,13 @@ def _scoring(rules, modules):
                 )
             ],
         },
+        # The largest module in this document, and what it was measured at. It is here
+        # because the one thing this page can be misread as saying is that a big module is
+        # a deep one, and the plainest answer to that is the biggest module's own numbers
+        # printed beside its line count. Not a ranking and not a finding: the line count
+        # enters no measurement here, which is exactly what naming it demonstrates.
+        # Settled by the id where two files are the same length, so two runs agree.
+        "largest": _largest(modules),
         "reachableFromOutside": sorted(rules.reachable_from_outside),
         "typesEveryCallerAlreadyKnows": sorted(rules.already_known),
         "exclusions": [
@@ -864,6 +944,39 @@ def _scoring(rules, modules):
         ],
         "modulesScored": sum(1 for module in modules if not module["excludedBy"]),
         "modulesNeverScored": sum(1 for module in modules if module["excludedBy"]),
+    }
+
+
+def _largest(modules):
+    """The module with the most lines in it, and what this page measured it at.
+
+    Reported so that size and depth can be seen not to be the same thing, on the one
+    module where the difference is largest. Nothing here ranks it and nothing here
+    proposes anything about it: `lines` is a fact about the file, and the numbers beside
+    it were read without it.
+    """
+    if not modules:
+        return None
+    biggest = max(modules, key=lambda module: (module["lines"], module["id"]))
+    log.info(
+        "largest module=%s language=%s lines=%d interfaceCost=%s reach=%d leverage=%s",
+        biggest["id"],
+        biggest["language"],
+        biggest["lines"],
+        biggest["interface"]["cost"],
+        biggest["reach"]["count"],
+        biggest["depth"]["leverage"],
+    )
+    return {
+        "moduleId": biggest["id"],
+        "name": biggest["name"],
+        "package": biggest["package"],
+        "language": biggest["language"],
+        "lines": biggest["lines"],
+        "interfaceCost": biggest["interface"]["cost"],
+        "methods": len(biggest["interface"]["methods"]),
+        "reach": biggest["reach"]["count"],
+        "leverage": biggest["depth"]["leverage"],
     }
 
 
