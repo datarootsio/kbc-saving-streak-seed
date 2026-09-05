@@ -7149,7 +7149,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "costWithoutRefusals and refusalCost as well as together as cost — so a module "
     + "with a wide bar and a wide band is wide for a reason a reader can see, and one "
     + "with a wide bar and no band at all is wide for some other reason. "
-    + document_.scoring.refusals.refusalsRead + " are read across this page.");
+    + count(document_.scoring.refusals.refusalsRead, "refusal is", "refusals are")
+    + " read across this page.");
   var bands = add(band, "ul", "key");
   [
     {of: "learn", says: "what a caller must learn besides the refusals"},
@@ -7188,9 +7189,10 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     "What this band leaves out is a floor in the same direction as everything else here. "
     + "A refusal thrown by a name rather than by a type — throw thrown, throw "
     + "somethingElse.build(), throw refusing(why) where two methods are called refusing "
-    + "and they hand back different things — needs a type this tool never resolves, "
-    + "so it is not read and not guessed at; a refusal one module raises by calling "
-    + "another is the second module's, drawn there; and a prose sentence about when "
+    + "and they hand back different things, throw make() where make hands back a type "
+    + "variable and the caller decides what that is — needs a type this tool never "
+    + "resolves, so it is not read and not guessed at; a refusal one module raises by "
+    + "calling another is the second module's, drawn there; and a prose sentence about when "
     + "something fails is part of the interface and is measured nowhere. So a band at "
     + "nothing says only that there was nothing here to read.");
   add(band, "p", null,

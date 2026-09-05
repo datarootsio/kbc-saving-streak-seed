@@ -233,7 +233,11 @@ Each refusal is read from the source's own words on both sides, and guessed at o
   arguments and their types, which is javac's job. It cannot be done here even in
   principle, because this reads the masked source, where a literal has been blanked — so
   `refusing("shut")` and `refusing()` are the same characters by the time the reading gets
-  to them, and an arity read off them would be a guess.
+  to them, and an arity read off them would be a guess. Nothing is read either where that
+  helper hands back a **type variable** — `private T make()` — whichever of the two places
+  Java lets one be declared it came from, the method's own `<T>` or the enclosing type's.
+  `T` is a letter standing in for whatever the caller filled it with, not a type anybody
+  can write a `catch` for.
 
 `throw this.f(...)` is `throw f(...)`. The prefix is one a writer may put on a call to
 their own method and nothing else, and reading the two spellings differently would be
@@ -294,7 +298,8 @@ was there to read and all of it was read. Two things stop it:
   `tests/refusalsastheirownband` pins it.
 - **A `throw` in the body this tool could not name.** Every `throw` is counted, including
   the ones neither spelling above reads, and a module carrying one may be raising exactly
-  what it promised. `SavingsAccountController` and `ScheduledJobs` each write one today.
+  what it promised. Three are written today: `throw notAnAmountOfMoney;` in
+  `SavingsAccountController`, and `throw runtime;` and `throw error;` in `ScheduledJobs`.
 
 Neither is a finding and neither is a module keeping its word, so they are counted apart,
 as `refusalsNotChecked` in the graph and on the page, and each is logged at DEBUG with the

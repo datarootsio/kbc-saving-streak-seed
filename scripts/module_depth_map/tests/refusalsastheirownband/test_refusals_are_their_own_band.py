@@ -116,6 +116,33 @@ THROWS_THROUGH_THE_SAME_HELPER_ON_THIS = THROWS_THROUGH_A_HELPER.replace(
     "class Bolt {", "class Bolted {"
 ).replace("throw refusing(", "throw this.refusing(")
 
+# A helper that hands back a type variable, in the two places Java lets one be declared:
+# on the enclosing type and on the method itself. `T` is a letter standing in for whatever
+# the caller filled it with, so neither of these throws is a refusal this file can name and
+# neither module can be held to its promise. Read as a name it put a `T` on the band and
+# priced it, said the `Shut` the module really raises was never raised, and accused a
+# module whose two sides agree in both directions at once.
+A_TYPE_VARIABLE_ON_THE_CLASS = (
+    "public class Box<T extends Shut> {\n"
+    "\n"
+    "    /** @throws Shut if it is shut */\n"
+    "    public void go(long id) {\n"
+    "        if (id < 0) { throw make(\"shut\"); }\n"
+    "    }\n"
+    "\n"
+    "    private T make(String reason) { return null; }\n}"
+)
+A_TYPE_VARIABLE_ON_THE_METHOD = (
+    "public class Boxed {\n"
+    "\n"
+    "    /** @throws Shut if it is shut */\n"
+    "    public void go(long id) {\n"
+    "        if (id < 0) { throw make(\"shut\"); }\n"
+    "    }\n"
+    "\n"
+    "    private <T extends Shut> T make(String reason) { return null; }\n}"
+)
+
 # A stale promise on one method, and on another a throw through a helper written with the
 # prefix. The two have nothing to do with each other, which is the point: while the
 # qualified throw read as a type only javac could resolve, it bought the stale promise
@@ -859,6 +886,54 @@ class ARefusalOnlyOneSideOfWhichCouldBeReadTest(SourceOfKnownShapeTest):
         self.assertEqual({"Shut": True}, self.checked_of(modules["Overloaded"]))
         self.assertEqual([], modules["Overloaded"]["findings"])
 
+    def test_a_helper_handing_back_a_type_variable_is_followed_to_nothing(self):
+        """A letter is not a type, and where it was declared does not change that.
+
+        Both places Java lets one be written, in one tree, so the assertion is that they
+        agree rather than that either is right on its own. `<T>` on the enclosing type
+        was read as an ordinary return: `T` went onto the band as a refusal, was priced
+        there, and the `Shut` the module really throws through that helper was reported
+        as never raised — a module keeping its word, accused in both directions.
+        """
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Box", A_TYPE_VARIABLE_ON_THE_CLASS),
+            ("Boxed", A_TYPE_VARIABLE_ON_THE_METHOD),
+        )
+
+        self.assertEqual(
+            self.refusals_of(modules["Box"]), self.refusals_of(modules["Boxed"])
+        )
+        self.assertEqual(
+            self.checked_of(modules["Box"]), self.checked_of(modules["Boxed"])
+        )
+        self.assertEqual({"Shut": (True, False)}, self.refusals_of(modules["Box"]))
+        self.assertEqual({"Shut": False}, self.checked_of(modules["Box"]))
+
+    def test_a_type_variable_is_never_on_the_band_and_never_priced(self):
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Box", A_TYPE_VARIABLE_ON_THE_CLASS),
+            ("Boxed", A_TYPE_VARIABLE_ON_THE_METHOD),
+        )
+
+        for name in ("Box", "Boxed"):
+            self.assertNotIn("T", self.refusals_of(modules[name]))
+            self.assertEqual(
+                self.document["scoring"]["weights"]["refusal"],
+                modules[name]["interface"]["refusalCost"],
+            )
+
+    def test_a_generic_module_that_kept_its_word_is_accused_of_nothing(self):
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Box", A_TYPE_VARIABLE_ON_THE_CLASS),
+            ("Boxed", A_TYPE_VARIABLE_ON_THE_METHOD),
+        )
+
+        self.assertEqual([], modules["Box"]["findings"])
+        self.assertEqual([], modules["Boxed"]["findings"])
+
     def test_a_throw_of_a_name_rather_than_a_type_leaves_the_promise_unchecked(self):
         """`throw thrown` needs a type only javac resolves, so nothing is claimed about it."""
         modules = self.modules(
@@ -1171,6 +1246,23 @@ class TheBandIsDrawnOnThePageTest(SourceOfKnownShapeTest):
         self.assertIn("document_.scoring.refusals.documentedNeverRaised", script)
         self.assertIn("document_.scoring.refusals.raisedNeverDocumented", script)
         self.assertIn("document_.scoring.weights.refusal", script)
+
+    def test_every_number_the_band_rule_prints_is_given_the_noun_it_counts(self):
+        """A bare "13" names nothing, and "1 are read" is not a sentence either.
+
+        Every other count on this card goes through the same helper, which is what puts
+        the noun on it and picks the singular. This one was concatenated straight in, so
+        the page said "13 are read across this page" — thirteen modules, bars, refusals?
+        — and would have said "1 are read" on a source with one.
+        """
+        _, rendered = self.rendered(*self.three_gates())
+        script = self.script(rendered)
+
+        self.assertIn(
+            'count(document_.scoring.refusals.refusalsRead, "refusal is", "refusals are")'
+            '\n    + " read across this page."',
+            script,
+        )
 
     def test_the_page_says_what_the_band_cannot_see(self):
         """A floor nobody can see the edge of is not one a reader can trust."""

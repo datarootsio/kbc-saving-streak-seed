@@ -832,8 +832,13 @@ def _declared_types(masked, depths, documented):
         methods = () if owner is not None else _methods_of(
             masked, kind, header, body_starts_at, body_ends_at, line, documented
         )
+        # Read once and handed to both, because the two want it for different reasons:
+        # the type this module hands a caller records the holes they fill, and the
+        # reading of what its body throws has to know that a `T` a helper hands back is
+        # one of those holes rather than a refusal anybody could catch by name.
+        type_parameters = _type_parameters_in(header)
         reached = {} if owner is not None else _reached_in(
-            masked[body_starts_at:body_ends_at], methods
+            masked[body_starts_at:body_ends_at], methods, type_parameters
         )
         declared = DeclaredType(
             name=match.group(2),
@@ -846,7 +851,7 @@ def _declared_types(masked, depths, documented):
             ),
             annotations=_annotations_before(masked, start),
             supertypes=_supertypes_in(header),
-            type_parameters=_type_parameters_in(header),
+            type_parameters=type_parameters,
             methods=methods,
             constructors=() if owner is not None else _constructors_of(
                 masked, kind, match.group(2), body_starts_at, body_ends_at, documented
@@ -1191,7 +1196,7 @@ def _declares_several_names(text):
     return False
 
 
-def _reached_in(body, methods):
+def _reached_in(body, methods, type_parameters=()):
     """What this module's implementation reaches for, by name and never by volume.
 
     Five readings, each a set of names rather than a count of occurrences, which is the
@@ -1231,10 +1236,15 @@ def _reached_in(body, methods):
     because that is the body the module is: a declaration one brace deeper is still not
     a call.
 
+    `type_parameters` are the names this module's own `<...>` introduces, and they are
+    wanted for `raises` alone: inside `class Box<T extends RuntimeException>` a helper
+    declared `private T make()` hands back a hole rather than a type, and a hole is not
+    a refusal any caller could write a catch for.
+
     Everything a body writes inside a comment or a literal is already blanked out by the
     time this reads it, so a call in a javadoc example is not a collaborator.
     """
-    raises, throws_not_read = _raised_in(body, methods)
+    raises, throws_not_read = _raised_in(body, methods, type_parameters)
     plain = _THROUGH_THIS.sub("", body)
     called = []
     declares = []
@@ -1270,7 +1280,7 @@ def _reached_in(body, methods):
     }
 
 
-def _raised_in(body, methods):
+def _raised_in(body, methods, type_parameters=()):
     """Every refusal this body throws, and how many throws in it could not be read at all.
 
     `throw new X(...)` says the type outright. `throw x(...)`, where `x` is a method this
@@ -1296,6 +1306,15 @@ def _raised_in(body, methods):
     at once, and it is one line away from the two seams this reading exists to serve, both
     of which write exactly that spelling.
 
+    A hole is not a refusal either. `type_parameters` are the names this module's own
+    `<...>` introduces, and a helper handing one of them back — `private T make()` inside
+    `class Box<T extends RuntimeException>` — throws whatever the caller filled `T` with,
+    which is a type this file cannot name and nobody can write a catch for. Reading the
+    letter as a refusal put a `T` on the band, priced it, and left the refusal the module
+    genuinely raises through that helper reported as never raised: a wrong answer in both
+    directions at once, on a module whose two sides agree. A method's own `<...>` says
+    the same thing about the same letter, so the two lists are read as one.
+
     The throws that could not be read are counted rather than shrugged off, because what
     is built on this reading is the claim that a module never raises what it documented,
     and that claim is only sound over a body every throw of which was read. The count is
@@ -1312,14 +1331,17 @@ def _raised_in(body, methods):
             raised.add(_simple(built.group(1)))
             continue
         through = _THROWN_THROUGH.match(body, throw.end())
-        refusal = _thrown_through(through.group(1), declared) if through else None
+        refusal = (
+            _thrown_through(through.group(1), declared, type_parameters)
+            if through else None
+        )
         if refusal is None:
             could_not_be_read += 1
             log.debug(
                 "throw not read as a refusal reason=%s thrown=%s",
                 "it throws neither a type it builds nor a call whose declarations in "
-                "this module all hand back one type, so what it throws is a type only "
-                "javac could resolve",
+                "this module all hand back one type that is not a type variable, so "
+                "what it throws is a type only javac could resolve",
                 _one_line(body[throw.start():throw.start() + 80]),
             )
             continue
@@ -1327,7 +1349,7 @@ def _raised_in(body, methods):
     return raised, could_not_be_read
 
 
-def _thrown_through(name, declared):
+def _thrown_through(name, declared, type_parameters=()):
     """What `throw f(...)` throws, when every `f` this module declares hands back the same.
 
     The arguments are not what settles it, and they cannot be: this reads the *masked*
@@ -1341,15 +1363,25 @@ def _thrown_through(name, declared):
     in a file this parser is not reading; the declarations of `f` hand back different
     types, so only javac could say which was called; or they agree on a type variable or on
     nothing, neither of which is a refusal a caller could ever catch by name.
+
+    A type variable is a letter, and where it was introduced does not change that. `<T>` on
+    the method is one place it can be written and `<T>` on the enclosing type is the other,
+    so `type_parameters` carries the type's own names down here and the two lists are asked
+    as one. Reading only the method's own is how `private T make()` inside
+    `class Box<T extends RuntimeException>` came to look like an ordinary method handing
+    back a refusal named `T`.
     """
     candidates = declared.get(name, ())
-    if not candidates or any(method.type_parameters for method in candidates):
+    if not candidates:
         return None
     refusals = {_simple(method.returns) for method in candidates}
     if len(refusals) != 1:
         return None
     refusal = refusals.pop()
-    return None if refusal == NOTHING_RETURNED else refusal
+    holes = set(type_parameters).union(
+        *[method.type_parameters for method in candidates]
+    )
+    return None if refusal == NOTHING_RETURNED or refusal in holes else refusal
 
 
 def _receivers_in(plain):
