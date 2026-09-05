@@ -11,14 +11,14 @@ frontend as one tidy box would be a picture that lies by omission.
 
 **Blocked by:** 03 (Reach, and the fan).
 
-Status: needs-review
+Status: needs-info
 
 - [x] Frontend source is analysed at file grain and appears on the page beside the backend modules
-- [x] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
-- [x] What a frontend module exports, and what it reaches, are both derived from the source
+- [ ] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
+- [ ] What a frontend module exports, and what it reaches, are both derived from the source
 - [x] A large frontend module presenting a small interface is not reported as deep on account of its size
 - [x] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
-- [x] Frontend source the tool cannot parse is reported loudly and named, as backend source is
+- [ ] Frontend source the tool cannot parse is reported loudly and named, as backend source is
 - [x] Test code, build output and dependencies are excluded from the graph
 
 ## Review feedback - attempt 1
@@ -518,3 +518,271 @@ And the properties this branch must not have broken, all checked by me:
   that email address", `anke.peeters@example.be` signs in and shows both savings accounts and the
   rewards catalogue, with `i.d.s.deposits.DepositsService : money balance summed from what remains
   savingsAccountId=1 deposits=0 balance=0.00` in the backend log and no WARN or ERROR from it.
+
+## Review feedback - attempt 3
+
+**All nine points from attempt 2 are genuinely fixed.** I reproduced every one of them against this
+branch and every one now behaves; the list is under "What I confirmed fixed" at the bottom so you do
+not redo any of it. Both lab checks, the 694-test suite, determinism, the no-regression diff against
+ticket/07 and the page itself are all green, and the new fixtures are real: I restored the
+attempt-2 readers over this branch's tests and **26 of the 117 tests in `tests/thefrontendhonestly`
+fail**, one for each thing you fixed. That is good work and none of it needs redoing.
+
+What sends this back is the same sentence as last time, `README.md:252`:
+
+> And legal TypeScript is never failed, which matters more here than on the Java side: a failed file
+> is a whole module off the page and every fan line into it gone with it.
+
+Point 1 below is the most common line in React, it compiles under `tsc --strict` with no output at
+all, and this tool refuses the whole file for a reason that is untrue of the source. Points 2 to 4
+each lose or inflate something on a card with no line in any log saying so. I reproduced **every**
+item below myself against this branch, with the exact source shown; none is a code reading.
+
+### File-fatal: the whole module leaves the page
+
+**1. A self-closing JSX element with a prop expression, inside a `.map()`, on one line.**
+
+    $ cat /tmp/src/d1.tsx
+    export function List(items: string[]): JSX.Element {
+      return <ul>{items.map(i => <li key={i} />)}</ul>
+    }
+    $ frontend/node_modules/.bin/tsc --noEmit --strict --jsx react-jsx --target es2022 \
+        --module esnext --moduleResolution bundler --skipLibCheck --lib es2022,dom d1.tsx
+    $ echo $?
+    0
+    $ python3 scripts/module-depth-map.py --source /tmp/src --graph /tmp/g.json --page /tmp/p.html
+    WARNING module_depth_map.graph could not parse source file root=src language=typescript
+      path=d1.tsx reason=braces do not balance: 1 unclosed at end of file
+    WARNING module_depth_map.cli the page is drawn from 0 of 1 source files
+
+The braces balance perfectly in that file. `_AFTER_WHICH_A_REGEX_CAN_START`
+(typescriptsource.py:251) holds `}`, so the `}` closing `key={i}` makes the `/` of the following
+` />` open a regular expression, and the scan runs to the next `/` on the line — the one in
+`</ul>` — blanking `>)}<` and with it the `}` that closes `{items.map(`. `<` and `>` were
+deliberately kept out of that set so `</div>` would not do this; `}` was missed.
+
+A second shape, same cause, same file-fatal outcome:
+
+    export function Note(x: boolean): JSX.Element {
+      return <><div className={c} /> {x ? <Bar /> : null}</>
+    }
+    -> reason=braces do not balance: a closing brace with nothing open on line 2
+
+Why this is not a corner case: rendering a list with `.map()` and a self-closing child carrying
+`key={...}` is the single most common line in React, and a conditional sibling after a self-closing
+element is the second. It is latent here only because this repository's `App.tsx` happens never to
+write a prop expression on a self-closing tag — `grep -cE '\{[^}]*\} */>' frontend/src/App.tsx`
+returns **0**. Add one list of components, which is the most likely edit a participant makes to
+this file, and all 1545 lines of `App.tsx` leave the page and take `main`'s fan line with them.
+This is the same shape of latency attempt 1 sent this back for (the destructured parameter) and
+attempt 2 sent it back for (the import ordering).
+
+Note that `<div a={x} /></div>` and `<span title={'t'} /> {x ? 'a' : 'b'}</div>` both survive by
+luck, because of where the next `/` happens to land — so a fixture has to be the `.map()` shape
+specifically, not any self-closing tag with a prop.
+
+### Read wrongly, with nothing reported
+
+**2. A module whose file name equals a name it imports reaches nothing** (blocks "what it reaches …
+derived from the source"). Two files, byte-identical but for their names:
+
+    $ cat /tmp/src/util.ts
+    export function format(n: number): string { return String(n) }
+
+    $ cat /tmp/src/format.ts          # and the same bytes again as other.ts
+    import { format } from './util'
+    export function run(n: number): string { return format(n) }
+
+    src/format  reach 0   leverage 0.0    <- no evidence line at all
+    src/other   reach 1   leverage 0.5    "calls format, which this file imports from it"
+
+`scoring.py:975` adds `{declared.name}` to the names a body is held to declare for itself. On the
+Java side that is right — a class's own name is a binding in its scope. On the TypeScript side
+`declared.name` is the file's basename, which is not a binding in the file at all, so a file called
+`format.ts` is treated as declaring `format` and the import of that name is never followed. The same
+line is repeated in `calls_from` (scoring.py:1180), so a flow entering such a module dead-ends
+there too. Naming a file after the thing it is about is the normal way to write a frontend, and
+`api.ts` in this repository is one rename away from it.
+
+**3. A `<` anywhere in a declarator's value loses every later declarator, silently.**
+
+    $ printf 'export const flag = 1 < 2, b = (x: number): number => x\n' > /tmp/src/x.ts
+    -> cost 0, methods []
+    -> DEBUG … export not read as a method line=1 export=flag reason=what is assigned to it is a value …
+    -> DEBUG … parsed file path=x.ts module=src/x lines=1 exports=0 …
+
+`b` is a function a caller can import. It is not in `methods`, not in `types`, and — unlike `flag` —
+not in the `export not read as a method` log that `_decline`'s docstring promises is the complete
+list of what was skipped. `_next_declarator` (typescriptsource.py:945) counts `<` as an opening
+bracket, so the comparison leaves depth permanently above zero and the depth-zero comma is never
+seen. Attempt 2's point 7 was this same outcome for the plain case; it is fixed there and
+reintroduced here by an unrelated operator. The session note calls this a deliberate trade
+costing "only a declarator this reading would have declined as a value anyway" with "no spurious
+log line either way" — the run above shows it costs a measurable function and leaves no line at all.
+
+**4. An overload set is charged as one method more than a caller can call.**
+
+    export function ring(id: string): string
+    export function ring(id: number): string
+    export function ring(id: string | number): string { return String(id) }
+    -> cost 6, three methods: ring(number), ring(string), ring(string | number)
+
+    export function ring(id: string | number): string { return String(id) }
+    -> cost 2, one method
+
+TypeScript never exposes the implementation signature to a caller: two signatures are callable, not
+three. `_exports_in` (typescriptsource.py:668) reads every `export function ring` header including
+the implementation one, and `interface_of` sums `_cost_of` over all of them. The card names a call a
+reader can go looking for and will never be able to make, and the inflated cost is the denominator
+leverage is divided by — the same objection attempt 1 raised as its point 6. `has_a_body` already
+tells the header from the implementation and is not consulted. Java overloads are all genuinely
+callable, so this is a place where "the same rules" means a different reading, not the same one.
+
+### Smaller, and each one a sentence on a card a reader can check and find false
+
+**5. A binding whose written type wraps a line is recorded truncated** (typescriptsource.py:1441).
+
+    const held: Till |
+      Receipt = make()
+    -> Field('held', 'Till |')
+
+`_up_to_the_assignment` ends the written type at a newline seen at bracket depth zero, and a `|`
+continuation is outside any bracket. `reach_of` then reads `Till` and never `Receipt`, so every call
+written through `held` draws a fan line to one of the two, and the evidence printed on the card is
+the string `Till |`.
+
+**6. `|` is not closed up by `normalised`, so one union spelled two ways stays two strings**
+(javasource.py:2239).
+
+    export function f(a: string|null, b: string | null): void {}
+    -> parameters ('string|null', 'string | null')
+
+This is the hazard that function's own docstring names, and it was fixed for `,` on this attempt
+and missed for `|`. Counting is unaffected; the panel text is not.
+
+**7. A namespaced JSX component reaches nothing** (typescriptsource.py:190).
+
+    import * as Icons from './icons'
+    export function Row(): JSX.Element { return <Icons.Chevron /> }
+    -> reach 0                 ( <Chevron /> from a named import gives reach 1 -> src/icons )
+
+`_A_JSX_ELEMENT` does not match a dotted name. An understating reading is allowed here, but the page
+lists its understating readings by name under "Readings that go the other way", and this one is
+absent — so a reader checking a fan against the source finds a gap the page does not account for.
+
+**8. A string-literal type on a seam is printed with its contents blanked.** Found by me, not by the
+code review:
+
+    export function union(a: 'one' | 'two' | 'three'): number { return a.length }
+    -> parameters ["' ' | ' '  | ' '"]        (and Record<'a'|'b', number> -> Record<' '|' ', number>)
+
+No number moves and no file fails — `_mask_quoted`'s output is reaching the printed parameter text.
+The idiomatic form, a named `export type Mode = 'read' | 'write'`, is read correctly and charged 2,
+so this is display-only. Listed so it is not rediscovered as a mystery.
+
+### Two things that are arguments rather than defects
+
+- `_next_declarator`'s `<` handling above is the only one of these where the session note already
+  named the trade. It is written up as a defect because the note's justification does not hold.
+- `scoring.json:168` lists `build`, `target`, `dist` and `coverage` as directories never walked
+  into, while the rule's own `because` argues that a bare `test`/`tests` is deliberately absent
+  "because that is a legal Java package name and a rule that quietly took a package of the
+  application's own source off the page would be worse than one that misses a directory somebody
+  can add to this list". All four of those are legal Java package names too. Either the argument
+  covers them or it does not; say which in the file. I did not treat this as a defect — the ticket
+  asks for these to be excluded and they are — but the two sentences contradict each other.
+
+### How to know you are done
+
+Every point above is a fixture the suite does not have. `tests/thefrontendhonestly` is good work,
+so add to it rather than starting over. Hold at minimum:
+
+- `export function List(items: string[]): JSX.Element { return <ul>{items.map(i => <li key={i} />)}</ul> }`
+  read rather than failed, asserting `filesUnparsed=0` — and a second one with a self-closing
+  element followed by `{x ? <Bar /> : null}` on the same line;
+- two byte-identical modules differing only in file name, one of them named after a function it
+  imports, asserting both reach the module they call;
+- `export const flag = 1 < 2, b = (x: number): number => x`, with `b` either measured or named in
+  the declined log;
+- an overload set of two signatures plus its implementation, asserting two methods and the same cost
+  as the single equivalent signature;
+- a module-scope binding whose written type wraps a line, asserting both names are on the seam;
+- one union written `string|null` and `string | null`, coming out as one string;
+- `<Icons.Chevron />` on a namespace import — either reaching `icons`, or named on the page's list
+  of understating readings;
+- a string-literal type in a signature, asserting the parameter text is what the source wrote.
+
+Then re-check `README.md:252` and the parse-failure list at `README.md:266-267` against what the
+code actually keeps.
+
+### What I confirmed fixed, so you do not redo it
+
+Every point from attempt 2, reproduced by me on this branch:
+
+1. A `function` whose return type contains `=>` — all eight forms read, none failed:
+   `(): [boolean, () => void]`, `(): () => void`, `(): (x: number) => number`, `(): (() => void)`,
+   `(): Array<() => void>`, `(): Promise<(x: number) => number>`, the `async` form, and
+   `useDebounce(fn: () => void, ms: number): () => void` (cost 3, two parameters).
+2. The stock Vite import ordering with `import './index.css'` third of four and no semicolons parses,
+   and `main` still reaches `App` — with and without the `.tsx` on the specifier.
+3. `<p>Don't miss it {label('key')}</p>` keeps its braces.
+4. `export abstract class Shape` is declined and named, not failed.
+5. `makeFetcher(): (url: string) => Promise<Response> { … }` on one line reads its return whole;
+   no type called `return` on the seam.
+6. `ring(m: Map<string, () => string>, n: number)` is two parameters.
+7. `export const a = 1, b = () => {}` measures `b` and declines `a` by name. (Only the `<` variant
+   in point 3 above still loses it.)
+8. `new api.Thing()` reaches nothing; `api.go()` still reaches `api`.
+9. `Record<string,number>` and `Record<string, number>` are one string.
+
+And the properties this branch must not have broken, all checked by me:
+
+- `cd backend && ./mvnw test` — exit 0, 113 tests, BUILD SUCCESS.
+- `cd frontend && npm run typecheck` — exit 0 (Node 24.16.0; system node is v16).
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — **694 tests, OK**.
+- Restoring `a596326`'s `typescriptsource.py` and `javasource.py` under this branch's tests fails
+  **26 of the 117** tests in `tests/thefrontendhonestly`, one per attempt-2 point. The fixtures are real.
+- Two fresh runs are `cmp`-identical for graph and page, both equal the committed
+  `docs/module-depth-map.{json,html}` byte for byte, neither holds an absolute path, and
+  `git status` is clean after a run over the default roots.
+- Diffed all 74 modules against `ticket/07:docs/module-depth-map.json`: **no backend module moved**,
+  exactly three added (`frontend/src/App`, `frontend/src/api`, `frontend/src/main`), flows identical.
+- 500 lines of padding on a copy of the real `App.tsx` moved `lines` 1545 -> 2045 and **nothing else
+  on any of the three modules**.
+- `frontend/src/App` is 1545 lines — 5.4x the next longest file — at interface cost 1 over a fan of
+  1, leverage 1.0, and ranks **4th** by leverage behind three Java modules of 60, 67 and 149 lines.
+  Size is not depth here, which is the whole point of the ticket.
+- The same shape in both languages comes out identical: a Java `Till` and a TypeScript `till`, two
+  methods, one documented refusal, three collaborators — cost 8, refusalCost 2, reach 5,
+  leverage 0.62, verdict "earns its keep", same methods, types, refusals and reaches on both sides.
+- The page at 1024, 1280 and 1440 wide, light and dark: **zero console errors, zero pageerrors, zero
+  failed requests**, `scrollWidth == clientWidth` at every width. `frontend/src` draws first with
+  three FILE cards; `App` is a sliver of a bar over a fan of 1, `api` the widest bar on the page (49)
+  over no fan. Panels open and Escape closes each; flows still mark 12 / 13 / 9 and Clear resets to 0.
+- Exclusions: `node_modules`, `dist`, `build`, `coverage`, `__tests__`, `*.test.ts`, `*.spec.tsx`,
+  `*.d.ts` each named with the rule and what matched; `--source frontend/node_modules` gives
+  `source not read root=frontend/node_modules path=the root itself` and 0 modules in 0.27s.
+- Exporting five components from a copy of the real `App.tsx` **and** moving `import './index.css'`
+  to second of four — the two edits attempts 1 and 2 said would take the file off the page — now
+  gives `filesUnparsed=0`, `src/App cost 21` with six methods, and `main` still reaching `App`.
+- 35 files of legal TypeScript I wrote as a sweep and 25 more aimed at the masking and bracket
+  scanners, every one compiled by `tsc --strict` with exit 0, plus 30 real third-party `.ts` files
+  out of `node_modules`: all 90 read, `filesUnparsed=0`. The JSX shape in point 1 above is the one
+  thing in that sweep the tool refused.
+- Logging follows CLAUDE.md: no `print` anywhere in `scripts/module_depth_map`, a
+  `module_depth_map.*` logger per file, one INFO per business event with its values, WARNING with a
+  reason on every refusal (`could not parse … reason=…`, `source not read … rule=… matched=…`,
+  `refused to run: the scoring rules in … cannot be used: … Nothing is scored with a rule nobody
+  wrote`), DEBUG for the inputs behind a decision.
+- The running application is untouched by this branch (`git diff --name-only ticket/07..HEAD --
+  backend frontend` is empty) and still works. Over HTTP against the running API I got 404 "No
+  customer banks here under that email address", 200 for `anke.peeters@example.be`, 201 for a
+  7.00 deposit, 400 "A deposit has to be an amount of more than zero, and 0.00 is not.", 400
+  "Cinema ticket costs 100 points, and this account has 7.", and 201 for a withdrawal that
+  allocated against deposit 1 — with `i.d.s.deposits.DepositsService : deposit accepted depositId=1
+  savingsAccountId=1 fromCurrentAccountId=1 amount=7.00 pointsEarned=7` and
+  `i.d.s.deposits.WithdrawalsService : withdrawal accepted withdrawalId=1 … amount=3.00` in
+  `.scratch/module-depth-map/logs/08-the-frontend-honestly.app.3.backend.log`. Driving the page at
+  :5173 signed in and showed both savings accounts and the rewards catalogue. (The application still
+  logs no `io.dataroots.savingstreak` WARN when it refuses; that is the pre-existing gap already
+  recorded at the end of ticket 07 and is not this branch's doing.)
