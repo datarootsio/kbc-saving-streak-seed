@@ -202,6 +202,108 @@ section.package { margin: 2rem 0 0; }
 .rules ul { margin: 0; padding-left: 1.1rem; }
 .rules li { color: var(--ink-soft); font-size: .9rem; margin-bottom: .3rem; }
 .rules strong { color: var(--ink); }
+/* Behind the shape: the card as the control that opens a panel, and the panel itself.
+   The card is clickable everywhere and the name inside it is a real button, so a
+   keyboard reaches the same panel by tabbing that a pointer reaches by clicking. */
+.module { cursor: pointer; }
+.module:hover, .module:focus-within { border-color: var(--accent); }
+.module button.name {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: left;
+  cursor: pointer;
+}
+.module button.name:hover { text-decoration: underline; }
+.module button.name:focus-visible,
+.behind button:focus-visible,
+.behindBody:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A dialog rather than a div, because Escape, the focus that goes into it and the focus
+   that comes back out of it are then the browser's own. A hand-rolled panel has to trap
+   the tab key itself, and one that traps it wrong is a page a keyboard cannot leave. */
+dialog.behind {
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: .6rem;
+  background: var(--raised);
+  color: var(--ink);
+  width: min(46rem, calc(100vw - 2rem));
+  max-width: none;
+}
+dialog.behind::backdrop { background: rgba(12, 13, 15, .6); }
+.behindBody { max-height: calc(100vh - 4rem); overflow: auto; padding: 0 1.1rem 1.3rem; }
+.behindHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--raised);
+  border-bottom: 1px solid var(--edge);
+  padding: 1rem 0 .6rem;
+  margin-bottom: .9rem;
+}
+.behindHead h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.behindHead .where { margin: .2rem 0 0; font-size: .8rem; color: var(--ink-soft); }
+.behind button.close {
+  flex: none;
+  padding: .25rem .7rem;
+  border: 1px solid var(--edge);
+  border-radius: .35rem;
+  background: var(--ground);
+  color: var(--ink);
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.behindPart { margin: 0 0 1.1rem; }
+.behindPart h4 {
+  margin: 0 0 .35rem;
+  font-size: .78rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  font-weight: 650;
+  color: var(--ink-soft);
+}
+.behindPart p { margin: 0 0 .4rem; font-size: .88rem; }
+.behindPart ul { margin: 0 0 .6rem; padding-left: 1.05rem; }
+.behindPart li { font-size: .88rem; margin-bottom: .3rem; }
+.behindPart code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+.behindPart .says { color: var(--ink-soft); }
+.behindPart .id { display: block; font-size: .8em; }
+/* Said plainly rather than left out. A section that vanished when it was empty reads as
+   a panel that forgot to draw it, and "there are none" is the answer a reader came for. */
+.behindPart .none { color: var(--ink-soft); font-style: italic; }
+.behindPart .because { margin: .15rem 0 .5rem; font-size: .82rem; color: var(--ink-soft); }
+.behindPart .unscored { font-style: italic; color: var(--ink-soft); }
+/* The kind of each thing reached, in the same ink as the line the fan draws to it, so
+   that the key above the cards and the words in this panel read as one statement. */
+.behindPart .kind {
+  font-size: .72rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.behindPart .kind-module { color: var(--accent); }
+.behindPart .kind-adapter { color: var(--adapter); }
+.behindPart .kind-record { color: var(--record); }
+.behindPart .kind-transaction { color: var(--transaction); }
+.behind .verdict strong { color: var(--ink); font-weight: 650; }
+.behind .verdict.found strong { color: var(--alarm-ink); }
+.behind .finding strong { color: var(--alarm-ink); font-weight: 650; }
 footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
 """
 
@@ -273,6 +375,13 @@ _SCRIPT = """
     + "it coordinates on that caller's behalf. An observation of the source it was "
     + "generated from, and nothing more: nothing here is ranked, and no module here is "
     + "proposed for change.");
+  add(head, "p", "lede",
+    "Click any module \u2014 or tab to its name and press Enter \u2014 for everything "
+    + "standing behind its shape: every method with what it costs a caller, everything it "
+    + "coordinates, which modules go through it, its deletion-test verdict, and any "
+    + "finding against it. Every value there is read from the document carried inside "
+    + "this file and nothing in it is worked out while the page is drawn, so what the "
+    + "panel says and what a later tool reads out of the graph are the same facts.");
 
   var read = add(root, "div", "read");
   var list = add(read, "dl");
@@ -899,6 +1008,286 @@ _SCRIPT = """
     }
   }
 
+  // Behind the shape: everything this document holds about one module, opened from its
+  // card. The shape above makes the claim; this is where a reader checks it.
+  //
+  // Nothing in here counts anything. Every number printed below is one the document
+  // already carries — a method's own cost, the verdict's own three counts, the reach and
+  // caller counts beside them — and a list is asked only whether it is empty. That is the
+  // whole rule, and it is what makes the panel and a later tool reading the graph the same
+  // facts: a count worked out at render time would be a second measurement standing beside
+  // the one in the file, and a reader could not tell which of the two the shape was drawn
+  // from.
+  var BEHIND_NAME = "behind-the-shape";
+  var panel = add(root, "dialog", "behind");
+  panel.setAttribute("aria-labelledby", BEHIND_NAME);
+  var behindBody = add(panel, "div", "behindBody");
+  // Focusable, so that a keyboard can scroll a panel longer than the screen. It is also
+  // what `showModal` puts the focus on, which is where a reader wants it: the panel's own
+  // text, rather than the button that dismisses it.
+  behindBody.setAttribute("tabindex", "0");
+
+  // The card a panel opened from, held only where the browser will not hold it for us.
+  // A dialog opened with `showModal` records where focus came from and hands it back on
+  // close by itself, and two of us doing it is worse than one: the `close` event is a
+  // queued task rather than a call, so a second restoration lands *after* the browser's
+  // and can take focus off whatever the reader moved to in between.
+  var openedFrom = null;
+
+  function restoreFocus() {
+    if (openedFrom) {
+      openedFrom.focus();
+      openedFrom = null;
+    }
+  }
+
+  panel.addEventListener("close", restoreFocus);
+  // A click on the backdrop lands on the dialog itself and never on anything inside it,
+  // which is the only way to tell the two apart.
+  panel.addEventListener("click", function (event) {
+    if (event.target === panel) { shutBehind(); }
+  });
+  // Escape closes a modal dialog without this, and closing a closed one does nothing, so
+  // this costs nothing there. It is for the fallback below: a panel opened as an ordinary
+  // dialog would otherwise have no way out of it but the mouse.
+  panel.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { shutBehind(); }
+  });
+
+  function openBehind(module, from) {
+    while (behindBody.firstChild) { behindBody.removeChild(behindBody.firstChild); }
+    drawBehind(behindBody, module);
+    // The card takes the focus before the panel opens, because that is what the browser
+    // writes down as the place to hand focus back to when the panel closes. Left out, a
+    // click on the card body focused nothing at all, so closing dropped the keyboard on a
+    // hidden element and a reader pressing Tab started again from the top of the page.
+    from.focus();
+    if (panel.showModal) {
+      panel.showModal();
+    } else {
+      // A browser with no modal dialog in it. Nothing records where focus came from and
+      // nothing hands it back, so this page does both.
+      openedFrom = from;
+      panel.setAttribute("open", "open");
+    }
+    behindBody.focus();
+  }
+
+  function shutBehind() {
+    if (panel.close) {
+      panel.close();
+      return;
+    }
+    panel.removeAttribute("open");
+    restoreFocus();
+  }
+
+  function behindPart(into, heading) {
+    var part = add(into, "section", "behindPart");
+    add(part, "h4", null, heading);
+    return part;
+  }
+
+  function drawBehind(into, module) {
+    var head = add(into, "header", "behindHead");
+    var says = add(head, "div");
+    add(says, "h3", null, module.name).id = BEHIND_NAME;
+    add(says, "p", "where",
+      module.kind + " · " + module.language + " · " + module.package);
+    add(says, "p", "where",
+      module.root + "/" + module.path + " · " + count(module.lines, "line", "lines"));
+    var shut = add(head, "button", "close", "Close");
+    shut.setAttribute("type", "button");
+    shut.addEventListener("click", shutBehind);
+
+    drawBehindInterface(into, module);
+    drawBehindReach(into, module);
+    drawBehindCallers(into, module);
+    drawBehindVerdict(into, module);
+    drawBehindFindings(into, module);
+  }
+
+  // What a caller has to learn, method by method. A module no rule scores gets the rule
+  // that excluded it here instead of a cost: printing one anyway — even a zero — would be
+  // the score the rules declined to give, wearing a number.
+  function drawBehindInterface(into, module) {
+    var part = behindPart(into, "What it costs a caller");
+    if (module.excludedBy) {
+      add(part, "p", "unscored", "never scored — " + module.excludedBy.rule);
+      add(part, "p", "because",
+        module.excludedBy.matched + ". " + because[module.excludedBy.rule]);
+    } else {
+      add(part, "p", null,
+        "interface cost " + module.interface.cost + " — "
+        + module.interface.costWithoutRefusals + " of it is what a caller must learn "
+        + "besides the refusals, and " + module.interface.refusalCost + " of it is the "
+        + "refusals it can answer with");
+      add(part, "p", null,
+        "reach " + module.depth.reach + " over interface cost " + module.depth.interfaceCost
+        + (module.depth.leverage === null
+          ? " — nothing on the bar to read it against"
+          : " — " + module.depth.leverage + " reached per unit of interface"));
+    }
+    drawBehindMethods(part, module);
+    drawBehindTypes(part, module);
+    drawBehindRefusals(part, module);
+  }
+
+  function drawBehindMethods(part, module) {
+    var methods = module.interface.methods;
+    if (methods.length === 0) {
+      add(part, "p", "none", "No method here is reachable from outside this module.");
+      return;
+    }
+    add(part, "p", null,
+      count(module.deletionTest.methods, "method a caller can reach",
+        "methods a caller can reach") + ":");
+    var listed = add(part, "ul", "methods");
+    methods.forEach(function (method) {
+      var item = add(listed, "li");
+      add(item, "code", null,
+        method.visibility + " " + method.returns + " " + method.name
+        + "(" + method.parameters.join(", ") + ")");
+      add(item, "span", "says", method.cost === null
+        ? " — never priced"
+        : " — costs " + method.cost);
+      if (method.documentedRefusals.length === 0) { return; }
+      add(item, "span", "says",
+        ", and documents " + method.documentedRefusals.join(", "));
+    });
+  }
+
+  function drawBehindTypes(part, module) {
+    var types = module.interface.typesCrossingTheSeam;
+    if (types.length === 0) {
+      add(part, "p", "none", "No type crosses this seam.");
+      return;
+    }
+    var line = add(part, "p", null, "types crossing the seam: ");
+    types.forEach(function (type, index) {
+      if (index > 0) { line.appendChild(document.createTextNode(", ")); }
+      add(line, "code", null, type.name);
+      // Which side of the configuration's list a name falls on is part of what the
+      // module was priced at, so it is left off a module nothing priced.
+      if (module.excludedBy) { return; }
+      add(line, "span", "says", type.mustBeLearned
+        ? " (a type to learn)"
+        : " (a type every caller already knows)");
+    });
+  }
+
+  function drawBehindRefusals(part, module) {
+    var refusals = module.interface.refusals;
+    if (refusals.length === 0) {
+      add(part, "p", "none", "This module answers with no refusal this tool could read.");
+      return;
+    }
+    add(part, "p", null, "refusals it can answer with:");
+    var listed = add(part, "ul", "refusals");
+    refusals.forEach(function (refusal) {
+      var item = add(listed, "li");
+      add(item, "code", null, refusal.name);
+      add(item, "span", "says", " — " + documentedBy(refusal) + ", and "
+        + (refusal.checked
+          ? raisedOrNot(refusal)
+          : "whether this module raises it is not something this tool could read"));
+    });
+  }
+
+  // Both sides of a refusal, in the words the card under the shape uses for them, so that
+  // a reader who opened the panel to check the card is reading the same sentence twice.
+  function documentedBy(refusal) {
+    return refusal.documented
+      ? "documented by " + refusal.documentedBy.join(", ")
+      : "documented by no method a caller can reach";
+  }
+
+  function raisedOrNot(refusal) {
+    return refusal.raised
+      ? "raised in this module's body"
+      : "raised nowhere this tool can read in it";
+  }
+
+  function drawBehindReach(into, module) {
+    var part = behindPart(into, "What it coordinates on a caller's behalf");
+    var reaches = module.reach.reaches;
+    if (reaches.length === 0) {
+      add(part, "p", "none", "This module reaches nothing this graph holds.");
+      return;
+    }
+    add(part, "p", null, "reaches " + module.reach.count + ":");
+    var listed = add(part, "ul", "reaches");
+    reaches.forEach(function (reached) {
+      var item = add(listed, "li");
+      // Prefixed rather than written as the bare kind, because one of the four words the
+      // document uses for a kind is `module`, and `.module` is the card: a span wearing
+      // that word was drawn inside the panel with the card's own border, background and
+      // padding, as a little box around the word MODULE and around nothing else.
+      add(item, "span", "kind kind-" + reached.kind, reached.kind);
+      item.appendChild(document.createTextNode(" "));
+      add(item, "code", null, reached.name);
+      add(item, "span", "says", " — " + reached.matched);
+      // The id as well as the name, where the document holds one: two modules in two
+      // packages can be called the same thing, and a name on its own would send a reader
+      // to whichever card they found first. On a line of its own, because run into the
+      // sentence above it the id doubled the length of every entry in the fan.
+      if (reached.moduleId === null) { return; }
+      add(item, "code", "says id", reached.moduleId);
+    });
+  }
+
+  function drawBehindCallers(into, module) {
+    var part = behindPart(into, "Which modules go through it");
+    var callers = module.callers.moduleIds;
+    if (callers.length === 0) {
+      add(part, "p", "none", "No module in this graph calls this one.");
+      return;
+    }
+    add(part, "p", null,
+      count(module.callers.count, "module goes", "modules go") + " through it:");
+    var listed = add(part, "ul", "callers");
+    callers.forEach(function (id) {
+      add(add(listed, "li"), "code", null, id);
+    });
+  }
+
+  // The verdict with the three counts it was read off and the rule that produced it, all
+  // four out of the document. A module no rule scores gets no verdict at all, and the
+  // panel says that rather than leaving the section out.
+  function drawBehindVerdict(into, module) {
+    var part = behindPart(into, "The deletion test");
+    var test = module.deletionTest;
+    if (test.verdict === null) {
+      add(part, "p", "none",
+        "This module is never scored, so the deletion test gives it no verdict.");
+      return;
+    }
+    var line = add(part, "p", test.verdict === passThrough ? "verdict found" : "verdict");
+    add(line, "strong", null, test.verdict);
+    add(line, "span", "says",
+      " — coordinates " + count(test.reach, "thing", "things") + " behind "
+      + count(test.methods, "method", "methods") + " a caller can reach, with "
+      + count(test.callers, "module", "modules") + " going through it");
+    add(part, "p", "because", test.because);
+  }
+
+  function drawBehindFindings(into, module) {
+    var part = behindPart(into, "Findings against it");
+    if (module.findings.length === 0) {
+      add(part, "p", "none", "There is no finding against this module.");
+      return;
+    }
+    var listed = add(part, "ul", "findings");
+    module.findings.forEach(function (finding) {
+      var item = add(listed, "li", "finding");
+      add(item, "strong", null, finding.finding);
+      add(item, "span", "says",
+        " — " + finding.refusal + " is " + documentedBy(finding) + ", and "
+        + raisedOrNot(finding));
+      add(item, "p", "because", finding.because);
+    });
+  }
+
   var byId = {};
   document_.modules.forEach(function (module) { byId[module.id] = module; });
 
@@ -911,7 +1300,15 @@ _SCRIPT = """
     package_.moduleIds.forEach(function (id) {
       var module = byId[id];
       var item = add(modules, "li", "module");
-      add(item, "div", "name", module.name);
+      // The whole card is the control, and the name inside it is a real button: a
+      // pointer opens the panel by clicking anywhere on the card, and a keyboard opens
+      // the same panel by tabbing to the name and pressing Enter, whose click bubbles up
+      // to the one handler here. Written as two handlers, a click on the name would have
+      // opened it twice.
+      var opens = add(item, "button", "name", module.name);
+      opens.setAttribute("type", "button");
+      opens.setAttribute("aria-haspopup", "dialog");
+      item.addEventListener("click", function () { openBehind(module, opens); });
       add(item, "div", "kind", module.kind);
       drawShape(item, module);
       drawInterface(item, module);

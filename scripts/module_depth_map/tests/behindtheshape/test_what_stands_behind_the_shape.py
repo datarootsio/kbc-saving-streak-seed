@@ -1,0 +1,443 @@
+"""Clicking a module opens everything standing behind its shape, and none of it is new.
+
+The shape on a card makes a claim; the panel is where a reader checks it. So the property
+these tests establish is not that the panel looks a certain way — it is that every fact in
+it is one the graph document already holds, read straight off it. A panel that worked a
+number out while the page was drawing would be a second measurement standing beside the
+one an agent reads out of the file, with nothing to say which of the two the shape came
+from.
+
+Two of these are mechanical rather than illustrative, and they are the ones worth keeping:
+one resolves every `module.` path the panel reads against a real document and fails on a
+key the document does not have — a misspelling that would otherwise reach the page as the
+word `undefined` — and one refuses any use of `.length` except asking whether a list is
+empty, which is how counting gets into a renderer that promised not to count.
+"""
+
+import json
+import os
+import re
+
+from ... import graph, page, scoring
+from ..support.sourcetrees import SourceTreeTest
+
+# The cast, each written to earn one shape the panel has to be able to draw.
+A_MODULE_TO_CALL = "public class Prices {\n    public long of(long id) { return 0; }\n}"
+AN_ADAPTER = (
+    "import org.springframework.data.jpa.repository.JpaRepository;\n\n"
+    "interface ReceiptRepository extends JpaRepository<Receipt, Long> {\n}"
+)
+A_PERSISTENT_RECORD = (
+    "import jakarta.persistence.Entity;\n\n"
+    "@Entity\nclass Receipt {\n"
+    "    Receipt(long cents) {}\n"
+    "    public long cents() { return 0; }\n}"
+)
+A_DATA_CARRIER = "public record Line(long cents, String what) {}"
+
+# Deep: four things coordinated behind one method, and a refusal it documents and keeps.
+A_MODULE_WORTH_OPENING = """import java.math.BigDecimal;
+
+import org.springframework.transaction.annotation.Transactional;
+
+public class Till {
+
+    private final ReceiptRepository receipts;
+    private final Prices prices;
+
+    Till(ReceiptRepository receipts, Prices prices) {
+        this.receipts = receipts;
+        this.prices = prices;
+    }
+
+    /**
+     * Rings one thing up.
+     *
+     * @throws IllegalArgumentException if there is no such thing
+     */
+    @Transactional
+    public Receipt ring(long id, BigDecimal discount) {
+        if (id < 0) { throw new IllegalArgumentException("no such thing"); }
+        long cents = prices.of(id);
+        Receipt receipt = new Receipt(cents);
+        receipts.save(receipt);
+        return receipt;
+    }
+}"""
+
+# A refusal in the body that the seam says nothing about: one finding, on one module.
+A_MODULE_WITH_A_FINDING = """public class Barrier {
+
+    /** Lets one through. */
+    public void go(long id) {
+        if (id < 0) { throw new IllegalStateException("the barrier is down"); }
+    }
+}"""
+
+# Two callers, so that "which modules go through it" has more than one line to draw.
+A_CALLER = """import java.math.BigDecimal;
+
+public class Shop {
+
+    private final Till till;
+
+    Shop(Till till) { this.till = till; }
+
+    public void sell(long id) { till.ring(id, BigDecimal.ONE); }
+}"""
+
+ANOTHER_CALLER = """import java.math.BigDecimal;
+
+public class Market {
+
+    private final Till till;
+
+    Market(Till till) { this.till = till; }
+
+    public void sell(long id) { till.ring(id, BigDecimal.TEN); }
+}"""
+
+# What the panel is drawn by, all of it, and the only place these tests read.
+PANEL = (
+    "openBehind",
+    "drawBehind",
+    "drawBehindInterface",
+    "drawBehindMethods",
+    "drawBehindTypes",
+    "drawBehindRefusals",
+    "drawBehindReach",
+    "drawBehindCallers",
+    "drawBehindVerdict",
+    "drawBehindFindings",
+)
+
+# Members of a JavaScript array, not keys of the document. A path ending in one of these
+# is resolved without it; anything else has to be a key the document really has.
+NOT_A_KEY = ("forEach", "join", "length")
+
+
+class BehindTheShapeTest(SourceTreeTest):
+    """One source tree with every shape the panel has to draw, and the page for it."""
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        for name, body in (
+            ("Till", A_MODULE_WORTH_OPENING),
+            ("Prices", A_MODULE_TO_CALL),
+            ("ReceiptRepository", AN_ADAPTER),
+            ("Receipt", A_PERSISTENT_RECORD),
+            ("Line", A_DATA_CARRIER),
+            ("Barrier", A_MODULE_WITH_A_FINDING),
+            ("Shop", A_CALLER),
+            ("Market", ANOTHER_CALLER),
+        ):
+            tree.java("shop.till", name, body)
+        self.document = graph.build([graph.java_root(tree.root)], scoring.load())
+        self.assertEqual([], self.document["source"]["unparsed"])
+        self.modules = {module["name"]: module for module in self.document["modules"]}
+        self.rendered = page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
+    def body(self, name):
+        """One function of the renderer, as its source."""
+        found = self.rendered[self.rendered.index("function " + name):]
+        return found[:found.index("\n  }")]
+
+    def panel(self):
+        """Every function the panel is drawn by, as one piece of source."""
+        return "\n".join(self.body(name) for name in PANEL)
+
+    def card(self):
+        """The loop that draws one card per module."""
+        found = self.rendered[self.rendered.index("package_.moduleIds.forEach"):]
+        return found[:found.index("\n  });")]
+
+
+class ClickingAModuleOpensWhatStandsBehindItTest(BehindTheShapeTest):
+
+    def test_the_card_is_the_control_and_the_name_on_it_is_a_button(self):
+        """A pointer opens the panel anywhere on the card; a keyboard opens it by tabbing.
+
+        One handler, on the card, is deliberate: the button's own click bubbles up to it,
+        and a second handler on the button would open the same panel twice.
+        """
+        card = self.card()
+
+        self.assertIn('add(item, "button", "name", module.name)', card)
+        self.assertIn('opens.setAttribute("type", "button")', card)
+        self.assertIn('opens.setAttribute("aria-haspopup", "dialog")', card)
+        self.assertIn('item.addEventListener("click", function () { openBehind(module, opens); });', card)
+        self.assertEqual(1, card.count("addEventListener"))
+
+    def test_the_panel_is_a_dialog_so_that_the_keyboard_is_the_browsers_business(self):
+        """Escape, the focus that goes in and the focus that comes back out are all free.
+
+        A hand-rolled panel has to trap the tab key itself, and one that traps it wrong is
+        a page a keyboard cannot leave.
+        """
+        script = self.rendered[self.rendered.index("</script>"):]
+
+        self.assertIn('var panel = add(root, "dialog", "behind");', script)
+        self.assertIn('panel.setAttribute("aria-labelledby", BEHIND_NAME);', script)
+        self.assertIn("panel.showModal();", script)
+        self.assertIn('behindBody.setAttribute("tabindex", "0");', script)
+
+    def test_the_card_takes_the_focus_before_the_panel_opens(self):
+        """Which is what makes closing hand the keyboard back to the card it came from.
+
+        The browser writes down where focus was when a modal dialog opened. Clicking the
+        body of a card focuses nothing, so without this the note said "nowhere", closing
+        dropped the keyboard on a hidden element, and Tab started again from the top of
+        the page. Doing it in the `close` event instead is a different thing: that event
+        is a queued task, and it lands after the browser has restored focus itself.
+        """
+        opening = self.body("openBehind")
+
+        self.assertIn("from.focus();", opening)
+        self.assertLess(opening.index("from.focus();"), opening.index("panel.showModal()"))
+
+    def test_the_page_says_the_panel_is_there_and_what_is_in_it(self):
+        """An affordance nobody mentions is one a reader has to find by accident."""
+        script = self.rendered[self.rendered.index("</script>"):]
+
+        self.assertIn("Click any module", script)
+        self.assertIn("press Enter", script)
+
+
+class ThePanelIsReadStraightOffTheDocumentTest(BehindTheShapeTest):
+    """The claim the whole panel rests on, established twice and mechanically."""
+
+    def test_every_value_the_panel_reads_is_a_key_the_document_has(self):
+        """A misspelled key is not an error in a browser: it is the word `undefined`.
+
+        Every `module.` path the panel reads is resolved here against every module in a
+        real document, so a key that moved, or was never there, fails the suite instead of
+        printing nothing on the page.
+        """
+        paths = sorted(set(re.findall(r"module\.[A-Za-z][A-Za-z0-9_.]*", self.panel())))
+
+        self.assertNotEqual([], paths)
+        for path in paths:
+            steps = path.split(".")[1:]
+            while steps and steps[-1] in NOT_A_KEY:
+                steps = steps[:-1]
+            for module in self.document["modules"]:
+                at, walked = module, []
+                for step in steps:
+                    walked.append(step)
+                    self.assertIsInstance(
+                        at, dict,
+                        "%s: %s is not something with keys in %s"
+                        % (path, ".".join(walked[:-1]), module["id"]),
+                    )
+                    self.assertIn(
+                        step, at,
+                        "%s: the document has no %s on %s"
+                        % (path, ".".join(walked), module["id"]),
+                    )
+                    at = at[step]
+                    # A key the document holds as null is still a key it holds — a module
+                    # nothing excluded, a verdict never given. What sits under it is
+                    # resolved on the modules that have one, which this fixture has.
+                    if at is None:
+                        break
+
+    def test_the_panel_never_counts_anything_it_could_read_instead(self):
+        """`.length` is how counting gets into a renderer that promised not to count.
+
+        A list is allowed to be asked whether it is empty, because "there are none" is a
+        sentence rather than a measurement. Anything else — a length printed, a length
+        added to something — is a second number beside the document's own, and a reader
+        could not tell which of the two the shape above was drawn from.
+        """
+        for used in re.findall(r"\.length[^\n]*", self.panel()):
+            self.assertTrue(
+                used.startswith(".length === 0"),
+                "the panel uses .length for something other than an empty list: %s" % used,
+            )
+
+    def test_the_counts_the_panel_prints_are_the_documents_own(self):
+        reading = self.panel()
+
+        self.assertIn("module.reach.count", reading)
+        self.assertIn("module.callers.count", reading)
+        self.assertIn("module.deletionTest.methods", reading)
+        self.assertIn("module.lines", reading)
+
+
+class EveryMethodWithWhatItCostsACallerTest(BehindTheShapeTest):
+
+    def test_the_panel_draws_each_method_with_the_cost_the_document_gave_it(self):
+        drawn = self.body("drawBehindMethods")
+
+        for read in ("method.visibility", "method.returns", "method.name",
+                     "method.parameters.join", "method.cost",
+                     "method.documentedRefusals"):
+            self.assertIn(read, drawn)
+
+    def test_the_document_prices_each_method_of_the_module_the_panel_will_draw(self):
+        """What the panel prints per method has to be there per method to print."""
+        till = self.modules["Till"]
+
+        self.assertEqual(
+            [{"name": "ring", "parameters": ["long", "BigDecimal"], "cost": 3,
+              "returns": "Receipt", "visibility": "public",
+              "documentedRefusals": ["IllegalArgumentException"]}],
+            [dict(method) for method in till["interface"]["methods"]],
+        )
+
+    def test_the_types_that_cross_the_seam_are_named_with_it(self):
+        drawn = self.body("drawBehindTypes")
+
+        self.assertIn("type.name", drawn)
+        self.assertIn("type.mustBeLearned", drawn)
+
+    def test_the_refusals_it_can_answer_with_are_named_with_both_sides_of_each(self):
+        drawn = self.body("drawBehindRefusals")
+
+        self.assertIn("refusal.name", drawn)
+        self.assertIn("refusal.checked", drawn)
+        self.assertIn("documentedBy(refusal)", drawn)
+        self.assertIn("raisedOrNot(refusal)", drawn)
+
+
+class EverythingItReachesAndEveryModuleThatCallsItTest(BehindTheShapeTest):
+
+    def test_each_thing_reached_is_named_with_its_kind_and_how_it_was_read(self):
+        drawn = self.body("drawBehindReach")
+
+        for read in ("reached.kind", "reached.name", "reached.matched", "reached.moduleId"):
+            self.assertIn(read, drawn)
+        self.assertIn("module.reach.reaches", drawn)
+
+    def test_a_module_that_reaches_nothing_is_told_so_rather_than_left_blank(self):
+        drawn = self.body("drawBehindReach")
+
+        self.assertIn("module.reach.reaches", drawn)
+        self.assertIn("reaches nothing this graph holds", drawn)
+
+    def test_the_module_the_panel_will_draw_reaches_what_the_fixture_gave_it(self):
+        till = self.modules["Till"]
+
+        self.assertEqual(
+            [("adapter", "ReceiptRepository"), ("module", "Prices"),
+             ("record", "Receipt"), ("transaction", "a transaction")],
+            [(reached["kind"], reached["name"]) for reached in till["reach"]["reaches"]],
+        )
+
+    def test_every_module_that_calls_this_one_is_named(self):
+        drawn = self.body("drawBehindCallers")
+
+        self.assertIn("module.callers.moduleIds", drawn)
+        self.assertIn("module.callers.count", drawn)
+
+    def test_a_module_nothing_calls_is_told_so_rather_than_left_blank(self):
+        drawn = self.body("drawBehindCallers")
+
+        self.assertIn("No module in this graph calls this one.", drawn)
+
+    def test_the_callers_the_panel_will_name_are_the_ones_the_document_holds(self):
+        self.assertEqual(
+            ["shop.till.Market", "shop.till.Shop"],
+            self.modules["Till"]["callers"]["moduleIds"],
+        )
+
+
+class TheVerdictAndTheFindingsAgainstItTest(BehindTheShapeTest):
+
+    def test_the_panel_carries_the_verdict_and_the_three_counts_behind_it(self):
+        drawn = self.body("drawBehindVerdict")
+
+        for read in ("test.verdict", "test.reach", "test.methods", "test.callers",
+                     "test.because"):
+            self.assertIn(read, drawn)
+
+    def test_a_module_no_rule_scores_is_given_no_verdict_and_the_panel_says_so(self):
+        drawn = self.body("drawBehindVerdict")
+
+        self.assertIn("test.verdict === null", drawn)
+        self.assertIn("never scored, so the deletion test gives it no verdict", drawn)
+
+    def test_every_finding_is_listed_with_both_sides_of_it_and_the_reason(self):
+        drawn = self.body("drawBehindFindings")
+
+        for read in ("finding.finding", "finding.refusal", "finding.because",
+                     "documentedBy(finding)", "raisedOrNot(finding)"):
+            self.assertIn(read, drawn)
+
+    def test_a_module_with_no_finding_against_it_says_so_plainly(self):
+        """Silence and "there are none" are different answers, and only one is checkable."""
+        drawn = self.body("drawBehindFindings")
+
+        self.assertIn("module.findings.length === 0", drawn)
+        self.assertIn("There is no finding against this module.", drawn)
+
+    def test_the_module_the_panel_will_draw_carries_the_finding_the_fixture_earned(self):
+        barrier = self.modules["Barrier"]
+
+        self.assertEqual(
+            [("raised but never documented", "IllegalStateException")],
+            [(finding["finding"], finding["refusal"]) for finding in barrier["findings"]],
+        )
+
+
+class AnExcludedModulesPanelNamesTheRuleRatherThanAScoreTest(BehindTheShapeTest):
+
+    def excluded_branch(self):
+        """What the panel draws for a module no rule scores, and nothing else."""
+        drawn = self.body("drawBehindInterface")
+        start = drawn.index("if (module.excludedBy) {")
+        return drawn[start:drawn.index("} else {", start)]
+
+    def test_the_rule_that_excluded_it_is_named_with_what_matched(self):
+        branch = self.excluded_branch()
+
+        self.assertIn("module.excludedBy.rule", branch)
+        self.assertIn("module.excludedBy.matched", branch)
+        self.assertIn("because[module.excludedBy.rule]", branch)
+
+    def test_no_score_is_drawn_for_a_module_no_rule_scored(self):
+        """Even a zero would be the score the rules declined to give, wearing a number."""
+        branch = self.excluded_branch()
+
+        for score in ("interface.cost", "interface.refusalCost",
+                      "interface.costWithoutRefusals", "depth.leverage",
+                      "depth.interfaceCost"):
+            self.assertNotIn(score, branch)
+
+    def test_which_side_of_the_list_a_type_falls_on_is_left_off_it_too(self):
+        drawn = self.body("drawBehindTypes")
+
+        self.assertIn("if (module.excludedBy) { return; }", drawn)
+
+    def test_the_document_excludes_the_fixture_by_the_rules_the_panel_will_print(self):
+        self.assertEqual(
+            {"Line": "data carrier", "ReceiptRepository": "generated repository"},
+            {
+                name: module["excludedBy"]["rule"]
+                for name, module in self.modules.items()
+                if module["excludedBy"]
+            },
+        )
+        for name in ("Line", "ReceiptRepository"):
+            self.assertIsNone(self.modules[name]["interface"]["cost"])
+            self.assertIsNone(self.modules[name]["deletionTest"]["verdict"])
+
+
+class TheCommittedPageDrawsThePanelTest(BehindTheShapeTest):
+    """The page in `docs/` is the one a reader opens, so the panel has to be in it."""
+
+    def test_the_committed_page_carries_the_panel_and_the_document_it_reads(self):
+        here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))))
+        with open(os.path.join(here, "docs", "module-depth-map.html"), encoding="utf-8") as it:
+            committed = it.read()
+        with open(os.path.join(here, "docs", "module-depth-map.json"), encoding="utf-8") as it:
+            written = json.load(it)
+
+        for drawn in PANEL:
+            self.assertIn("function " + drawn, committed)
+        self.assertIn('add(root, "dialog", "behind")', committed)
+        self.assertNotEqual([], written["modules"])

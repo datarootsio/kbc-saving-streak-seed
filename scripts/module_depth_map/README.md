@@ -131,7 +131,9 @@ Each module is drawn as a bar whose width is what its interface costs a caller �
 bands, the refusals it can answer with and everything else — over a fan with one line out
 to each thing it coordinates on that caller's behalf, and under both a verdict on what
 deleting it would do — read off the fan, the bar and the number of modules
-that go through it. Nothing is ranked, and nothing is proposed for change.
+that go through it. Clicking a module opens everything standing behind its shape, which
+is what the rest of this file is about. Nothing is ranked, and nothing is proposed for
+change.
 
 ## What an interface costs
 
@@ -485,6 +487,50 @@ coordinates five things behind eleven methods with five modules going through it
 Every run logs each pass-through at INFO with the three counts and the callers behind
 them, so the finding does not need the page to be read.
 
+
+## Behind the shape
+
+The shape on a card makes a claim. Clicking the card — or tabbing to the module's name and
+pressing Enter — opens the panel where a reader checks it, holding everything the graph
+document has about that one module:
+
+- **where it lives**: its kind, its language, its package, the path it was read from and
+  how many lines that file has;
+- **what it costs a caller**: the interface cost, split into what a caller must learn
+  besides the refusals and the refusals themselves, and the reach it is read against —
+  then every method a caller can reach, written as the source writes it, with the cost the
+  document gave that one method, and any refusal the method documents; then every type
+  crossing the seam, each marked as one to learn or one every caller already knows; then
+  every refusal the module can answer with, with both sides of it;
+- **what it coordinates on a caller's behalf**: one line per thing reached, with its kind
+  in the same ink the fan draws it in, the sentence saying how it was read, and the id of
+  the module it points at;
+- **which modules go through it**: every caller by id;
+- **the deletion test**: the verdict, the three counts it was read off, and the rule it
+  was argued for with;
+- **findings against it**: each disagreement between a documented refusal and a raised
+  one, with both sides and the reason — or, in as many words, that there are none.
+
+A module no rule scores gets the rule that excluded it and the fact that matched, in place
+of every number: no cost, no leverage, no verdict, and no split of its types into ones to
+learn and ones a caller already knows. Even a zero there would be the score the rules
+declined to give, wearing a number.
+
+**Nothing in the panel is worked out while the page is drawn.** Every value in it is read
+straight off the document the page carries — a method's own `cost`, the verdict's own
+three counts, `reach.count`, `callers.count`, `deletionTest.methods` — so what a reader
+sees and what a later tool reads out of `module-depth-map.json` are the same facts rather
+than two measurements that agree today. Two tests hold that: one resolves every `module.`
+path the panel reads against a real document and fails on a key the document does not
+have, because a misspelled key is not an error in a browser but the word `undefined`; the
+other refuses every use of `.length` in the panel except asking whether a list is empty,
+which is how counting gets into a renderer that promised not to count.
+
+The panel is a `<dialog>` opened with `showModal`, so Escape, the focus that goes into it
+and the focus that comes back out are the browser's own rather than this page's. The card
+takes the focus before the panel opens, because that is the note the browser makes about
+where to hand focus back to: without it, a click on the body of a card focuses nothing,
+and closing the panel drops the keyboard on a hidden element.
 
 ## What is drawn but never scored
 
