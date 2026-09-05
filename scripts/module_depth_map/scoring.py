@@ -11,7 +11,9 @@ distinct type that crosses the seam in a parameter or a return. Types are counte
 per module however many methods hand them over — learning `RecordedDeposit` twice is
 still learning it once — and a type the file lists under `typesEveryCallerAlreadyKnows`
 is weighted apart from one it does not, which is why a method handing back a domain type
-costs more than one handing back a primitive.
+costs more than one handing back a primitive. That list is written per language, because
+what a caller already knows is a fact about the language they are calling from: `string`
+is free to a TypeScript caller and is not a name a Java one ever meets.
 
 That list is the whole of the distinction, and `mustBeLearned` says no more than "this
 name is not on it". It is not a claim about where the type was declared: the tool reads
@@ -86,7 +88,7 @@ import logging
 import os
 import re
 
-from . import javasource, languages
+from . import languages
 
 log = logging.getLogger("module_depth_map.scoring")
 
@@ -108,7 +110,14 @@ log = logging.getLogger("module_depth_map.scoring")
 # code, build output and installed dependencies out of the graph: a /5 file names none of
 # them, and read with no rule at all the tool would walk into a `node_modules` and put
 # somebody else's source on the page as though this repository had written it.
-SCHEMA = "module-depth-map-scoring/6"
+# It moved to /7 when `typesEveryCallerAlreadyKnows` became one list per language. A /6
+# file writes one list for both, and there is no one list to write: `string` is free to a
+# TypeScript caller and is not a name a Java one ever meets, while a Java module whose
+# seam is spelled with a domain type called `Response` was charged nothing for it off a
+# list that meant the platform type of that name. Read as a /6 file the split would be
+# silent — every name on it applying to both halves of the application, which is a
+# judgement the file never made.
+SCHEMA = "module-depth-map-scoring/7"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
@@ -249,12 +258,19 @@ def _strings(value, where, may_be_empty=False):
 # opinion about how Java spells a name.
 _A_SIMPLE_NAME = re.compile(r"(?:[^\W\d]|\$)[\w$]*\Z")
 _THE_END_OF_A_NAME = re.compile(r"[\w$]+\Z")
-# What a module id looks like: the package the graph recorded, a dot, and the module's own
-# name. A flow's entry point is the one place in this file that names a module rather than
+# What a module id looks like: the whole id the graph knows a module by, in whichever way
+# its language writes one — a Java module's package, a dot and its name, or a file module's
+# path. A flow's entry point is the one place in this file that names a module rather than
 # matching a fact about one, so it is the one place an id is written — and it is written in
 # full, because two packages can hold a module of the same name and a flow pointing at
-# whichever one was found first is a flow about nothing anybody chose.
-_A_MODULE_ID = re.compile(r"(?:(?:[^\W\d]|\$)[\w$]*\.)+(?:[^\W\d]|\$)[\w$]*\Z")
+# whichever one was found first is a flow about nothing anybody chose. Both spellings,
+# because a rule that accepted only one of them would be a rule that no flow through the
+# frontend could ever be written under, on a page whose claim is that both halves are read
+# by the same rules.
+_A_MODULE_ID = re.compile(
+    r"(?:(?:[^\W\d]|\$)[\w$]*\.)+(?:[^\W\d]|\$)[\w$]*\Z"
+    r"|[\w$.\-]+(?:/[\w$.\-]+)+\Z"
+)
 
 
 def _the_name_in(written):
@@ -306,6 +322,50 @@ def _simple_names(value, where, may_be_empty=False):
         _A_SIMPLE_NAME,
         "a simple name the source was read with",
     )
+
+
+def _familiar_by_language(value):
+    """The types a caller of each language is taken to already know, one list per language.
+
+    One list per language rather than one list for both, because the judgement is about
+    what a caller of *that* language already holds and the two do not share it. `string`
+    is free to a TypeScript caller and is not a name a Java one ever meets; `Optional` is
+    the other way round. Written as one shared list, both got both — and a Java module
+    whose seam is spelled with a domain type called `Response` was charged nothing for it
+    off a name that meant `fetch`'s.
+
+    Every language this tool reads has to be named, and nothing else may be. A missing
+    language would charge its callers for learning every type they meet, which is a
+    position this file is entitled to hold and has to state rather than fall into; a
+    language nobody reads would look like a judgement and do nothing.
+
+    Empty is allowed here and nowhere else a list of names is read: "charge a caller for
+    every type they meet" is a position somebody can hold and argue for, while an empty
+    list anywhere a rule is matched would be a condition that could never hold.
+    """
+    where = "interfaceCost.typesEveryCallerAlreadyKnows"
+    named = [language.NAME for language in languages.ALL]
+    if not isinstance(value, dict):
+        raise ConfigurationRefused(
+            "%s is %s, and it has to be an object naming one list of types per language: "
+            "%s. One list for every language would say that a caller of each already "
+            "knows the other's types, which is a judgement no reader of this file could "
+            "check" % (where, _shape(value), ", ".join(named))
+        )
+    _only(value, tuple(named), where)
+    known = {}
+    for name in named:
+        if name not in value:
+            raise ConfigurationRefused(
+                "%s names no list for %s, and this tool reads %s: a language left out "
+                "would charge every caller of it for learning every type they meet, which "
+                "is a position to write down rather than to leave to a missing key"
+                % (where, name, ", ".join(named))
+            )
+        known[name] = frozenset(
+            _simple_names(value[name], "%s.%s" % (where, name), may_be_empty=True)
+        )
+    return known
 
 
 def _name_endings(value, where):
@@ -916,23 +976,34 @@ class Rules:
             | {name.rsplit(".", 1)[-1] for name in nested}
             | inherited.declares
         )
+        # `local` rather than `member`, and the difference is the whole of what a renamed
+        # import is: `import { fetchDeposits as fd }` asks the module for `fetchDeposits`
+        # and the body writes `fd`, so the name to look for among the names the body calls
+        # is the one the body was allowed to choose. Matched against the member instead,
+        # only the imports that renamed nothing were ever followed — every renamed one, and
+        # every default import, whose member is the word `default` and whose local name is
+        # whatever the file called it, reached nothing at all.
+        #
+        # An import that binds no member binds no name a bare call can be written against:
+        # `import * as api` is followed through the receiver `api` instead, and
+        # `import './index.css'` names nothing for anybody to call.
         for imported in imports:
-            if imported.member not in declared.called:
+            if imported.member is None or imported.local not in declared.called:
                 continue
             if inherited.opaque:
                 log.debug(
                     "static import not read as a call name=%s member=%s from=%s, because "
                     "this module is built on a type this graph does not hold and what "
                     "that type declares cannot be read here",
-                    declared.name, imported.member, imported.type,
+                    declared.name, imported.local, imported.type,
                 )
                 continue
-            if imported.member in declares:
+            if imported.local in declares:
                 log.debug(
                     "static import not read as a call name=%s member=%s from=%s, because "
                     "this module's body declares that name itself and a declaration is "
                     "not a call",
-                    declared.name, imported.member, imported.type,
+                    declared.name, imported.local, imported.type,
                 )
                 continue
             # `imported.type` is already the whole id of the type the member was imported
@@ -944,7 +1015,7 @@ class Rules:
             target = resolve(imported.type)
             if target is not None:
                 note(target, self._what_is_reached(modules[target]),
-                     language.IMPORTED_EVIDENCE % imported.member)
+                     language.IMPORTED_EVIDENCE % imported.local)
 
         # Building a collaborator is coordinating it. `new B(a)` and `B.of(a)` are the
         # same module reached, spelled two ways, and counting only the second made a
@@ -1112,8 +1183,13 @@ class Rules:
         )
         statically = {}
         for imported in imports:
-            if imported.member is not None and imported.member not in statically:
-                statically[imported.member] = imported.type
+            # Keyed by the name the body writes, for the reason `reach_of` reads that one:
+            # a call site carries the word the source wrote, and for a renamed or a
+            # default import that word is not the member the module was asked for.
+            if imported.member is None or imported.local is None:
+                continue
+            if imported.local not in statically:
+                statically[imported.local] = imported.type
 
         calls = []
 
@@ -1384,8 +1460,13 @@ class Rules:
                     for name in language.crosses_the_seam(written)
                     if name not in variables
                 )
+        # The list read is the one the file wrote for the language this module is written
+        # in. A shared list would say that a caller of each language already knows the
+        # other's types, and a Java module whose seam is spelled with a domain type called
+        # `Response` would be charged nothing for it off a name that meant `fetch`'s.
+        already_known = self.already_known[language.NAME]
         return [
-            {"name": name, "mustBeLearned": name not in self.already_known}
+            {"name": name, "mustBeLearned": name not in already_known}
             for name in sorted(names)
         ]
 
@@ -1468,14 +1549,7 @@ def load(path=None):
             "interfaceCost.reachableFromOutside names %s, and a method is %s"
             % (", ".join(sorted(unknown)), " or ".join(VISIBILITIES))
         )
-    # Empty is allowed here and nowhere else: "charge a caller for every type they
-    # meet" is a position somebody can hold and argue for, while an empty list anywhere a
-    # rule is matched would be a condition that could never hold.
-    known = _simple_names(
-        cost.get("typesEveryCallerAlreadyKnows"),
-        "interfaceCost.typesEveryCallerAlreadyKnows",
-        may_be_empty=True,
-    )
+    known = _familiar_by_language(cost.get("typesEveryCallerAlreadyKnows"))
 
     refusals = _refusals(document.get("refusals"))
     reached = _reach(document.get("reach"))
@@ -1484,15 +1558,15 @@ def load(path=None):
     exclusions = _exclusions(document.get("exclusions"))
     sources_not_read = _sources_not_read(document.get("sourcesNotRead"))
     rules = Rules(
-        path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached,
+        path, dict(weights), frozenset(reachable), known, exclusions, reached,
         deletion_test, refusals, flows, sources_not_read,
     )
     log.debug(
-        "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
+        "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%s "
         "transaction=%s rules=%s",
         ",".join("%s=%d" % (name, weights[name]) for name in WEIGHTS),
         ",".join(sorted(reachable)),
-        len(known),
+        ",".join("%s=%d" % (name, len(known[name])) for name in sorted(known)),
         ",".join(sorted(reached.transaction_annotations)),
         ",".join(exclusion.rule for exclusion in exclusions),
     )
@@ -1621,8 +1695,9 @@ def _flows(listed):
         if not isinstance(module, str) or not _A_MODULE_ID.match(module.strip()):
             raise ConfigurationRefused(
                 "%s.entryPoint.module is %r, and a flow starts at one module written in "
-                "full — its package, a dot, and its name — because two packages can hold "
-                "a module of the same name" % (where, module)
+                "full — the whole id the graph knows it by, which is a package, a dot and "
+                "a name for a Java module and a path for a file one — because two "
+                "packages can hold a module of the same name" % (where, module)
             )
         method = entry_point.get("method")
         if not isinstance(method, str) or not _A_SIMPLE_NAME.match(method.strip()):

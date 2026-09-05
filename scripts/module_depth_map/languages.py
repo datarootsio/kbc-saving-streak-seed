@@ -14,6 +14,8 @@ What a language module has to offer:
   source can hold both languages without anybody having to say which is which;
 - `KINDS`, every kind of module it can report, so a rule written about a kind that no
   language reports can be refused rather than never firing;
+- `GRAIN`, what a module of it is and why, in one sentence, so that a page saying what it
+  read is saying what this run read rather than what this tool can read;
 - `parse(text, path, root)`, the file read into modules, or a `ParseFailure` naming why
   it could not be;
 - `module_id(package, name)`, the id a module is known by;
@@ -30,6 +32,12 @@ import collections
 from . import javasource, typescriptsource
 
 ALL = (javasource, typescriptsource)
+
+# What every one of them raises for a file it cannot read, named here so that the graph
+# can catch it without naming a language. It is one exception rather than one per reading
+# because "this file could not be parsed" is the same finding for the reader whichever
+# language it was written in, and the reason it carries says which shape stopped it.
+ParseFailure = javasource.ParseFailure
 
 # Every kind of module any of these can report. A rule in the scoring file is checked
 # against this rather than against one language's list, because the file scores both and a

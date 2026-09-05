@@ -14,7 +14,7 @@ import json
 import logging
 import os
 
-from . import javasource, languages
+from . import languages
 
 log = logging.getLogger("module_depth_map.graph")
 
@@ -37,8 +37,13 @@ log = logging.getLogger("module_depth_map.graph")
 # in, and the call as the source wrote it. It moved to /8 when the document stopped being
 # a document about the backend: `source` grew the paths a named rule declined to read at
 # all, `scoring` grew the `largest` module and the numbers it was measured at, and a
-# module's `language` became a thing a reader has to look at rather than a constant.
-SCHEMA = "module-depth-map/8"
+# module's `language` became a thing a reader has to look at rather than a constant. It
+# moved to /9 when the two facts a page of two languages cannot render without went in:
+# `source.readAt` says, for each language read, what a module of it is and why — the
+# sentence the page's prose was hardcoded with, which was a page claiming two grains on a
+# run that read one — and `scoring.typesEveryCallerAlreadyKnows` became one list per
+# language, because a caller of each language does not already know the other's types.
+SCHEMA = "module-depth-map/9"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -63,12 +68,12 @@ class DuplicateModules(Exception):
 
 
 class SourceUnreadable(Exception):
-    """A path the operating system would not hand over: not Java this parser cannot read.
+    """A path the operating system would not hand over, not source a reading could not parse.
 
-    Kept apart from `javasource.ParseFailure` on purpose. "This file could not be opened"
-    and "this Java could not be parsed" are different findings for the reader — one is
+    Kept apart from `languages.ParseFailure` on purpose. "This file could not be opened"
+    and "this source could not be parsed" are different findings for the reader — one is
     about the checkout, the other about the source — and folding them together would
-    also make the parser answer for a second language back-end's file handling.
+    also make a language's reading answer for this file's handling of a filesystem.
     """
 
     def __init__(self, reason):
@@ -158,6 +163,16 @@ def _files_under(root, declined):
     not_read = []
     read_already = {}
 
+    # The root's own name is matched by the rule before anything under it is, because
+    # `--source frontend/node_modules` is the same directory the rule holds out when the
+    # walk meets it one level up. Checked only here and the walk read straight into it:
+    # twenty-six dependency modules on the page, scored, drawn and reported as this
+    # application's own source, with the rule that exists to stop exactly that reporting
+    # nothing at all.
+    here = os.path.basename(os.path.abspath(root.path))
+    if here in declined.directories:
+        return found, unreadable, [("", "a directory named %s" % here)]
+
     def refuse(error):
         unreadable.append(
             (
@@ -240,7 +255,10 @@ def build(roots, rules):
             log.info(
                 "source not read root=%s path=%s rule=%s matched=%s",
                 root.label,
-                relative,
+                # A path of nothing is the root itself, which the rule matches by its own
+                # name. Logged in words rather than as an empty value, because a line
+                # ending `path= rule=...` reads as a line this tool failed to fill in.
+                relative or "the root itself",
                 rules.sources_not_read.rule,
                 matched,
             )
@@ -274,7 +292,7 @@ def build(roots, rules):
             language = root.language_of(relative)
             try:
                 parsed = language.parse(text, relative, root)
-            except javasource.ParseFailure as failure:
+            except languages.ParseFailure as failure:
                 log.warning(
                     "could not parse source file root=%s language=%s path=%s reason=%s",
                     root.label,
@@ -321,6 +339,17 @@ def build(roots, rules):
         "source": {
             "roots": sorted(root.label for root in roots),
             "languages": sorted({module["language"] for module in modules}),
+            # What a module of each language read *is*, in the words of the reading that
+            # read it. Here because a page cannot say it otherwise: the prose was written
+            # into the renderer, and a run of one root then rendered a sentence about
+            # both halves of an application whichever half it had been pointed at. Only
+            # the languages something was actually read in, so the page describes this
+            # run rather than this tool.
+            "readAt": [
+                {"language": language.NAME, "says": language.GRAIN}
+                for language in languages.ALL
+                if language.NAME in {module["language"] for module in modules}
+            ],
             "filesSeen": seen,
             "filesParsed": seen - len(unparsed),
             "filesUnparsed": len(unparsed),
@@ -933,7 +962,12 @@ def _scoring(rules, modules):
         # Settled by the id where two files are the same length, so two runs agree.
         "largest": _largest(modules),
         "reachableFromOutside": sorted(rules.reachable_from_outside),
-        "typesEveryCallerAlreadyKnows": sorted(rules.already_known),
+        # One list per language, as the file writes it: what a caller already knows is
+        # a fact about the language they are calling from, and a reader checking a card's
+        # types against this has to be able to see which list decided it.
+        "typesEveryCallerAlreadyKnows": {
+            name: sorted(names) for name, names in sorted(rules.already_known.items())
+        },
         "exclusions": [
             {
                 "rule": exclusion.rule,

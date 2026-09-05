@@ -459,20 +459,45 @@ _SCRIPT = """
 
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
-  add(head, "p", "lede",
-    "Every module this application is made of \u2014 both halves of it, "
-    + document_.source.languages.join(" and ") + " \u2014 grouped by the package it lives "
-    + "in, each drawn as what its interface costs a caller over a fan of everything it "
-    + "coordinates on that caller's behalf. An observation of the source it was generated "
-    + "from, and nothing more: nothing here is ranked, and no module here is proposed for "
-    + "change.");
-  add(head, "p", "lede",
-    "A module is anything with an interface and an implementation, and where that sits "
-    + "differs by language rather than by anybody's preference. A Java module is a class, "
-    + "because that is where a Java interface is written. A TypeScript module is a file, "
-    + "because that is what an import names and so is the whole of what a caller of one "
-    + "gets. Each card says which it is, and every card was measured by the same rules: "
-    + "one measure over the whole application, or the picture is of half of it.");
+  // How many languages this run read is the document's own answer, and the prose follows
+  // it. Written as a constant, a run of one source root rendered "both halves of it,
+  // java" — a false sentence at the top of a page whose whole claim is that its numbers
+  // can be checked, and the one sentence a reader meets first.
+  var read = document_.source.readAt.map(function (entry) { return entry.language; });
+  if (read.length === 0) {
+    add(head, "p", "lede",
+      "Nothing was read. No file under the source this run was pointed at was in a "
+      + "language this tool reads, so there is no module on this page and no shape to "
+      + "compare. What was skipped, and under which rule, is below.");
+  } else {
+    add(head, "p", "lede",
+      "Every module this application is made of"
+      + (read.length === 1
+         ? ", written in " + read[0] + ","
+         : read.length === 2
+           ? " \u2014 both halves of it, " + read.join(" and ") + " \u2014"
+           : " \u2014 all of it, " + read.join(", ") + " \u2014")
+      + " grouped by the package it lives "
+      + "in, each drawn as what its interface costs a caller over a fan of everything it "
+      + "coordinates on that caller's behalf. An observation of the source it was generated "
+      + "from, and nothing more: nothing here is ranked, and no module here is proposed for "
+      + "change.");
+    var grain = add(head, "p", "lede");
+    add(grain, "span", null,
+      "A module is anything with an interface and an implementation, and where that sits "
+      + "differs by language rather than by anybody's preference. ");
+    // Each sentence is the language's own, carried in the document beside the name of the
+    // language that wrote it, so that the page describes the readings this run used.
+    document_.source.readAt.forEach(function (entry) {
+      add(grain, "span", null, entry.says + " ");
+    });
+    add(grain, "span", null,
+      read.length > 1
+        ? "Each card says which it is, and every card was measured by the same rules: one "
+          + "measure over the whole application, or the picture is of half of it."
+        : "Each card says which it is, and it was measured by the same rules every other "
+          + "language this tool reads is measured by.");
+  }
   add(head, "p", "lede",
     "Click any module \u2014 or tab to its name and press Enter \u2014 for everything "
     + "standing behind its shape: every method with what it costs a caller, everything it "
@@ -527,7 +552,10 @@ _SCRIPT = """
     var skipped = add(declined, "ul");
     document_.source.notRead.paths.forEach(function (entry) {
       var item = add(skipped, "li");
-      add(item, "code", null, entry.root + "/" + entry.path);
+      // A path of nothing is the root itself, which the rule can match by its own name:
+      // written out the other way it reads as `frontend/node_modules/`, a directory with
+      // a name this tool cannot show.
+      add(item, "code", null, entry.path ? entry.root + "/" + entry.path : entry.root);
       add(item, "span", null, " \u2014 " + entry.matched);
     });
   } else {
@@ -742,12 +770,20 @@ _SCRIPT = """
       + "\u2014 it is the whole reason this page draws shapes rather than sizes, because "
       + "under a measure of implementation lines over interface lines the longest file in "
       + "a repository is always its deepest module.");
+    // A module an exclusion rule never scores has no cost and no leverage, and the
+    // longest file in a repository can be one of them — an entry point, a data carrier.
+    // Guarded on the cost as well as on the leverage: printed through, the section read
+    // "costing null units of interface", which is a number nobody gave it wearing the
+    // shape of one.
     add(size, "p", null,
       "The longest module here is " + largest.moduleId + ", at "
       + count(largest.lines, "line", "lines") + " of " + largest.language + ". It presents "
-      + count(largest.methods, "method", "methods") + ", costing "
-      + count(largest.interfaceCost, "unit", "units") + " of interface, over a fan of "
-      + count(largest.reach, "thing", "things")
+      + count(largest.methods, "method", "methods")
+      + (largest.interfaceCost === null
+         ? ", and no interface cost is printed for it because a rule on this page never "
+           + "scored it"
+         : ", costing " + count(largest.interfaceCost, "unit", "units") + " of interface")
+      + ", over a fan of " + count(largest.reach, "thing", "things")
       + (largest.leverage === null
          ? ", and no leverage is printed for it because there is no interface cost to "
            + "divide by"

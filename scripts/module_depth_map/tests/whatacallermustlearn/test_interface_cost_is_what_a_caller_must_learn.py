@@ -437,7 +437,10 @@ class AMethodThatHandsNothingBackCrossesNoSeamTest(SourceOfKnownShapeTest):
 
     def test_charging_for_every_type_a_caller_meets_still_charges_for_none_here(self):
         """The edit the README blesses: no type is taken for granted, and there is no type."""
-        module = self.scored_with(self.HANDS_BACK_NOTHING, typesEveryCallerAlreadyKnows=[])
+        module = self.scored_with(
+            self.HANDS_BACK_NOTHING,
+            typesEveryCallerAlreadyKnows={"java": [], "typescript": []},
+        )
 
         self.assertEqual([], module["interface"]["typesCrossingTheSeam"])
         self.assertEqual(1, module["interface"]["cost"])

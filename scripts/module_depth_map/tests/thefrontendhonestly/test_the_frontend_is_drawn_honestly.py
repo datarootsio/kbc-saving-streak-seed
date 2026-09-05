@@ -17,7 +17,7 @@ the numbers it had before.
 import os
 import re
 
-from ... import cli, graph, languages, page, scoring, typescriptsource
+from ... import cli, graph, javasource, languages, page, scoring, typescriptsource
 from ..support.sourcetrees import FRONTEND_SOURCE, SourceTreeTest, bytes_of
 
 # The same module written in both languages: one method taking one parameter of a type the
@@ -664,6 +664,505 @@ class TypeScriptThatCannotBeReadIsNamedTest(SourceTreeTest):
         )
 
 
+class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
+    """A file `tsc` compiles has to be a file this reading reads.
+
+    The counterpart of the Java side's `LegalJavaIsNotFailedForBeingWrittenTightly`, and
+    it is here because the failure it guards is one step worse than a misread number: a
+    file failed by name is a whole module off the page, and every fan line into it with
+    it. The rule this repository holds itself to is in the README's parse-failure section
+    — an alarm that cries wolf stops being read — so each shape below is one this reading
+    refused, or read wrongly, on source with nothing at all the matter with it.
+
+    Every one of them was found by review rather than by this suite, which is why they are
+    written down here rather than only fixed. All but two are how this frontend's own
+    ~40 components are written today; they were latent only because none of them is
+    exported.
+    """
+
+    def read(self, name, body, *others):
+        tree = self.tree("web")
+        tree.typescript("", name, body)
+        for each, source in others:
+            tree.typescript("", each, source)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["id"]: module for module in document["modules"]}
+
+    def interface_of(self, name, body):
+        module_id = "web/" + name.rsplit(".", 1)[0]
+        return self.read(name, body)[module_id]["interface"]
+
+    def test_a_destructured_parameter_is_one_parameter_with_the_type_after_the_pattern(self):
+        """How every component in this frontend takes its props, and it failed the file.
+
+        `_first_at_depth_zero` stopped at the `{` that opens the pattern and found neither
+        a colon nor an `=`, so the reason given was that a parameter with its type written
+        three characters further along had no type written on it. Export any one of
+        App.tsx's components — the likeliest edit anybody makes to this repository — and
+        all 1545 lines left the graph.
+        """
+        interface = self.interface_of(
+            "banking.tsx",
+            "type Props = { customer: string; onSignOut: () => void }\n"
+            "\n"
+            "export function Banking({ customer, onSignOut }: Props) {\n"
+            "  return <div>{customer}</div>\n"
+            "}\n",
+        )
+
+        self.assertEqual(
+            [("Banking", ["Props"])],
+            [(method["name"], method["parameters"]) for method in interface["methods"]],
+        )
+        self.assertEqual(
+            [{"name": "Props", "mustBeLearned": True}],
+            interface["typesCrossingTheSeam"],
+        )
+
+    def test_a_destructured_parameter_with_defaults_inside_the_pattern_is_read_too(self):
+        interface = self.interface_of(
+            "card.tsx",
+            "type Props = { title: string; open?: boolean }\n"
+            "\n"
+            "export function Card({ title, open = false }: Props): string {\n"
+            "  return title\n"
+            "}\n",
+        )
+
+        self.assertEqual(["Props"], interface["methods"][0]["parameters"])
+
+    def test_a_default_export_written_as_an_arrow_is_a_method_a_caller_can_reach(self):
+        """The second commonest React default export, and it failed the file outright.
+
+        `export default function () {}` was already read under the name `default`, which
+        is what a caller of the module imports it by. An arrow is the same thing written
+        the other way round.
+        """
+        interface = self.interface_of(
+            "app.ts",
+            "export default (id: number): number => {\n  return id\n}\n",
+        )
+
+        self.assertEqual(
+            [("default", ["number"], "number")],
+            [
+                (method["name"], method["parameters"], method["returns"])
+                for method in interface["methods"]
+            ],
+        )
+
+    def test_a_default_export_of_a_call_is_named_and_skipped_rather_than_failed(self):
+        """`export default connect(App)` is legal and is not a signature this tool prices.
+
+        Named and skipped is the answer an exported class already gets: what it costs a
+        caller is whatever the expression evaluates to, and nothing here evaluates it.
+        Failing the file instead took the module and every fan line into it off the page.
+        """
+        with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
+            interface = self.interface_of(
+                "app.tsx",
+                "function App(): string {\n  return \'\'\n}\n"
+                "export default wrap(App)\n",
+            )
+
+        self.assertEqual([], interface["methods"])
+        said = "\n".join(logged.output)
+        self.assertIn("export not read as a method", said)
+        self.assertIn("line=4", said)
+        self.assertIn("expression", said)
+
+    def test_a_default_export_of_a_literal_is_named_and_skipped_rather_than_failed(self):
+        interface = self.interface_of("answer.ts", "export default 42\n")
+
+        self.assertEqual([], interface["methods"])
+
+    def test_a_default_export_of_an_element_is_named_and_skipped_rather_than_failed(self):
+        interface = self.interface_of("spinner.tsx", "export default <div />\n")
+
+        self.assertEqual([], interface["methods"])
+
+    def test_a_const_initialised_with_a_bracket_group_is_not_read_as_a_function(self):
+        """`export const total = (1 + 2)` was failed for a parameter called `1 + 2`.
+
+        A reason that is not true of the source is worse than no reading at all: it sends
+        whoever reads the alarm looking for a parameter nobody wrote. A bracket group is
+        an arrow's parameter list only when an arrow follows it.
+        """
+        interface = self.interface_of("total.ts", "export const total = (1 + 2)\n")
+
+        self.assertEqual([], interface["methods"])
+
+    def test_a_const_bound_to_an_element_is_not_read_as_a_function_either(self):
+        interface = self.interface_of("spinner.tsx", "export const spinner = <div />\n")
+
+        self.assertEqual([], interface["methods"])
+
+    def test_a_documented_refusal_above_a_const_bound_arrow_is_read_as_documented(self):
+        """The same shape written two ways has to come out the same, and did not.
+
+        `_documented_before` looks back from the declaration to the JSDoc across nothing
+        but words, and an arrow starts on the far side of the `=`. So the const form
+        produced `raised but never documented` against a module that had documented its
+        refusal — the page's own words: a machine that accused a module which kept its
+        word would stop being read.
+        """
+        promise = "/** @throws Refused when it will not */\n"
+        body = (
+            "(a: number): number => {\n"
+            "  if (a === 0) {\n    throw new Refused()\n  }\n  return a\n}\n"
+        )
+        modules = self.read(
+            "viaconst.ts",
+            "export class Refused extends Error {}\n" + promise + "export const viaConst = " + body,
+            ("viafunction.ts",
+             "export class Refused extends Error {}\n" + promise
+             + "export function viaFunction(a: number): number {\n"
+             "  if (a === 0) {\n    throw new Refused()\n  }\n  return a\n}\n"),
+        )
+
+        for module_id in ("web/viaconst", "web/viafunction"):
+            module = modules[module_id]
+            self.assertEqual(
+                [("Refused", True, True)],
+                [
+                    (refusal["name"], refusal["documented"], refusal["raised"])
+                    for refusal in module["interface"]["refusals"]
+                ],
+                module_id,
+            )
+            self.assertEqual([], module["findings"], module_id)
+
+    def test_a_documented_refusal_above_a_const_bound_function_expression_is_read_too(self):
+        module = self.read(
+            "till.ts",
+            "export class Refused extends Error {}\n"
+            "/** @throws Refused when it will not */\n"
+            "export const ring = function (a: number): number {\n"
+            "  throw new Refused()\n}\n",
+        )["web/till"]
+
+        self.assertEqual(
+            [("Refused", True, True)],
+            [
+                (refusal["name"], refusal["documented"], refusal["raised"])
+                for refusal in module["interface"]["refusals"]
+            ],
+        )
+        self.assertEqual([], module["findings"])
+
+    def test_a_generic_function_charges_a_caller_for_no_type_called_t(self):
+        """A type variable is a hole the caller fills, not a type they go and learn.
+
+        The Java side records a method's own `<T>` precisely so the rule can leave it
+        out; the TypeScript `Method` was built without them, so the card named a type `T`
+        a reader could go looking for and would never find, and the inflated cost was the
+        denominator leverage is divided by.
+        """
+        interface = self.interface_of(
+            "first.ts", "export function first<T>(items: T[]): T {\n  return items[0]\n}\n"
+        )
+        rules = scoring.load()
+
+        self.assertEqual([], interface["typesCrossingTheSeam"])
+        self.assertEqual(
+            rules.weights["method"] + rules.weights["parameter"], interface["cost"]
+        )
+
+    def test_a_generic_comes_out_at_the_same_numbers_as_the_same_shape_in_java(self):
+        """Which is the claim the ticket is about: one measure, applied to both halves.
+
+        A type variable is read out of the declaration in both languages and charged in
+        neither, and a bound is charged in neither either — it is written where the
+        caller's own type goes rather than across the seam, and the Java side has always
+        answered it that way.
+        """
+        java = self.tree("backend")
+        java.java(
+            "shop", "A",
+            "import java.util.List;\npublic class A {\n"
+            "    public <T extends Basket> T first(List<T> of) { return null; }\n}",
+        )
+        web = self.tree("web2")
+        web.typescript(
+            "", "a.ts",
+            "export function first<T extends Basket>(of: T[]): T {\n  return of[0]\n}",
+        )
+        rules = scoring.load()
+
+        def built(tree, module_id):
+            document = graph.build([graph.source_root(tree.root)], rules)
+            self.assertEqual([], document["source"]["unparsed"])
+            return {module["id"]: module for module in document["modules"]}[module_id]
+
+        one = built(java, "shop.A")["interface"]
+        other = built(web, "web2/a")["interface"]
+
+        self.assertEqual(
+            rules.weights["method"] + rules.weights["parameter"], other["cost"]
+        )
+        self.assertEqual(one["cost"], other["cost"])
+        for interface in (one, other):
+            self.assertNotIn(
+                "T", [type_["name"] for type_ in interface["typesCrossingTheSeam"]]
+            )
+
+    def test_a_generic_arrow_charges_a_caller_for_no_type_variable_either(self):
+        interface = self.interface_of(
+            "first.ts", "export const first = <T,>(items: T[]): T => items[0]\n"
+        )
+
+        self.assertEqual([], interface["typesCrossingTheSeam"])
+
+    def test_a_return_type_written_as_an_object_literal_is_read_whole(self):
+        """Read as the empty string, a caller was charged nothing for a return type.
+
+        Which is the one direction this reading must never be wrong in: a cheap interface
+        over a fan is what this page calls deep, so a return type stepped over on the way
+        to the body is a module that looks better designed than its source is.
+        """
+        interface = self.interface_of(
+            "till.ts", "export function f(): { id: number } {\n  return { id: 1 }\n}\n"
+        )
+
+        self.assertEqual("{ id: number }", interface["methods"][0]["returns"])
+        self.assertEqual(
+            [{"name": "number", "mustBeLearned": False}], interface["typesCrossingTheSeam"]
+        )
+
+    def test_a_property_of_an_object_return_type_is_not_a_type_to_learn(self):
+        interface = self.interface_of(
+            "till.ts",
+            "export function f(): { basket: Basket } {\n  return { basket: null }\n}\n",
+        )
+
+        self.assertEqual(
+            [{"name": "Basket", "mustBeLearned": True}], interface["typesCrossingTheSeam"]
+        )
+
+    def test_a_signature_with_no_body_is_read_as_one_rather_than_swallowing_the_next(self):
+        """An overload ends at a `;`, which is asked about before any brace is looked for."""
+        interface = self.interface_of(
+            "till.ts",
+            "export function ring(id: number): string\n"
+            "export function ring(id: number): string {\n  return \'\'\n}\n",
+        )
+
+        self.assertEqual(
+            [("ring", "string"), ("ring", "string")],
+            [(method["name"], method["returns"]) for method in interface["methods"]],
+        )
+
+    def test_a_parameter_typed_by_the_binding_above_it_does_not_fail_the_file(self):
+        """`const ring: Ring = (a) => a` writes the parameter's type on the binding.
+
+        TypeScript reads it from there and `strict` compiles it, so failing the file is an
+        alarm over source with nothing the matter with it. The type is recorded as
+        unwritten rather than named, which is what this reading can honestly say: a
+        parameter crosses the seam there and no type was read to put on it.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "type Ring = (a: number) => number\nexport const ring: Ring = (a) => a\n",
+        )
+
+        self.assertEqual(
+            [("ring", ["(inferred)"])],
+            [(method["name"], method["parameters"]) for method in interface["methods"]],
+        )
+
+    def test_a_return_type_written_as_a_function_is_read_rather_than_declined(self):
+        """The `>` of an `=>` closes no bracket, and counted as one it hid the real arrow."""
+        interface = self.interface_of(
+            "till.ts", "export const ring = (): (() => void) => {\n  return () => {}\n}\n"
+        )
+
+        self.assertEqual(
+            [("ring", "(() => void)")],
+            [(method["name"], method["returns"]) for method in interface["methods"]],
+        )
+
+    def test_a_type_reached_through_an_import_type_names_no_type_called_import(self):
+        """`import('./api').Customer` is a type, and `import` is not one anybody learns."""
+        interface = self.interface_of(
+            "till.ts", "export function f(): import('./api').Customer {\n  return null\n}\n"
+        )
+
+        self.assertEqual(
+            [{"name": "Customer", "mustBeLearned": True}], interface["typesCrossingTheSeam"]
+        )
+
+    def test_a_parameter_whose_type_is_a_function_with_a_default_is_read_as_one_type(self):
+        """Three `=` are written and only the last of them assigns a default value."""
+        interface = self.interface_of(
+            "till.ts",
+            "export function ring(done: (a: number) => void = () => {}): void {\n}\n",
+        )
+
+        self.assertEqual(["(a: number) => void"], interface["methods"][0]["parameters"])
+
+
+class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
+    """A fan line is followed from the name the body wrote, not the name the module was asked for.
+
+    An import binds a module's member under a name the importing file gets to choose, and
+    the body then writes that one. Matched the other way round, only the imports that
+    renamed nothing were ever followed: every renamed import, and every default import —
+    whose member is the word `default` — reached nothing at all, which is exactly what a
+    shallow module looks like.
+    """
+
+    def modules(self, *sources):
+        tree = self.tree("web")
+        for name, body in sources:
+            tree.typescript("", name, body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["id"]: module for module in document["modules"]}
+
+    def test_a_renamed_import_that_is_called_reaches_the_module_it_came_from(self):
+        modules = self.modules(
+            ("api.ts", "export function fetchDeposits(id: number): number {\n  return id\n}"),
+            ("uses.ts",
+             "import { fetchDeposits as fd } from \'./api\'\n"
+             "export function load(id: number): number {\n  return fd(id)\n}"),
+        )
+
+        self.assertEqual(
+            ["web/api"],
+            [reached["moduleId"] for reached in modules["web/uses"]["reach"]["reaches"]],
+        )
+
+    def test_the_fan_line_says_the_name_the_body_wrote_so_it_can_be_checked(self):
+        modules = self.modules(
+            ("api.ts", "export function fetchDeposits(id: number): number {\n  return id\n}"),
+            ("uses.ts",
+             "import { fetchDeposits as fd } from \'./api\'\n"
+             "export function load(id: number): number {\n  return fd(id)\n}"),
+        )
+
+        self.assertIn(
+            "fd", modules["web/uses"]["reach"]["reaches"][0]["matched"]
+        )
+
+    def test_a_default_import_that_is_called_reaches_the_module_it_came_from(self):
+        modules = self.modules(
+            ("App.ts", "export default function App(): number {\n  return 1\n}"),
+            ("main.ts",
+             "import App from \'./App\'\n"
+             "export function boot(): number {\n  return App()\n}"),
+        )
+
+        self.assertEqual(
+            ["web/App"],
+            [reached["moduleId"] for reached in modules["web/main"]["reach"]["reaches"]],
+        )
+
+    def test_a_flow_through_a_renamed_import_is_walked_rather_than_stopping_there(self):
+        """The same defect truncated a flow, which is a path and not a set."""
+        tree = self.tree("web")
+        tree.typescript("", "api.ts", "export function fetchDeposits(id: number): number {\n  return id\n}")
+        tree.typescript(
+            "", "uses.ts",
+            "import { fetchDeposits as fd } from \'./api\'\n"
+            "export function load(id: number): number {\n  return fd(id)\n}",
+        )
+        configuration = _committed()
+        configuration["flows"] = [
+            {
+                "flow": "a load",
+                "because": "the one flow this fixture has",
+                "entryPoint": {"module": "web/uses", "method": "load"},
+            }
+        ]
+        rules = scoring.load(
+            self.tree("rules").raw("scoring.json", _as_json(configuration))
+        )
+
+        document = graph.build([graph.source_root(tree.root)], rules)
+
+        self.assertEqual(
+            ["web/uses", "web/api"],
+            [step["moduleId"] for step in document["flows"][0]["path"]],
+        )
+        self.assertEqual("fd", document["flows"][0]["path"][1]["call"])
+
+    def test_a_name_the_body_declares_itself_is_not_a_call_to_an_import_of_that_name(self):
+        """The floor the Java side keeps, kept here: a declaration is not a call."""
+        modules = self.modules(
+            ("api.ts", "export function of(id: number): number {\n  return id\n}"),
+            ("uses.ts",
+             "import { of } from \'./api\'\n"
+             "function of(id: number): number {\n  return id\n}\n"
+             "export function load(id: number): number {\n  return of(id)\n}"),
+        )
+
+        self.assertEqual([], modules["web/uses"]["reach"]["reaches"])
+
+
+class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
+    """The familiar-type list is one list per language, and the file writes both.
+
+    Read as one shared list, "measured by the same rules" was implemented as "measured
+    by one shared list" — and the two are not the same claim. `string` is free to a
+    TypeScript caller and is not a name a Java one ever meets; a Java module whose seam is
+    spelled with a domain type called `Response` was charged nothing for it off a name
+    that meant `fetch`'s. No number in this repository moved either way, which is exactly
+    why nothing would have said so.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.rules = scoring.load()
+
+    def crossing(self, tree, module_id):
+        document = graph.build([graph.source_root(tree.root)], self.rules)
+        self.assertEqual([], document["source"]["unparsed"])
+        module = {module["id"]: module for module in document["modules"]}[module_id]
+        return {
+            type_["name"]: type_["mustBeLearned"]
+            for type_ in module["interface"]["typesCrossingTheSeam"]
+        }
+
+    def test_a_java_seam_spelled_with_a_typescript_platform_type_is_charged_for_it(self):
+        tree = self.tree("backend")
+        tree.java(
+            "shop", "Till", "public class Till {\n    public Response ring(Response given) "
+            "{ return given; }\n}",
+        )
+
+        self.assertEqual({"Response": True}, self.crossing(tree, "shop.Till"))
+
+    def test_a_typescript_seam_spelled_with_a_java_type_is_charged_for_it(self):
+        tree = self.tree("web")
+        tree.typescript("", "till.ts", "export function ring(given: Optional): Optional {\n"
+                        "  return given\n}")
+
+        self.assertEqual({"Optional": True}, self.crossing(tree, "web/till"))
+
+    def test_each_language_still_gets_the_types_its_own_list_names(self):
+        tree = self.tree("mixed")
+        tree.java("shop", "Till", "public class Till {\n    public String ring(long id) "
+                  "{ return null; }\n}")
+        tree.typescript("", "till.ts", "export function ring(id: number): string {\n"
+                        "  return \'\'\n}")
+
+        self.assertEqual({"String": False, "long": False}, self.crossing(tree, "shop.Till"))
+        self.assertEqual({"number": False, "string": False}, self.crossing(tree, "mixed/till"))
+
+    def test_the_document_publishes_the_list_each_language_was_scored_against(self):
+        tree = self.tree("mixed")
+        tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
+        tree.typescript("", "till.ts", "export function ring(): void {}")
+
+        document = graph.build([graph.source_root(tree.root)], self.rules)
+
+        published = document["scoring"]["typesEveryCallerAlreadyKnows"]
+        self.assertEqual(["java", "typescript"], sorted(published))
+        for language in ("java", "typescript"):
+            self.assertEqual(sorted(self.rules.already_known[language]), published[language])
+
+
 class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
     """The graph covers the application's own source, and says under which rule.
 
@@ -794,6 +1293,36 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
         self.assertIn("web/till.test", [module["id"] for module in found["modules"]])
         self.assertEqual([], found["source"]["notRead"]["paths"])
 
+    def test_a_source_root_the_rule_declines_by_its_own_name_is_not_walked_into(self):
+        """The rule holds a directory out by name, and a root is a directory too.
+
+        Checked only against what the walk found underneath, `--source
+        frontend/node_modules` walked straight into the one directory the rule exists to
+        keep out: twenty-six dependency modules scored, drawn and reported as this
+        application's own source, with the rule that names them reporting nothing at all.
+        """
+        inside = graph.source_root(os.path.join(self.tree_root.root, "node_modules"))
+
+        document = graph.build([inside], self.rules)
+
+        self.assertEqual([], document["modules"])
+        self.assertEqual(
+            [{"root": "web/node_modules", "path": "",
+              "matched": "a directory named node_modules"}],
+            document["source"]["notRead"]["paths"],
+        )
+
+    def test_a_root_the_rule_declines_is_said_out_loud_as_the_root_itself(self):
+        inside = graph.source_root(os.path.join(self.tree_root.root, "dist"))
+
+        with self.assertLogs("module_depth_map.graph", level="INFO") as logged:
+            graph.build([inside], self.rules)
+
+        said = "\n".join(logged.output)
+        self.assertIn("source not read", said)
+        self.assertIn("path=the root itself", said)
+        self.assertIn("a directory named dist", said)
+
 
 class ThisFrontendIsReadWholeTest(SourceTreeTest):
     """Properties that must hold when the tool is run over this repository's own frontend.
@@ -898,6 +1427,66 @@ class TheFrontendIsOnThePageTest(SourceTreeTest):
     def test_the_page_says_which_grain_each_half_was_read_at(self):
         self.assertIn("A Java module is a class", self.rendered)
         self.assertIn("A TypeScript module is a file", self.rendered)
+
+    def test_the_grain_each_language_was_read_at_is_the_document_s_own_answer(self):
+        """Written into the renderer, it was a claim about this tool rather than this run.
+
+        The page then said "both halves of it, java" over a run of one source root, and
+        described a TypeScript grain on a page with no TypeScript on it — the first
+        sentence a reader meets, on a page whose whole claim is that what it says can be
+        checked against the document it carries.
+        """
+        self.assertEqual(
+            [
+                {"language": "java", "says": javasource.GRAIN},
+                {"language": "typescript", "says": typescriptsource.GRAIN},
+            ],
+            self.document["source"]["readAt"],
+        )
+        for entry in self.document["source"]["readAt"]:
+            self.assertIn(entry["says"], self.rendered)
+
+    def test_a_run_that_read_one_language_says_nothing_about_the_other(self):
+        tree = self.tree("backend")
+        tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
+
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
+
+        self.assertEqual(
+            [{"language": "java", "says": javasource.GRAIN}], document["source"]["readAt"]
+        )
+        self.assertNotIn(typescriptsource.GRAIN, rendered)
+
+    def test_no_grain_sentence_is_written_into_the_renderer(self):
+        """The guard on the fix: prose about a language, held in the one file that draws.
+
+        A sentence written here is a sentence the page says whatever it was pointed at,
+        which is how the lede came to describe both halves of an application on a run
+        that read one.
+        """
+        for grain in (javasource.GRAIN, typescriptsource.GRAIN):
+            self.assertNotIn(grain, page._SCRIPT)
+
+    def test_the_longest_module_is_drawn_with_no_cost_when_a_rule_never_scored_it(self):
+        """A rule can decline the longest file in a repository, and one here does.
+
+        The section printed `costing null units of interface` through the guard on the
+        leverage, which is a number nobody gave it wearing the shape of one.
+        """
+        tree = self.tree("records")
+        tree.java(
+            "shop", "Receipt",
+            "public record Receipt(long cents) {\n" + "    // %s\n" * 40 % tuple(range(40)) + "}",
+        )
+        tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
+
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        largest = document["scoring"]["largest"]
+        self.assertEqual("shop.Receipt", largest["moduleId"])
+        self.assertIsNone(largest["interfaceCost"])
+        self.assertIsNone(largest["leverage"])
 
     def test_the_page_says_what_a_line_count_is_worth(self):
         self.assertIn("What a line count is worth here", self.rendered)

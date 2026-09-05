@@ -259,6 +259,11 @@ KINDS = tuple(sorted(set(_KINDS.values())))
 NAME = "java"
 SUFFIXES = (".java",)
 
+# What a module of this language is, and why, in one sentence a page can print. It lives
+# here because the grain is this reading's own decision: written into the renderer instead,
+# a page rendered a sentence about Java classes on a run that read no Java at all.
+GRAIN = "A Java module is a class, because that is where a Java interface is written."
+
 # How a fan line says that a module was reached by calling a member it imported. The
 # sentence lives beside the reading that produces it, because Java and TypeScript reach
 # each other's modules by different mechanisms and one sentence for both would describe
@@ -412,6 +417,13 @@ class Imported:
     `type` is the part that could be a module and `member` is what the source may then
     call with no receiver in front of it. An ordinary import has no member.
 
+    `local` is the name a body writes for what was imported, and in Java it is always the
+    member: an import binds a member under its own name and the language offers no way to
+    write another. It is here because the reading that follows a name in a body has to ask
+    for one or the other, and TypeScript's `import { fetchDeposits as fd }` is where the
+    two come apart — matched against `member` there, a body that calls `fd` reaches
+    nothing at all.
+
     Imports are read so that a name used in a body can be followed to the module it means
     rather than guessed at by matching simple names across the whole graph, which would
     hand one module the collaborators of another that happened to share a name.
@@ -420,6 +432,7 @@ class Imported:
     def __init__(self, type_, member, on_demand):
         self.type = type_
         self.member = member
+        self.local = member
         self.on_demand = on_demand
 
 

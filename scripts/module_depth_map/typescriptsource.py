@@ -69,6 +69,13 @@ log = logging.getLogger("module_depth_map.typescriptsource")
 NAME = "typescript"
 SUFFIXES = (".ts", ".tsx")
 
+# What a module of this language is, and why, in one sentence a page can print — the
+# reading's own answer rather than the renderer's, for the reason the Java side gives.
+GRAIN = (
+    "A TypeScript module is a file, because that is what an import names and so is the "
+    "whole of what a caller of one gets."
+)
+
 # What a module is here, and the only kind this reading reports. One kind rather than
 # several because there is only one thing to be at file grain: a file with an interface
 # and an implementation. The word is on every card next to the Java cards' `class` and
@@ -200,8 +207,8 @@ _NOT_A_CALL = frozenset(
 # could argue it off the list — and if they did, a caller of a function handing nothing
 # back would be charged for a type they never meet.
 _NOT_A_TYPE_NAME = frozenset(
-    ["as", "asserts", "extends", "in", "infer", "is", "keyof", "new", "out", "readonly",
-     "satisfies", "typeof", "unique", NOTHING_RETURNED]
+    ["as", "asserts", "extends", "import", "in", "infer", "is", "keyof", "new", "out",
+     "readonly", "satisfies", "typeof", "unique", NOTHING_RETURNED]
 )
 
 # `this.addressRejected` reaches exactly what `addressRejected` reaches: the prefix is one
@@ -228,6 +235,25 @@ _NOTHING_BUT_WORDS = re.compile(r"[\s\w$]*")
 # entirely and reading them as this module's own interface would be a claim about a file
 # nobody pointed the tool at.
 _NOT_READ_HERE = ("declare", "namespace", "module", "abstract")
+
+# The words that can only open a declaration, and therefore cannot be part of a type. A
+# return type ends where one of them starts, which is the whole of how an overload
+# signature that ends at a newline instead of a `;` is told from a type that carries on.
+# `type` and `interface` are deliberately not among them: both are contextual keywords in
+# TypeScript, so a type really can be called either. Neither is `import`, which a type
+# really can hold — `import('./api').Customer` is how a type is reached without importing
+# the module — and cutting a type there would charge a caller nothing for a return they
+# have to learn whole.
+_OPENS_A_DECLARATION = re.compile(
+    r"(?<![\w$.])(?:export|function|class|const|let|var|declare|enum|async)(?![\w$])"
+)
+
+# What tells `export default App` from `export default connect(App)`: whether the name is
+# the whole of what was exported or the front of an expression. The first is read as the
+# declaration it points at, and the second is a value this reading prices nowhere — so
+# reading it as a declaration of that name would price `connect` and call the answer
+# `App`.
+_AN_EXPRESSION_CARRIES_ON_WITH = ("(", ".", "[", "?", "+", "-", "*", "/", "%", "&", "|", "^")
 
 
 def module_id(package, name):
@@ -336,7 +362,7 @@ def parse(text, path, root=None):
     # `<Customer>` is an element or a generic's type arguments. The extension is the
     # whole of the rule, exactly as it is for `tsc`.
     jsx = path.endswith(".tsx")
-    _refuse_unreadable_imports(masked, text, depth_of)
+    _refuse_unreadable_imports(masked, text)
     imports = _imports_in(masked, text, where)
     exports = _exports_in(masked, text, matching, depth_of, documented, name, jsx)
 
@@ -516,14 +542,21 @@ def _renamed(part):
     return words[0], words[0]
 
 
-def _refuse_unreadable_imports(masked, text, depth_of):
+def _refuse_unreadable_imports(masked, text):
     """Fail the file if it wrote an import neither pattern above accounts for.
 
-    `import` is reserved: outside a string or a comment it opens either a statement naming
-    a module or a dynamic import, and both are read. One that matched nothing is a form
-    this reading has no account of, and passing over it would take a module's whole reach
-    with it — silently, since a module reaching nothing is exactly what a shallow module
-    looks like.
+    `import` is reserved: outside a string or a comment it opens a statement naming a
+    module, and both spellings of that are read. One that matched neither is a form this
+    reading has no account of, and passing over it would take a module's whole reach with
+    it — silently, since a module reaching nothing is exactly what a shallow module looks
+    like.
+
+    Two things wearing the word are held out by `_AN_IMPORT` itself rather than being
+    read: `import.meta` is not an import at all, and `import('./api')` is an expression
+    evaluated when the code runs. The second is a floor and is named as one — a module
+    this graph holds, reached only through a dynamic import, is a module reached nowhere
+    on the page — and it is a floor rather than a failure because refusing the file would
+    take everything else the file reaches with it.
     """
     accounted = set()
     for pattern in (_IMPORT_FROM, _IMPORT_ONLY):
@@ -648,7 +681,9 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
                  "and the signature a caller would learn is written in that file rather "
                  "than in this one")
         return
-    if default and re.match(r"[A-Za-z_$][\w$]*$", token or ""):
+    if default and re.match(r"[A-Za-z_$][\w$]*$", token or "") and (
+        _token_at(masked, after)[0] not in _AN_EXPRESSION_CARRIES_ON_WITH
+    ):
         # `export default App`, where `App` is declared elsewhere in this file. Read as
         # the declaration it points at, under the name the source declared it with rather
         # than the word `default`.
@@ -656,6 +691,26 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
             masked, text, matching, documented, module, jsx, declared_at, token, token,
             start, methods,
         )
+        return
+    if default and token in ("(", "<") and _opens_an_arrow(masked, start):
+        # `export default () => { ... }`, and `export default <T,>(each: T) => each`. A
+        # function a caller calls, offered under the one name a caller of this module can
+        # import it by, which is what `export default function () {}` is already read as.
+        methods.append(
+            _arrow_from(masked, text, start, matching, documented, module, "default", jsx,
+                        position)
+        )
+        return
+    if default:
+        # `export default 42`, `export default connect(App)`, `export default <div />`.
+        # Legal, reachable, and not a signature this reading can price: what it costs a
+        # caller is whatever the expression evaluates to, and nothing here evaluates it.
+        # So it is named and skipped, the way an exported class is — failing the file
+        # instead took every module written this way off the page along with every fan
+        # line into it, for source `tsc` compiles without a word.
+        _decline(text, start, token, "a default export of an expression hands a caller a "
+                 "value rather than a signature: what it costs them is whatever the "
+                 "expression evaluates to, and nothing here evaluates it")
         return
     raise ParseFailure(
         "the export on line %d could not be read: it is followed by %r, which this tool "
@@ -700,8 +755,15 @@ def _decline(text, position, what, why):
     )
 
 
-def _function_from(masked, text, position, matching, documented, module, jsx):
-    """One `function` declaration, from just after the keyword, as a caller meets it."""
+def _function_from(masked, text, position, matching, documented, module, jsx,
+                   documented_at=None, annotated=False):
+    """One `function` declaration, from just after the keyword, as a caller meets it.
+
+    `documented_at` is where the declaration a JSDoc block would be written above starts,
+    for the one shape where that is not the keyword this reads from: `const f = function
+    () {}` puts an `=` between the block and the word `function`, and a block is looked
+    for back from the keyword the declaration opens with.
+    """
     token, start, after = _token_at(masked, position)
     if token == "*":
         token, start, after = _token_at(masked, after)
@@ -712,8 +774,9 @@ def _function_from(masked, text, position, matching, documented, module, jsx):
         name = token
         token, start, after = _token_at(masked, after)
     opened = start
+    variables = ()
     if token == "<":
-        opened = _past_type_parameters(masked, text, start)
+        opened, variables = _past_type_parameters(masked, text, start)
         token, opened, after = _token_at(masked, opened)
     if token != "(":
         raise ParseFailure(
@@ -721,15 +784,18 @@ def _function_from(masked, text, position, matching, documented, module, jsx):
             "should" % (name, _line_of(text, opened), token)
         )
     closed = after_balanced(masked, opened)
-    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name)
+    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
     returns, body = _returns_and_body(masked, text, closed, matching, name)
     return Method(
         name=name,
         visibility="public",
         parameters=parameters,
         returns=returns,
+        type_parameters=variables,
         annotations=(),
-        documented_refusals=_documented_before(masked, position, documented, module),
+        documented_refusals=_documented_before(
+            masked, position if documented_at is None else documented_at, documented, module
+        ),
         has_a_body=body is not None,
         calls=_calls_in(masked[body[0]:body[1]], jsx) if body is not None else (),
     )
@@ -743,15 +809,24 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
     thing a caller reads rather than calls, and is left out for the same reason the Java
     side leaves out a public field: what it costs a caller is a type and a name, and this
     tool prices methods. It is logged rather than dropped.
+
+    A bracket after the `=` is asked whether it opens an arrow before it is read as one,
+    because `(1 + 2)` opens no function and reading its brackets as a parameter list
+    failed the file for a parameter nobody wrote. `position` is carried down to whichever
+    reading follows, so that a JSDoc block above the whole declaration is found from the
+    keyword rather than from the far side of the `=`.
     """
     name, start, after = _token_at(masked, position)
     if not name or not re.match(r"[A-Za-z_$][\w$]*$", name):
         _decline(text, start, name, "this reading found no name after the keyword")
         return None
     token, at, after = _token_at(masked, after)
-    if token == ":":
+    annotated = token == ":"
+    if annotated:
         # A written type on the binding itself. It is the type of the value, not of what
-        # calling it hands back, so the signature below is where the interface is read.
+        # calling it hands back, so the signature below is where the interface is read —
+        # and it is what a parameter written with no type of its own is typed by, which is
+        # why whichever reading follows is told about it.
         while token is not None and token != "=":
             token, at, after = _token_at(masked, after)
         if token is None:
@@ -764,9 +839,14 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
     if token == "async":
         token, at, after = _token_at(masked, after)
     if token == "function":
-        return _rename(_function_from(masked, text, after, matching, documented, module, jsx), name)
-    if token in ("(", "<"):
-        return _arrow_from(masked, text, at, matching, documented, module, name, jsx)
+        return _rename(
+            _function_from(masked, text, after, matching, documented, module, jsx, position,
+                           annotated),
+            name,
+        )
+    if token in ("(", "<") and _opens_an_arrow(masked, at):
+        return _arrow_from(masked, text, at, matching, documented, module, name, jsx,
+                           position, annotated)
     if token and re.match(r"[A-Za-z_$][\w$]*$", token):
         after_the_name = _token_at(masked, after)[0]
         if after_the_name == "=>":
@@ -787,11 +867,21 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
     return None
 
 
-def _arrow_from(masked, text, position, matching, documented, module, name, jsx):
-    """`(a: A): R => ...` bound to `name`, as a caller meets it."""
+def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
+                documented_at=None, annotated=False):
+    """`(a: A): R => ...` bound to `name`, as a caller meets it.
+
+    `documented_at` is where the declaration this arrow belongs to starts, and it is a
+    separate argument because a JSDoc block is written above the whole declaration while
+    an arrow starts after the `=`. Handed the arrow's own position, `_documented_before`
+    looked back across `export const viaConst = ` and refused the `=` in it — so a module
+    that documented its refusal was accused of raising one it never promised, which is the
+    one accusation this page must never make.
+    """
     opened = position
+    variables = ()
     if masked[opened] == "<":
-        opened = _past_type_parameters(masked, text, opened)
+        opened, variables = _past_type_parameters(masked, text, opened)
         token, opened, _ = _token_at(masked, opened)
         if token != "(":
             raise ParseFailure(
@@ -799,7 +889,7 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx)
                 "parameters should" % (name, _line_of(text, opened), token)
             )
     closed = after_balanced(masked, opened)
-    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name)
+    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
     returns = INFERRED
     token, at, after = _token_at(masked, closed)
     if token == ":":
@@ -820,10 +910,45 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx)
         visibility="public",
         parameters=parameters,
         returns=returns,
-        documented_refusals=_documented_before(masked, position, documented, module),
+        type_parameters=variables,
+        documented_refusals=_documented_before(
+            masked, position if documented_at is None else documented_at, documented, module
+        ),
         has_a_body=True,
         calls=_calls_in(masked[body[0]:body[1]], jsx) if body is not None else (),
     )
+
+
+def _opens_an_arrow(masked, position):
+    """Whether what is written from this bracket onwards is an arrow function.
+
+    A bracket opens an arrow function's parameter list, and it also opens a parenthesised
+    expression: `const total = (1 + 2)` and `const ring = (a: A) => a` are told apart by
+    the arrow after the group and by nothing else. Asked nothing, the first was read as a
+    parameter list and its file was failed for a parameter called `1 + 2` — a reason that
+    is not true of the source, which is a worse answer than no reading at all.
+
+    A `<` is the same question one step earlier: it opens a generic's type parameters in
+    front of an arrow's brackets, and in a `.tsx` file it also opens an element. So the
+    group is stepped over and the bracket after it has to be there.
+    """
+    at = position
+    if masked[at:at + 1] == "<":
+        closed = _after_angles(masked, at)
+        if closed is None:
+            return False
+        token, at, _ = _token_at(masked, closed)
+        if token != "(":
+            return False
+    if masked[at:at + 1] != "(":
+        return False
+    token, at, after = _token_at(masked, after_balanced(masked, at))
+    if token == "=>":
+        return True
+    if token != ":":
+        return False
+    _, arrow = _up_to_the_arrow(masked, after)
+    return masked.startswith("=>", arrow)
 
 
 def _up_to_the_arrow(masked, position):
@@ -836,13 +961,19 @@ def _up_to_the_arrow(masked, position):
     depth = 0
     at = position
     while at < len(masked):
+        if masked.startswith("=>", at):
+            # An arrow, and never a bracket closing: counted as one, the `>` in a return
+            # type of `(() => void)` closed the group its own `(` had opened, every depth
+            # after it was one too few, and the arrow that ends the type was never found.
+            if depth == 0:
+                return masked[position:at], at
+            at += 2
+            continue
         character = masked[at]
         if character in "(<[{":
             depth += 1
         elif character in ")>]}":
             depth -= 1
-        elif character == "=" and depth == 0 and masked.startswith("=>", at):
-            return masked[position:at], at
         at += 1
     return masked[position:], at
 
@@ -865,7 +996,31 @@ def _rename(method, name):
 
 
 def _past_type_parameters(masked, text, position):
-    """Just past the `<...>` a generic function writes before its parameters."""
+    """Just past the `<...>` a generic function writes before its parameters, and the names in it.
+
+    The names are why this hands back two things rather than one. A generic's own `<T>` is
+    a hole the caller fills with a type they already hold, so charging them for learning a
+    type called `T` prices the letter rather than a type — and the card then names a type
+    a reader can go looking for and will never find. The Java side records them for
+    exactly that reason, and read without them `export function first<T>(items: T[]): T`
+    cost 4 units where the same shape in Java costs 2.
+    """
+    closed = _after_angles(masked, position)
+    if closed is None:
+        raise ParseFailure(
+            "a type parameter list opened on line %d is never closed"
+            % _line_of(text, position)
+        )
+    return closed, _type_parameters_in(masked[position + 1:closed - 1])
+
+
+def _after_angles(masked, position):
+    """Just past the `>` that closes the `<` here, or None when nothing closes it.
+
+    Non-raising, because it is asked the question as well as answered with it: whether a
+    `<` opens a generic's type parameters at all is settled by what stands after the
+    group, and a `<` that closes nowhere is a `<` that opens none.
+    """
     depth = 0
     at = position
     while at < len(masked):
@@ -876,9 +1031,26 @@ def _past_type_parameters(masked, text, position):
             if depth == 0:
                 return at + 1
         at += 1
-    raise ParseFailure(
-        "a type parameter list opened on line %d is never closed" % _line_of(text, position)
-    )
+    return None
+
+
+def _type_parameters_in(inside):
+    """The names a type parameter list introduces, by the first word of each part.
+
+    `<T, U extends Keyed<T>, K = string>` introduces `T`, `U` and `K`. Everything after
+    the first word of a part is a bound or a default — a type the caller really does meet,
+    and one this reading charges for wherever it is written into a signature — so it is
+    not one of them. A variance annotation and a `const` modifier stand in front of the
+    name and are not one either.
+    """
+    found = []
+    for part in _split_on_commas(inside):
+        word = re.match(
+            r"[\s]*(?:const[ \t\r\n]+)?(?:(?:in|out)[ \t\r\n]+)*([A-Za-z_$][\w$]*)", part
+        )
+        if word is not None:
+            found.append(word.group(1))
+    return tuple(found)
 
 
 def _returns_and_body(masked, text, position, matching, name):
@@ -886,14 +1058,26 @@ def _returns_and_body(masked, text, position, matching, name):
 
     The two are read together because telling them apart is the whole difficulty: a return
     type may itself be written with braces — `: { id: number }` — and a brace is also how
-    a body opens. So a brace group met while reading the type is taken as part of the type
-    when another brace follows it, and as the body when nothing does. Read either way
-    round without that rule, a function's whole body was read as its return type or its
-    return type as its body.
+    a body opens. Two rules settle it, and the type is what starts at the colon in both
+    cases:
+
+    - a brace group with nothing readable in front of it is the type, because `f(): { ... }`
+      cannot be a body — a colon with a body straight after it is a return type nobody
+      wrote, which TypeScript does not compile;
+    - a brace group with another brace after it is the type too, and the group after it is
+      the body.
+
+    Read with the scan position mistaken for the start of the type, `f(): { id: number }
+    { ... }` came out returning the empty string: the type was stepped over on the way to
+    the body and never written down, and a caller was charged nothing for a return they
+    have to learn whole — the one direction this reading must never be wrong in.
 
     A signature with no body under it is an overload or an ambient declaration. It is
     reported as such rather than failed, because the refusals it documents are a promise
-    to whoever implements it rather than something this file was ever going to keep.
+    to whoever implements it rather than something this file was ever going to keep. A
+    `;` reached before any brace is what says so, which is why it is asked about first:
+    looked for afterwards, `f(): X;` ran on to the next declaration's body and read
+    everything in between as one type.
     """
     token, at, after = _token_at(masked, position)
     if token == "{" and at in matching:
@@ -909,26 +1093,46 @@ def _returns_and_body(masked, text, position, matching, name):
             "its body should" % (name, _line_of(text, at), token)
         )
     written = after
+    scan = after
     while True:
-        opened = _first_brace_at_depth_zero(masked, written)
+        opened = _first_brace_at_depth_zero(masked, scan)
+        finished = _where_the_signature_ends(masked, scan)
+        if finished is not None and (opened is None or finished < opened):
+            return _normalised(masked[written:finished]), None
         if opened is None:
-            ended = _first_at_depth_zero(masked, written, ";")
-            if ended is None:
-                raise ParseFailure(
-                    "the return type of %s on line %d could not be read: nothing closes it"
-                    % (name, _line_of(text, at))
-                )
-            return _normalised(masked[written:ended]), None
+            raise ParseFailure(
+                "the return type of %s on line %d could not be read: nothing closes it"
+                % (name, _line_of(text, at))
+            )
         if opened not in matching:
             raise ParseFailure(
                 "the return type of %s on line %d could not be read: a brace in it is "
                 "never closed" % (name, _line_of(text, at))
             )
         following = _token_at(masked, matching[opened] + 1)[0]
-        if following != "{":
+        if masked[written:opened].strip() and following != "{":
             return _normalised(masked[written:opened]), (opened + 1, matching[opened])
-        written_so_far = matching[opened] + 1
-        written = written_so_far
+        scan = matching[opened] + 1
+
+
+def _where_the_signature_ends(masked, position):
+    """Where a signature with no body under it ends, or None when a body may still follow.
+
+    Two things end one. A `;` outside every bracket is the written one. The other is a
+    word no type can hold: TypeScript lets an overload signature end at a newline, so
+    `export function ring(id: number): string` followed on the next line by the
+    implementation of the same name has nothing at all between the type and the next
+    declaration. Read without that, the first signature came out returning
+    `string export function ring(id: number): string` — every word of the next
+    declaration's header charged to a caller as a type to learn.
+    """
+    ended = _first_at_depth_zero(masked, position, ";")
+    starts = _OPENS_A_DECLARATION.search(masked, position)
+    if starts is None:
+        return ended
+    if ended is None:
+        return starts.start()
+    return min(ended, starts.start())
 
 
 def _first_brace_at_depth_zero(masked, position):
@@ -959,7 +1163,7 @@ def _first_at_depth_zero(masked, position, wanted):
     return None
 
 
-def _parameters_in(inside, text, position, name):
+def _parameters_in(inside, text, position, name, annotated=False):
     """Every parameter of one function, by the type the source wrote for it.
 
     A destructured parameter is one parameter: `{ customer, onSignOut }: Props` hands over
@@ -969,8 +1173,15 @@ def _parameters_in(inside, text, position, name):
     A parameter written with no type at all fails the file. TypeScript is compiled here
     under `strict`, which forbids one — so a parameter this reading cannot find a type on
     is a shape it has misread, and a misread parameter leaves an interface cheaper than
-    the source makes it. The one exception is a parameter with a default value, where the
-    type really is unwritten and really is legal, and that one is recorded as unwritten.
+    the source makes it.
+
+    Two shapes are legal without one, and neither fails. A parameter with a default value
+    has its type inferred from the default. And `annotated` says the declaration itself
+    carried a written type — `const ring: Ring = (a) => a` — where the parameter's type is
+    written on the binding and TypeScript reads it from there: strict compiles it, so
+    failing the file would be an alarm over source with nothing the matter with it. Both
+    are recorded as unwritten, which is the honest answer this reading can give: a
+    parameter crosses the seam there, and no type was read to name.
     """
     parameters = []
     for part in _split_on_commas(inside):
@@ -979,10 +1190,10 @@ def _parameters_in(inside, text, position, name):
             continue
         if written.startswith("..."):
             written = written[3:].lstrip()
-        colon = _first_at_depth_zero(written, 0, ":")
-        equals = _first_at_depth_zero(written, 0, "=")
-        if colon is None:
-            if equals is not None:
+        colon = _first_in_the_open(written, ":")
+        equals = _first_in_the_open(written, "=")
+        if colon is None or (equals is not None and equals < colon):
+            if equals is not None or annotated:
                 parameters.append(INFERRED)
                 continue
             raise ParseFailure(
@@ -994,9 +1205,49 @@ def _parameters_in(inside, text, position, name):
             # The receiver a method may name. Not a parameter a caller passes at all.
             continue
         rest = written[colon + 1:]
-        default = _first_at_depth_zero(rest, 0, "=")
+        default = _first_in_the_open(rest, "=")
         parameters.append(_normalised(rest if default is None else rest[:default]))
     return tuple(parameters)
+
+
+def _first_in_the_open(written, wanted, position=0):
+    """Where this character is first written outside every bracket, braces included.
+
+    Not `_first_at_depth_zero`, and the brace is the whole of the difference. That one
+    stops dead at a `{`, because it is reading a signature and there a brace is either
+    the body or the type the body follows. Here a brace is a pattern a parameter is taken
+    apart into — `{ customer, onSignOut }: Props` hands over one thing, with its type
+    written after the pattern exactly as it is after a plain name — so it is a bracket
+    like any other. Read the other way round, every destructured parameter in this
+    repository's own frontend failed its file for having no type written on it, with the
+    type written plainly three characters further along.
+
+    An `=` that is part of an operator is not an assignment: `(cb: (a: A) => void = noop)`
+    writes three of them and only the last is the default.
+    """
+    depth = 0
+    at = position
+    while at < len(written):
+        character = written[at]
+        if depth == 0 and character == wanted and not _part_of_an_operator(written, at, wanted):
+            return at
+        if character in "([{":
+            depth += 1
+        elif character in ")]}":
+            depth -= 1
+            if depth < 0:
+                return None
+        at += 1
+    return None
+
+
+def _part_of_an_operator(written, at, wanted):
+    """Whether the `=` here is half of `=>`, `==`, `<=` or another operator spelled with one."""
+    if wanted != "=":
+        return False
+    return written[at + 1:at + 2] in ("=", ">") or written[max(at - 1, 0):at] in (
+        "=", "!", "<", ">", "+", "-", "*", "/", "%", "&", "|", "^"
+    )
 
 
 def _fields_in(masked, depth_of):
@@ -1026,12 +1277,17 @@ def _up_to_the_assignment(masked, position):
     depth = 0
     at = position
     while at < len(masked):
+        if masked.startswith("=>", at):
+            # The arrow inside a written function type, which assigns nothing and closes
+            # nothing: `const ring: () => void = ...` writes one before the `=` that does.
+            at += 2
+            continue
         character = masked[at]
         if character in "(<[{":
             depth += 1
         elif character in ")>]}":
             depth -= 1
-        elif depth == 0 and character in "=;\n" and not masked.startswith("=>", at):
+        elif depth == 0 and character in "=;\n":
             return masked[position:at], at
         at += 1
     return masked[position:], at

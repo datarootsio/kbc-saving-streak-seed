@@ -90,7 +90,12 @@ Run its tests with the standard library's own runner, also from the repository r
   empty list of names for a rule to match on, a name written twice in one list, and
   `--scoring ""`. The one list that may be empty is `typesEveryCallerAlreadyKnows`:
   charging a caller for every type they meet is a position somebody can hold, not a
-  misspelling.
+  misspelling. That one is written **per language** — `{"java": [...], "typescript":
+  [...]}` — because what a caller already knows is a fact about the language they are
+  calling from: `string` is free to a TypeScript caller and is not a name a Java one ever
+  meets. Every language this tool reads has to be named and nothing else may be, so a
+  missing list is a refusal rather than a language quietly charged for every type it
+  meets.
 - **Nothing is excluded without a named rule.** Each excluded module carries the rule that
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
@@ -129,7 +134,11 @@ Run its tests with the standard library's own runner, also from the repository r
   being a document about the backend: `source` gained the `languages` it was read in and
   the paths a named rule declined to read at all, `scoring` gained the `largest` module and
   the numbers it was measured at, and a module's `language` became a thing a reader has to
-  look at rather than a constant.
+  look at rather than a constant, and to `module-depth-map/9` when the two facts a page of
+  two languages cannot render without went in: `source.readAt` says, for each language
+  read, what a module of it is and why — in that language's own words, so the page
+  describes this run rather than this tool — and `scoring.typesEveryCallerAlreadyKnows`
+  became one list per language.
   The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
@@ -188,10 +197,19 @@ What a TypeScript file offers a caller is read from `export` and from nothing el
   on the module and not measured, which is the same answer the Java side gives a type
   declared inside a module. Its members are read nowhere.
 - **an exported value that is not a function** is named nowhere and priced nowhere, which
-  is the same answer the Java side gives a public field. So is a re-export, whose
-  signature is written in the file it came from. Both are logged: run with
-  `--log-level DEBUG` and `grep "export not read as a method"` for every one, with its
-  line and the reason.
+  is the same answer the Java side gives a public field. A bracket after the `=` is asked
+  whether an arrow follows it before it is read as a parameter list, so `export const
+  total = (1 + 2)` is a value rather than a function of a parameter called `1 + 2`. So is
+  a re-export, whose signature is written in the file it came from, and so is
+  `export default` of an expression — `connect(App)`, `42`, `<div />` — where what it
+  costs a caller is whatever the expression evaluates to and nothing here evaluates it.
+  All of them are logged: run with `--log-level DEBUG` and
+  `grep "export not read as a method"` for every one, with its line and the reason.
+- **a type variable a generic introduces** is a hole the caller fills with a type they
+  already hold, so `export function first<T>(items: T[]): T` charges for the method and
+  the parameter and for no type called `T` — the same answer the Java side gives
+  `<T> T first(List<T> of)`. What the variable is bounded by is written where the caller's
+  own type goes rather than across the seam, and is charged in neither language.
 
 What it coordinates is read from the imports and the body together. TypeScript has no
 package scope at all, so an import is the *only* way one file names another: a name means
@@ -231,6 +249,29 @@ with no type written on it, and a return type that cannot be told from the body 
 The last two are where a misread shape would leave an interface *cheaper* than the source
 makes it, and a cheap interface over a fan is what this page calls deep.
 
+And legal TypeScript is never failed, which matters more here than on the Java side: a
+failed file is a whole module off the page and every fan line into it gone with it, while
+a module reaching nothing is exactly what a shallow module looks like. Every shape this
+reading used to refuse, or read wrongly, on source `tsc` compiles without a word is a
+fixture in `tests/thefrontendhonestly` now:
+
+- a **destructured parameter** — `function Banking({ customer, onSignOut }: Props)`, which
+  is how all forty of this frontend's components take their props;
+- **`export default`** followed by an arrow (read as a method called `default`), or by a
+  call, a literal or an element (named and skipped);
+- a **`const` initialised with a bracket group** that is not an arrow — `(1 + 2)`;
+- a **JSDoc `@throws` above a `const`-bound arrow**, which was dropped, so the module was
+  then reported for raising a refusal it had documented;
+- a **generic function's own type variables**, charged as types a caller had to learn;
+- a **return type written as an object literal**, read as the empty string, and one
+  **written as a function type**, whose `=>` was counted as a bracket closing;
+- a **parameter typed by the binding above it** — `const ring: Ring = (a) => a`, where
+  TypeScript reads the parameter's type off the annotation.
+
+Every one was found by review rather than by the suite, which is why each is written down
+as a test rather than only fixed: an alarm that cries wolf stops being read, and a page
+that accused a module which kept its word would stop being read with it.
+
 ## What a line count is worth here
 
 Nothing, and the page says so with a section of its own, because the one thing it can be
@@ -262,7 +303,9 @@ thousands of files. Each would put modules on the page that nobody here wrote.
 
 A **directory** is matched by its own name and never walked into — `node_modules`, `dist`,
 `build`, `target`, `coverage`, `__tests__` — which is what keeps a `node_modules` to one
-line in the graph instead of everything inside it. Every name on that list is one nothing
+line in the graph instead of everything inside it. A source root's own name is matched the
+same way, so `--source frontend/node_modules` is one declined path and no modules rather
+than twenty-six dependency modules scored and drawn as this application's own source. Every name on that list is one nothing
 but a tool ever writes; a bare `test` or `tests` is deliberately not among them, because
 that is a legal Java package name and a rule that quietly took a package of the
 application's own source off the page would be worse than one that misses a directory
@@ -293,8 +336,8 @@ Everything a caller has to learn before they can use a module correctly:
   caller passes at all.
 - **each distinct type crossing the seam** in a parameter or a return, counted once per
   module however many methods hand it over, and weighted apart: a type whose name is in
-  `typesEveryCallerAlreadyKnows` counts `typeEveryCallerAlreadyKnows`, and every other type
-  counts `typeToLearn`. That is what makes a method handing back a domain type cost more
+  `typesEveryCallerAlreadyKnows` for the language the module is written in counts
+  `typeEveryCallerAlreadyKnows`, and every other type counts `typeToLearn`. That is what makes a method handing back a domain type cost more
   than one handing back a primitive. That list is the whole of the difference, and it is
   all `mustBeLearned` in the graph means: this tool reads one source tree and never
   resolves a name, so it cannot and does not say where a type was declared — `ProblemDetail`
@@ -351,7 +394,7 @@ distinguishable from one that is merely wide. Folded into a single number the tw
 identical, and a module is then paid for saying nothing about its failure modes.
 
 A refusal is charged `refusal` flat, whatever it is called, and it is *not* run through
-`typesEveryCallerAlreadyKnows` the way a type crossing the seam is. That list is about
+`typesEveryCallerAlreadyKnows` the way a type crossing the seam is. Those lists are about
 types a caller already holds: `List` handed back costs nothing because they know `List`
 already. Knowing that `IllegalStateException` exists is not knowing that *this module*
 answers with one, and that second thing is what the band counts — so a well-known refusal

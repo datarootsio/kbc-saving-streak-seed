@@ -44,6 +44,19 @@ class RulesFromAFileTest(SourceTreeTest):
         cost["weights"] = dict(cost["weights"], **changes)
         return self.rules(interfaceCost=cost)
 
+    def familiar(self, **by_language):
+        """The tool's own configuration with these languages' familiar-type lists replaced.
+
+        One language at a time, because the list is written per language: a test that
+        replaced the whole object would be a test about the shape of the file rather than
+        about the rule, and the shape is asserted where the refusals are.
+        """
+        cost = dict(self.as_committed["interfaceCost"])
+        cost["typesEveryCallerAlreadyKnows"] = dict(
+            cost["typesEveryCallerAlreadyKnows"], **by_language
+        )
+        return dict(interfaceCost=cost)
+
     def refusal_for(self, **changes):
         """The reason the tool gave for refusing its own configuration, changed like this."""
         with self.assertRaises(scoring.ConfigurationRefused) as refused:
@@ -124,15 +137,11 @@ class ChangingAWeightChangesTheScoreTest(RulesFromAFileTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", A_MODULE)
         root = graph.source_root(tree.root)
-        cost = dict(
-            self.as_committed["interfaceCost"],
-            typesEveryCallerAlreadyKnows=self.as_committed["interfaceCost"][
-                "typesEveryCallerAlreadyKnows"
-            ]
-            + ["Receipt"],
-        )
+        java = self.as_committed["interfaceCost"]["typesEveryCallerAlreadyKnows"]["java"]
 
-        modules = self.modules(root, self.rules(interfaceCost=cost))
+        modules = self.modules(
+            root, self.rules(**self.familiar(java=java + ["Receipt"]))
+        )
 
         self.assertEqual(2, modules["Till"]["interface"]["cost"])
         self.assertEqual(
@@ -261,12 +270,9 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
 
     def test_a_qualified_familiar_type_is_refused_rather_than_making_string_dear(self):
         """Otherwise every caller is charged for learning `String`, `List` and `Optional`."""
-        cost = dict(
-            self.as_committed["interfaceCost"],
-            typesEveryCallerAlreadyKnows=["java.lang.String", "java.util.List"],
+        reason = self.refusal_for(
+            **self.familiar(java=["java.lang.String", "java.util.List"])
         )
-
-        reason = self.refusal_for(interfaceCost=cost)
 
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("write List, String instead", reason)
@@ -305,24 +311,14 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
 
     def test_a_familiar_type_written_with_the_shape_it_is_carried_in_is_refused(self):
         """`Optional<?>` is one type as a caller reads it and no name as the parser does."""
-        cost = dict(
-            self.as_committed["interfaceCost"],
-            typesEveryCallerAlreadyKnows=["Optional<?>", "String"],
-        )
-
-        reason = self.refusal_for(interfaceCost=cost)
+        reason = self.refusal_for(**self.familiar(java=["Optional<?>", "String"]))
 
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("write Optional instead", reason)
 
     def test_a_name_nothing_can_be_recovered_from_is_refused_by_what_a_name_is(self):
         """There is no form to suggest for `Response Entity`, so the refusal says the rule."""
-        cost = dict(
-            self.as_committed["interfaceCost"],
-            typesEveryCallerAlreadyKnows=["Response Entity"],
-        )
-
-        reason = self.refusal_for(interfaceCost=cost)
+        reason = self.refusal_for(**self.familiar(java=["Response Entity"]))
 
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("Response Entity", reason)
@@ -336,17 +332,13 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
             for condition in ("annotatedWith", "extendsOrImplements"):
                 for name in exclusion.when.get(condition, []):
                     self.assertRegex(name, r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z", exclusion.rule)
-        for name in rules.already_known:
-            self.assertRegex(name, r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z")
+        for language, names in rules.already_known.items():
+            for name in names:
+                self.assertRegex(name, r"\A[A-Za-z_$][A-Za-z0-9_$]*\Z", language)
 
     def test_a_name_written_twice_in_one_list_is_refused_rather_than_read_once(self):
         """Every one of these lists is matched as a set, so the second entry does nothing."""
-        cost = dict(
-            self.as_committed["interfaceCost"],
-            typesEveryCallerAlreadyKnows=["String", "Long", "String"],
-        )
-
-        reason = self.refusal_for(interfaceCost=cost)
+        reason = self.refusal_for(**self.familiar(java=["String", "Long", "String"]))
 
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("String more than once", reason)
@@ -464,9 +456,9 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         """
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", A_MODULE)
-        cost = dict(self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows=[])
-
-        modules = self.modules(graph.source_root(tree.root), self.rules(interfaceCost=cost))
+        modules = self.modules(
+            graph.source_root(tree.root), self.rules(**self.familiar(java=[]))
+        )
 
         self.assertEqual(
             [{"name": "Receipt", "mustBeLearned": True}, {"name": "long", "mustBeLearned": True}],
@@ -482,13 +474,57 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         something in it" sends its author to add names to a list they did not write,
         while the tool is perfectly happy with the number of names they meant.
         """
-        cost = dict(self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows="String")
-
-        reason = self.refusal_for(interfaceCost=cost)
+        reason = self.refusal_for(**self.familiar(java="String"))
 
         self.assertIn("typesEveryCallerAlreadyKnows", reason)
         self.assertIn("list of names", reason)
         self.assertNotIn("something in it", reason)
+
+    def test_one_list_for_both_languages_is_refused_for_naming_neither(self):
+        """The list is per language, and a file that writes one list has written no judgement.
+
+        `string` is free to a TypeScript caller and is not a name a Java one ever meets;
+        `Optional` is the other way round. Read as one shared list, a Java module whose
+        seam is spelled with a domain type called `Response` was charged nothing for it
+        off a name that meant `fetch`'s — no number in this repository moved, which is
+        exactly why nothing would have said so.
+        """
+        cost = dict(
+            self.as_committed["interfaceCost"], typesEveryCallerAlreadyKnows=["String"]
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("one list of types per language", reason)
+        self.assertIn("java", reason)
+        self.assertIn("typescript", reason)
+
+    def test_a_language_left_out_of_the_list_is_refused_rather_than_charged_for_everything(self):
+        """A missing key would price every type a caller of that language meets, silently."""
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows={"java": ["String"]},
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("typescript", reason)
+
+    def test_a_language_this_tool_does_not_read_is_refused_for_doing_nothing(self):
+        cost = dict(
+            self.as_committed["interfaceCost"],
+            typesEveryCallerAlreadyKnows=dict(
+                self.as_committed["interfaceCost"]["typesEveryCallerAlreadyKnows"],
+                kotlin=["String"],
+            ),
+        )
+
+        reason = self.refusal_for(interfaceCost=cost)
+
+        self.assertIn("typesEveryCallerAlreadyKnows", reason)
+        self.assertIn("kotlin", reason)
 
     def test_no_visibility_reachable_at_all_is_refused_for_what_it_would_do(self):
         """A visibility list is not a rule, so it cannot be refused as one.
@@ -618,7 +654,13 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
         them for being short would leave the guard covering only the names nobody would
         have hardcoded anyway.
         """
-        familiar = self.as_committed["interfaceCost"]["typesEveryCallerAlreadyKnows"]
+        familiar = [
+            name
+            for names in self.as_committed["interfaceCost"][
+                "typesEveryCallerAlreadyKnows"
+            ].values()
+            for name in names
+        ]
         for source in _analyser_source():
             for name in familiar:
                 self.assertNotIn(
