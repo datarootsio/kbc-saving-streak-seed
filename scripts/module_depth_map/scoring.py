@@ -591,19 +591,38 @@ class Rules:
                 documented_by.setdefault(name, []).append(member.name)
                 if member.has_a_body:
                     an_implementation_to_read.add(name)
-        names = sorted(set(documented_by) | set(declared.raises))
-        return [
-            {
-                "name": name,
-                "documented": name in documented_by,
-                "documentedBy": sorted(set(documented_by.get(name, ()))),
-                "raised": name in declared.raises,
-                "checked": name in declared.raises or (
-                    not declared.throws_not_read and name in an_implementation_to_read
-                ),
-            }
-            for name in names
-        ]
+        refusals = []
+        for name in sorted(set(documented_by) | set(declared.raises)):
+            raised = name in declared.raises
+            checked = raised or (
+                not declared.throws_not_read and name in an_implementation_to_read
+            )
+            if not checked:
+                # The one decision here that ends in silence — no finding, and a refusal
+                # that looks on the card like one whose two sides agree. So it says which
+                # of the two reasons it was, at the line where it was decided.
+                log.debug(
+                    "refusal not held against the implementation module=%s refusal=%s "
+                    "documentedBy=%s reason=%s",
+                    declared.name,
+                    name,
+                    ",".join(sorted(set(documented_by.get(name, ())))),
+                    "%d throw(s) in this body name a type only javac could resolve, so "
+                    "what it raises was not read whole" % declared.throws_not_read
+                    if declared.throws_not_read
+                    else "every member promising it is a signature with no body of its "
+                    "own, so the promise is to whoever implements it",
+                )
+            refusals.append(
+                {
+                    "name": name,
+                    "documented": name in documented_by,
+                    "documentedBy": sorted(set(documented_by.get(name, ()))),
+                    "raised": raised,
+                    "checked": checked,
+                }
+            )
+        return refusals
 
     def _documenters_of(self, declared, methods):
         """Every member of this module whose javadoc documents the module to a caller.
@@ -641,16 +660,9 @@ class Rules:
         """
         findings = []
         for refusal in refusals:
-            if refusal["documented"] and not refusal["raised"] and not refusal["checked"]:
-                log.debug(
-                    "refusal not held against the implementation module=%s refusal=%s "
-                    "documentedBy=%s reason=%s",
-                    name,
-                    refusal["name"],
-                    ",".join(refusal["documentedBy"]) or "nothing a caller can reach",
-                    "this module has no body promising it that was read whole, so "
-                    "whether it is ever raised is not something this tool read",
-                )
+            if not refusal["checked"]:
+                # Logged with its reason where the reading was taken, in `_refusals_of`,
+                # rather than said twice.
                 continue
             if refusal["documented"] and not refusal["raised"]:
                 named = self.refusals.documented_never_raised
