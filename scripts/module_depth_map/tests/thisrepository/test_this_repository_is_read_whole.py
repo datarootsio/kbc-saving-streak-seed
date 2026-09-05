@@ -232,3 +232,116 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
 
         self.assertGreater(deep["reach"]["count"], wide["reach"]["count"])
         self.assertGreater(deep["depth"]["leverage"], wide["depth"]["leverage"])
+
+
+class TheDeletionTestHoldsOnThisRepositoryTest(SourceTreeTest):
+    """What must be true of every verdict here, and the one verdict the specification predicted.
+
+    The properties first, because they are what has to hold whatever anybody writes next:
+    a verdict on every module that was scored, none on any module that was not, and every
+    caller behind a count pointing at a module this graph holds. The prediction after,
+    because a mechanical test that cannot be checked against something somebody said
+    before it existed is one nobody has any reason to believe.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.document = graph.build([graph.java_root(BACKEND_SOURCE)], scoring.load())
+        self.by_id = {module["id"]: module for module in self.document["modules"]}
+        self.rule = self.document["scoring"]["deletionTest"]
+
+    def test_every_module_records_how_many_others_call_it(self):
+        for module in self.document["modules"]:
+            callers = module["callers"]
+            self.assertEqual(len(callers["moduleIds"]), callers["count"], module["id"])
+            self.assertEqual(sorted(set(callers["moduleIds"])), callers["moduleIds"], module["id"])
+            self.assertNotIn(module["id"], callers["moduleIds"], module["id"])
+            for caller in callers["moduleIds"]:
+                self.assertIn(caller, self.by_id, module["id"])
+
+    def test_a_caller_is_a_module_with_a_line_in_its_fan_to_this_one(self):
+        """The count read the other way round, so it can be checked against the fans it came from."""
+        for module in self.document["modules"]:
+            reaching = sorted(
+                other["id"]
+                for other in self.document["modules"]
+                for entry in other["reach"]["reaches"]
+                if entry["moduleId"] == module["id"]
+            )
+            self.assertEqual(reaching, module["callers"]["moduleIds"], module["id"])
+
+    def test_every_scored_module_carries_a_verdict_and_no_other_module_does(self):
+        for module in self.document["modules"]:
+            test = module["deletionTest"]
+            self.assertEqual(
+                module["excludedBy"] is None, test["verdict"] is not None, module["id"]
+            )
+            self.assertEqual(
+                test["verdict"] is None, test["because"] is None, module["id"]
+            )
+
+    def test_every_verdict_states_the_counts_it_was_read_off(self):
+        for module in self.document["modules"]:
+            test = module["deletionTest"]
+            self.assertEqual(module["reach"]["count"], test["reach"], module["id"])
+            self.assertEqual(module["callers"]["count"], test["callers"], module["id"])
+            self.assertEqual(
+                len(module["interface"]["methods"]), test["methods"], module["id"]
+            )
+
+    def test_every_verdict_is_one_the_configuration_file_names(self):
+        named = {
+            self.rule[answer]["verdict"]: self.rule[answer]["because"]
+            for answer in ("passThrough", "earnsItsKeep", "noFinding")
+        }
+
+        for module in self.document["modules"]:
+            test = module["deletionTest"]
+            if test["verdict"] is None:
+                continue
+            self.assertIn(test["verdict"], named, module["id"])
+            self.assertEqual(named[test["verdict"]], test["because"], module["id"])
+
+    def test_the_verdict_counts_the_graph_reports_are_the_verdicts_it_holds(self):
+        for entry in self.rule["modulesByVerdict"]:
+            self.assertEqual(
+                sum(
+                    1
+                    for module in self.document["modules"]
+                    if module["deletionTest"]["verdict"] == entry["verdict"]
+                ),
+                entry["modules"],
+                entry["verdict"],
+            )
+
+    def test_the_module_the_specification_predicted_is_named_a_pass_through(self):
+        """`AccountsService` was called shallow from reading, before this tool existed.
+
+        Nothing tells the tool about it: the verdict falls out of how much that module
+        coordinates, how many methods it presents, and how many modules go through it —
+        all three of which are read off the source. The verdict itself is taken from the
+        configuration rather than written here, so rewording it in the file does not red
+        this suite.
+        """
+        accounts = self.by_id["io.dataroots.savingstreak.accounts.AccountsService"]
+
+        self.assertEqual(
+            self.rule["passThrough"]["verdict"], accounts["deletionTest"]["verdict"]
+        )
+        self.assertGreaterEqual(
+            accounts["deletionTest"]["callers"], self.rule["passThrough"]["callersAtLeast"]
+        )
+        self.assertLessEqual(
+            accounts["deletionTest"]["reach"], accounts["deletionTest"]["methods"]
+        )
+
+    def test_the_module_it_calls_earns_its_keep_by_the_same_rule(self):
+        """The comparison is the finding: the same rule, the two modules, opposite answers."""
+        deposits = self.by_id["io.dataroots.savingstreak.deposits.DepositsService"]
+
+        self.assertEqual(
+            self.rule["earnsItsKeep"]["verdict"], deposits["deletionTest"]["verdict"]
+        )
+        self.assertGreater(
+            deposits["deletionTest"]["reach"], deposits["deletionTest"]["methods"]
+        )

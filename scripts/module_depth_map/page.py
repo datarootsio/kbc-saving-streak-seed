@@ -126,6 +126,22 @@ section.package { margin: 2rem 0 0; }
 .fan .transaction { stroke: var(--transaction); fill: var(--transaction); stroke-dasharray: 3 2.5; }
 .module .cost { margin: 0; font-size: .8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
 .module .reach { margin: .2rem 0 0; font-size: .8rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+/* The verdict sits under a rule of its own, because it is the one line on a card that is
+   a judgement rather than a measurement, and a reader should be able to see which is
+   which without reading either. */
+.module .verdict {
+  margin: .45rem 0 0;
+  padding-top: .4rem;
+  border-top: 1px solid var(--edge);
+  font-size: .8rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.module .verdict strong { color: var(--ink); font-weight: 650; }
+/* The one verdict that is a finding. Marked on the word rather than on the whole card:
+   the shape above it is the argument, and a card washed in a colour would be read as a
+   ranking of the module rather than as an answer about deleting it. */
+.module .verdict.found strong { color: var(--alarm-ink); }
 .key { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin: .6rem 0 0; padding: 0; list-style: none; }
 .key li { display: flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--ink-soft); }
 .key svg { flex: none; }
@@ -362,6 +378,65 @@ _SCRIPT = """
     + "imported reading is refused outright rather than guessed at"
   ].forEach(function (reading) { add(overstating, "li", null, reading); });
 
+  var deletion = add(root, "section", "rules");
+  add(deletion, "h2", null, "What the verdict says");
+  add(deletion, "p", null,
+    "Beside each scored module is the verdict of a mechanical deletion test: would "
+    + "deleting this module concentrate complexity, or merely move it to the modules that "
+    + "were going through it? It is read off three counts printed with it and nothing "
+    + "else — how much the module coordinates, how many methods a caller can reach it "
+    + "through, and how many modules go through it — so it can be checked rather than "
+    + "taken on trust. Reaching a module is going through it, and building one is "
+    + "reaching it, so a caller here is any module with a line in its fan to this one.");
+  var verdicts = add(deletion, "ul");
+  [
+    document_.scoring.deletionTest.passThrough,
+    document_.scoring.deletionTest.earnsItsKeep,
+    document_.scoring.deletionTest.noFinding
+  ].forEach(function (answer) {
+    var item = add(verdicts, "li");
+    add(item, "strong", null, answer.verdict);
+    add(item, "span", null, " \u2014 " + answer.because);
+  });
+  add(deletion, "p", null,
+    "The line between them is two numbers in " + document_.scoring.configuration
+    + ", beside the weights and the rules for what is reached: a module is "
+    + document_.scoring.deletionTest.passThrough.verdict + " when it coordinates no more "
+    + "than " + count(document_.scoring.deletionTest.passThrough.reachAtMost.perMethod,
+      "thing", "things")
+    + " per method it presents — and never fewer than "
+    + count(document_.scoring.deletionTest.passThrough.reachAtMost.neverBelow, "thing",
+      "things")
+    + ", because coordinating one thing is coordinating nothing however few methods that "
+    + "is — while "
+    + count(document_.scoring.deletionTest.passThrough.callersAtLeast, "module", "modules")
+    + " or more go through it. Move either number and every verdict on this page moves "
+    + "with it.");
+  // Each verdict with its count behind it rather than in front, because the words are the
+  // file's and this page cannot conjugate them: "9 earns its keep" is what writing the
+  // count first produces, out of a sentence nobody can fix without editing the rule.
+  var counted = [];
+  document_.scoring.deletionTest.modulesByVerdict.forEach(function (entry) {
+    counted.push(entry.verdict + ": " + entry.modules);
+  });
+  add(deletion, "p", null,
+    "Of the " + count(document_.modules.length, "module", "modules") + " drawn here \u2014 "
+    + counted.join(", ") + ". The remaining "
+    + count(document_.scoring.modulesNeverScored, "module is", "modules are")
+    + " never scored, and given no verdict at all: a mechanical judgement on something "
+    + "the rules declined to price would be the score they declined to give, wearing a "
+    + "word.");
+  add(deletion, "p", null,
+    "A verdict is only as good as the fan it is read from, and that fan is a floor. A "
+    + "module coordinating things this graph does not hold — the JDK, the framework, "
+    + "anything outside the source read above — reaches nothing here and reads as "
+    + "coordinating nothing, so it can be reported as "
+    + document_.scoring.deletionTest.passThrough.verdict + " on a count that is short. "
+    + "The numbers are printed beside every verdict for exactly that reason: they are "
+    + "what makes one arguable. And a verdict is an observation about deleting a module, "
+    + "not a proposal to delete it — nothing here is ranked, and no module here is "
+    + "proposed for change.");
+
   var named = add(rules, "ul");
   var because = {};
   document_.scoring.exclusions.forEach(function (exclusion) {
@@ -561,6 +636,38 @@ _SCRIPT = """
     }
   }
 
+  // The verdict, beside the module it judges, in the document's own words and over the
+  // numbers it was read off. Which module is a pass-through, and why, is decided in the
+  // configuration and rendered into the graph before this page is written, so nothing
+  // here can disagree with the document it carries: the page has no rule in it.
+  //
+  // Branching on the verdict rather than on `excludedBy`, for the reason spelled out
+  // over `drawInterface`: the verdict is the fact that decides whether there is anything
+  // to draw, and one throw ends the whole page.
+  var passThrough = document_.scoring.deletionTest.passThrough.verdict;
+
+  function drawVerdict(item, module) {
+    var test = module.deletionTest;
+    if (test.verdict === null) { return; }
+    var line = add(item, "p", test.verdict === passThrough ? "verdict found" : "verdict");
+    add(line, "strong", null, test.verdict);
+    add(line, "span", null,
+      " \\u2014 coordinates " + count(test.reach, "thing", "things") + " behind "
+      + count(test.methods, "method", "methods") + " a caller can reach, with "
+      + count(test.callers, "module", "modules") + " going through it");
+    line.title = test.because;
+    // The three counts are the argument for the word in front of them, so they have to be
+    // the counts the rest of the card was drawn from. A verdict taken over some other
+    // reach, or over some other number of callers, is a second claim on one card, and a
+    // reader cannot argue with two.
+    if (test.reach !== module.reach.count || test.callers !== module.callers.count) {
+      add(line, "span", null,
+        " \\u2014 but the fan above it draws " + module.reach.count + " and this module's "
+        + "callers number " + module.callers.count + ", so this verdict was read off "
+        + "counts the rest of this card was not drawn from");
+    }
+  }
+
   // Branching on the fact that carries the exclusion, not on the absent cost that
   // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
   // would throw for a module that had one without the other, and the renderer is one
@@ -617,6 +724,7 @@ _SCRIPT = """
       drawShape(item, module);
       drawInterface(item, module);
       drawReach(item, module);
+      drawVerdict(item, module);
       if (module.nested.length > 0) {
         add(item, "p", "nested", "nested: " + module.nested.join(", "));
       }

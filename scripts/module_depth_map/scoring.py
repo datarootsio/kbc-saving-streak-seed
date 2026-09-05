@@ -30,6 +30,14 @@ nothing a keyboard can do to it. What an adapter is, what a persistent record is
 establishes a transaction are three more rules in the file rather than three judgements
 written down here.
 
+The deletion test is the verdict those two halves add up to: would deleting this module
+concentrate complexity, or merely move it to its callers? A module coordinating no more
+things than the methods it presents concentrates nothing, and when two or more modules go
+through such a module, deleting it moves the same coordination to them — a pass-through.
+A module coordinating more than it presents is concentrating it, and earns its keep. Both
+thresholds live in the file with the rest, because "this is a pass-through" is only a
+finding rather than an opinion if the rule behind it is one a reader can point at.
+
 Three kinds of thing are drawn but never scored, each by a rule the file names: values
 that only carry data across a seam, repository interfaces whose implementation is
 generated rather than written, and the application's entry point. They are shallow by
@@ -52,7 +60,10 @@ log = logging.getLogger("module_depth_map.scoring")
 # section: a /1 file names no rule for what an adapter is, what a persistent record is or
 # what establishes a transaction, and running it would score depth with three rules
 # nobody wrote. Refused instead, which is the same promise the rest of this file keeps.
-SCHEMA = "module-depth-map-scoring/2"
+# It moved to /3 when they gained a `deletionTest`: a /2 file draws the line between a
+# pass-through and a module that earns its keep nowhere at all, and a verdict rendered
+# from a threshold nobody wrote is the one thing a mechanical test may not hand anybody.
+SCHEMA = "module-depth-map-scoring/3"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
@@ -343,17 +354,56 @@ class Reason:
         return evidence_for(self.when, declared)
 
 
+class Verdict:
+    """One answer the deletion test can give, and the sentence it is argued for."""
+
+    def __init__(self, verdict, because):
+        self.verdict = verdict
+        self.because = because
+
+
+class DeletionTest:
+    """Where the line is drawn between moving complexity and removing it.
+
+    Three verdicts and the two thresholds that pick between them, every one of them read
+    from the file. A reader who thinks a module has been judged unfairly moves
+    `reachAtMost` or `callersAtLeast` there and runs the tool again; there is no number
+    here to argue with, because there is no number here.
+    """
+
+    def __init__(self, pass_through, earns_its_keep, no_finding, per_method, never_below,
+                 callers_at_least):
+        self.pass_through = pass_through
+        self.earns_its_keep = earns_its_keep
+        self.no_finding = no_finding
+        self.per_method = per_method
+        self.never_below = never_below
+        self.callers_at_least = callers_at_least
+
+    def allowance_for(self, methods):
+        """The most a module can coordinate behind this many methods and still concentrate nothing.
+
+        A method apiece, and never less than what the file says one thing reached is worth
+        on its own. That floor is the whole of what "coordinating one thing is coordinating
+        nothing" means: a module presenting no method a caller can reach — every one of
+        them private, its transaction the only thing it reaches — would otherwise be
+        allowed nothing at all and read as concentrating something by reaching once.
+        """
+        return max(self.never_below, self.per_method * methods)
+
+
 class Rules:
     """The scoring rules one configuration file holds, ready to be applied to a module."""
 
     def __init__(self, path, weights, reachable_from_outside, already_known, exclusions,
-                 reached):
+                 reached, deletion_test):
         self.path = path
         self.weights = weights
         self.reachable_from_outside = reachable_from_outside
         self.already_known = already_known
         self.exclusions = exclusions
         self.reached = reached
+        self.deletion_test = deletion_test
 
     def excluded_by(self, declared):
         """The first rule that says this module is never scored, or None if it is scored.
@@ -782,6 +832,63 @@ class Rules:
             "leverage": round(reach["count"] / cost, 2) if cost else None,
         }
 
+    def deletion_test_of(self, name, reach, callers, interface, scored):
+        """Would deleting this module concentrate complexity, or merely move it to its callers?
+
+        Mechanical, from three counts a reader can check on the same card: how much the
+        module reaches, how many methods it presents to be reached through, and how many
+        other modules go through it. A module that coordinates no more things than the
+        methods it presents has concentrated nothing — one call learned per thing the
+        caller could have reached themselves — and when two or more modules go through
+        such a module, deleting it moves that coordination to them rather than removing
+        it. That is the pass-through. A module that coordinates more than it presents is
+        concentrating, and deleting it would put all of it back into every caller.
+
+        The third answer is the honest one, and it is why there are three rather than the
+        two the shape suggests: a module that concentrates nothing and has fewer than two
+        callers has nowhere for its complexity to move to, and calling it earned would be
+        a claim about callers that do not exist.
+
+        A module no rule scores gets no verdict at all, for the same reason it gets no
+        cost: it was never measured, and a mechanical judgement on something the rules
+        declined to price would be the score they declined to give, wearing a word. The
+        three counts are still reported — they are facts about the source rather than
+        judgements, and the rule that produced them is public, so a reader can apply it
+        themselves and see what it would have said.
+
+        Every threshold comes from the file. Nothing here decides how much reach is
+        enough, which is the point: "this is a pass-through" is a finding a reader can
+        argue with by editing a number they can point at.
+        """
+        methods = len(interface["methods"])
+        allowance = self.deletion_test.allowance_for(methods)
+        concentrates = reach["count"] > allowance
+        gone_through = callers["count"] >= self.deletion_test.callers_at_least
+        if not scored:
+            answer = None
+        elif concentrates:
+            answer = self.deletion_test.earns_its_keep
+        elif gone_through:
+            answer = self.deletion_test.pass_through
+        else:
+            answer = self.deletion_test.no_finding
+        log.debug(
+            "deletion test read name=%s reach=%d methods=%d allowance=%d callers=%d verdict=%s",
+            name,
+            reach["count"],
+            methods,
+            allowance,
+            callers["count"],
+            answer.verdict if answer else "none, never scored",
+        )
+        return {
+            "verdict": answer.verdict if answer else None,
+            "because": answer.because if answer else None,
+            "reach": reach["count"],
+            "methods": methods,
+            "callers": callers["count"],
+        }
+
     def _cost_of(self, method):
         return self.weights["method"] + len(method.parameters) * self.weights["parameter"]
 
@@ -852,7 +959,11 @@ def load(path=None):
         raise ConfigurationRefused(
             "schema is %r, and this tool reads %r" % (document.get("schema"), SCHEMA)
         )
-    _only(document, ("schema", "interfaceCost", "reach", "exclusions"), "the configuration")
+    _only(
+        document,
+        ("schema", "interfaceCost", "reach", "deletionTest", "exclusions"),
+        "the configuration",
+    )
 
     cost = document.get("interfaceCost")
     _an_object(cost, "interfaceCost")
@@ -901,9 +1012,11 @@ def load(path=None):
     )
 
     reached = _reach(document.get("reach"))
+    deletion_test = _deletion_test(document.get("deletionTest"))
     exclusions = _exclusions(document.get("exclusions"))
     rules = Rules(
-        path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached
+        path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached,
+        deletion_test,
     )
     log.debug(
         "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
@@ -914,7 +1027,113 @@ def load(path=None):
         ",".join(sorted(reached.transaction_annotations)),
         ",".join(exclusion.rule for exclusion in exclusions),
     )
+    log.debug(
+        "deletion test rules read verdicts=%s reachAtMostPerMethod=%d "
+        "reachAtMostNeverBelow=%d callersAtLeast=%d",
+        ",".join(
+            verdict.verdict
+            for verdict in (
+                deletion_test.pass_through,
+                deletion_test.earns_its_keep,
+                deletion_test.no_finding,
+            )
+        ),
+        deletion_test.per_method,
+        deletion_test.never_below,
+        deletion_test.callers_at_least,
+    )
     return rules
+
+
+def _deletion_test(entry):
+    """The three verdicts the file renders, and the two thresholds that pick between them.
+
+    Required rather than defaulted, like everything else here. A missing threshold would
+    not read as "judge nothing": it would read as a line drawn at zero, and every module
+    in the graph would carry a verdict nobody wrote — which is worse than no verdict at
+    all, because a mechanical finding is trusted exactly as far as the rule behind it can
+    be pointed at.
+    """
+    _an_object(entry, "deletionTest")
+    _only(entry, ("passThrough", "earnsItsKeep", "noFinding"), "deletionTest")
+
+    pass_through = entry.get("passThrough")
+    _an_object(pass_through, "deletionTest.passThrough")
+    _only(
+        pass_through,
+        ("verdict", "because", "reachAtMost", "callersAtLeast"),
+        "deletionTest.passThrough",
+    )
+    at_most = pass_through.get("reachAtMost")
+    _an_object(at_most, "deletionTest.passThrough.reachAtMost")
+    _only(at_most, ("perMethod", "neverBelow"), "deletionTest.passThrough.reachAtMost")
+    per_method = _a_count(
+        at_most.get("perMethod"), "deletionTest.passThrough.reachAtMost.perMethod"
+    )
+    never_below = _a_count(
+        at_most.get("neverBelow"), "deletionTest.passThrough.reachAtMost.neverBelow"
+    )
+    callers_at_least = _a_count(
+        pass_through.get("callersAtLeast"), "deletionTest.passThrough.callersAtLeast"
+    )
+    # A pass-through is a claim about the callers a deletion would move complexity to, so
+    # there has to be more than one of them for the claim to say anything. At zero, every
+    # module that concentrates nothing — including every one nobody calls at all — would
+    # be reported as a pass-through, over callers that do not exist.
+    if callers_at_least < 2:
+        raise ConfigurationRefused(
+            "deletionTest.passThrough.callersAtLeast is %d, and complexity that moves to "
+            "one caller, or to none, has not moved anywhere a reader can see"
+            % callers_at_least
+        )
+
+    verdicts = {}
+    for name in ("passThrough", "earnsItsKeep", "noFinding"):
+        where = "deletionTest.%s" % name
+        answer = entry.get(name)
+        _an_object(answer, where)
+        if name != "passThrough":
+            _only(answer, ("verdict", "because"), where)
+        if not isinstance(answer.get("verdict"), str) or not answer["verdict"].strip():
+            raise ConfigurationRefused(
+                "%s.verdict is %r, and a verdict with nothing written on it is one no "
+                "reader could act on" % (where, answer.get("verdict"))
+            )
+        verdicts[name] = Verdict(answer["verdict"], _a_sentence(answer, where))
+
+    written = [verdict.verdict for verdict in verdicts.values()]
+    for name, verdict in sorted(verdicts.items()):
+        if written.count(verdict.verdict) > 1:
+            raise ConfigurationRefused(
+                "deletionTest.%s.verdict is %r, which another verdict is already called: "
+                "a module given one of them could not be told from the other"
+                % (name, verdict.verdict)
+            )
+    return DeletionTest(
+        pass_through=verdicts["passThrough"],
+        earns_its_keep=verdicts["earnsItsKeep"],
+        no_finding=verdicts["noFinding"],
+        per_method=per_method,
+        never_below=never_below,
+        callers_at_least=callers_at_least,
+    )
+
+
+def _a_count(value, where):
+    """A whole number of things, refused when it is anything a count cannot be.
+
+    `bool` is excluded by hand because Python calls `True` an `int`, and a threshold of
+    `true` would silently be a threshold of one.
+    """
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ConfigurationRefused(
+            "%s is %r, and it has to be a whole number of things" % (where, value)
+        )
+    if value < 0:
+        raise ConfigurationRefused(
+            "%s is %d, and there is no such thing as less than none of them" % (where, value)
+        )
+    return value
 
 
 def _reach(reach):

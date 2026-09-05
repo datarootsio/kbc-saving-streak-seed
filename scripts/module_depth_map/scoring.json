@@ -1,5 +1,5 @@
 {
-  "schema": "module-depth-map-scoring/2",
+  "schema": "module-depth-map-scoring/3",
 
   "interfaceCost": {
     "weights": {
@@ -74,6 +74,23 @@
     "transaction": {
       "because": "A module that marks itself or one of its methods transactional establishes the transaction its whole flow runs in. That is the one piece of coordination a caller most obviously does not do: they make one call, and either all of what it set in motion happened or none of it did.",
       "annotatedWith": ["Transactional"]
+    }
+  },
+
+  "deletionTest": {
+    "passThrough": {
+      "verdict": "pass-through",
+      "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+      "reachAtMost": {"perMethod": 1, "neverBelow": 1},
+      "callersAtLeast": 2
+    },
+    "earnsItsKeep": {
+      "verdict": "earns its keep",
+      "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller."
+    },
+    "noFinding": {
+      "verdict": "no finding",
+      "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist."
     }
   },
 

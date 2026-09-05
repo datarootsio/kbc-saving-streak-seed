@@ -524,7 +524,7 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         read", which sends its author to delete a key their own tool needs. The schema is
         the field that says which of the two is behind, so it is the field read first.
         """
-        reason = self.refusal_for(schema="module-depth-map-scoring/3", somethingNew={})
+        reason = self.refusal_for(schema="module-depth-map-scoring/4", somethingNew={})
 
         self.assertIn("schema", reason)
         self.assertIn(scoring.SCHEMA, reason)

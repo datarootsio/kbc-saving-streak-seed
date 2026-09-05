@@ -19,12 +19,13 @@ log = logging.getLogger("module_depth_map.graph")
 
 # The shape this document promises to have, and the version a reader checks before
 # trusting a key is there. It moved to /2 when the document grew a top-level `scoring`
-# object and gave every module an `interface` and an `excludedBy`, and to /3 when every
-# module gained a `reach` and a `depth`: a reader of either older shape looking for what
-# it was promised finds none of them. The tool refuses a *configuration* whose schema it
-# does not know, so versioning what it writes as well is the same promise kept in the
+# object and gave every module an `interface` and an `excludedBy`, to /3 when every
+# module gained a `reach` and a `depth`, and to /4 when every module gained its `callers`
+# and the `deletionTest` verdict read off them: a reader of any older shape looking for
+# what it was promised finds none of them. The tool refuses a *configuration* whose schema
+# it does not know, so versioning what it writes as well is the same promise kept in the
 # other direction.
-SCHEMA = "module-depth-map/3"
+SCHEMA = "module-depth-map/4"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -239,6 +240,7 @@ def build(roots, rules):
     unparsed.sort(key=lambda entry: (entry["root"], entry["path"]))
     _refuse_duplicate_ids(modules)
     _measure_depth(read, rules)
+    _run_the_deletion_test(modules, rules)
 
     packages = {}
     for module in modules:
@@ -297,6 +299,30 @@ def build(roots, rules):
             furthest["depth"]["interfaceCost"],
             furthest["depth"]["leverage"],
         )
+    for entry in document["scoring"]["deletionTest"]["modulesByVerdict"]:
+        log.info(
+            "deletion test verdict=%s modules=%d", entry["verdict"], entry["modules"]
+        )
+    # One line per module the test actually finds something about, because that is the
+    # finding: a reader who has run the tool should not have to open the page to learn
+    # which modules were named, or on what numbers. Only the pass-through verdict is
+    # written out this way — the other two are the absence of a finding, and would be
+    # sixty lines saying nothing — and the word logged is the file's own, because the
+    # file is where it is decided and a line that spelled it here would say the wrong
+    # thing the moment somebody reworded the rule.
+    finding = document["scoring"]["deletionTest"]["passThrough"]["verdict"]
+    for module in modules:
+        if module["deletionTest"]["verdict"] == finding:
+            log.info(
+                "deletion test finding module=%s verdict=%s reach=%d methods=%d callers=%d "
+                "through=%s",
+                module["id"],
+                finding,
+                module["deletionTest"]["reach"],
+                module["deletionTest"]["methods"],
+                module["deletionTest"]["callers"],
+                ",".join(module["callers"]["moduleIds"]),
+            )
     with_leverage = [module for module in modules if module["depth"]["leverage"] is not None]
     if with_leverage:
         deepest = max(with_leverage, key=lambda module: (module["depth"]["leverage"], module["id"]))
@@ -316,6 +342,52 @@ def build(roots, rules):
             shallowest["depth"]["interfaceCost"],
         )
     return document
+
+
+def _run_the_deletion_test(modules, rules):
+    """Count who goes through each module, and render the verdict that follows.
+
+    A third pass, after reach, because who calls a module is the one thing a module's own
+    file cannot say: it is the whole graph read backwards. Every line in every fan that
+    names a module is one caller of that module — reaching it *is* calling it here, and
+    building one is calling it too — and reach already holds one entry per thing reached,
+    so a collaborator called ten times counts as the one caller it is.
+
+    The callers are named as well as counted. A count nobody can check is the kind of
+    number this page exists not to print, and the ids cost nothing: they are already the
+    ids of the fan lines that produced them.
+    """
+    called_by = {module["id"]: set() for module in modules}
+    for module in modules:
+        for entry in module["reach"]["reaches"]:
+            target = entry["moduleId"]
+            if target is None:
+                # The transaction, which is reached and is not a module: nothing answers
+                # to it, so nothing can be called through it.
+                continue
+            if target not in called_by:
+                log.warning(
+                    "not counted as a caller module=%s reaches=%s, which this graph does "
+                    "not hold, so that module's caller count is short by one",
+                    module["id"],
+                    target,
+                )
+                continue
+            called_by[target].add(module["id"])
+
+    for module in modules:
+        goes_through = sorted(called_by[module["id"]])
+        module["callers"] = {"count": len(goes_through), "moduleIds": goes_through}
+        module["deletionTest"] = rules.deletion_test_of(
+            module["name"], module["reach"], module["callers"], module["interface"],
+            scored=module["excludedBy"] is None,
+        )
+        log.debug(
+            "callers counted module=%s callers=%d through=%s",
+            module["id"],
+            len(goes_through),
+            ",".join(goes_through) or "nothing in this graph",
+        )
 
 
 def _measure_depth(read, rules):
@@ -396,6 +468,48 @@ def _scoring(rules, modules):
             "persistentRecord": rules.reached.persistent_record.because,
             "transaction": rules.reached.transaction,
             "transactionAnnotations": sorted(rules.reached.transaction_annotations),
+        },
+        # The rule behind every verdict on the page, carried in the document the verdicts
+        # were rendered into. A mechanical finding is worth exactly as much as the rule a
+        # reader can point at behind it, so the thresholds travel with the answers they
+        # produced rather than living only in the file that produced them.
+        #
+        # The counts do not add up to the number of modules, and are not meant to: a
+        # module no rule scores is given no verdict, and `modulesNeverScored` above is
+        # where the rest of them are.
+        "deletionTest": {
+            "passThrough": {
+                "verdict": rules.deletion_test.pass_through.verdict,
+                "because": rules.deletion_test.pass_through.because,
+                "reachAtMost": {
+                    "perMethod": rules.deletion_test.per_method,
+                    "neverBelow": rules.deletion_test.never_below,
+                },
+                "callersAtLeast": rules.deletion_test.callers_at_least,
+            },
+            "earnsItsKeep": {
+                "verdict": rules.deletion_test.earns_its_keep.verdict,
+                "because": rules.deletion_test.earns_its_keep.because,
+            },
+            "noFinding": {
+                "verdict": rules.deletion_test.no_finding.verdict,
+                "because": rules.deletion_test.no_finding.because,
+            },
+            "modulesByVerdict": [
+                {
+                    "verdict": answer.verdict,
+                    "modules": sum(
+                        1
+                        for module in modules
+                        if module["deletionTest"]["verdict"] == answer.verdict
+                    ),
+                }
+                for answer in (
+                    rules.deletion_test.pass_through,
+                    rules.deletion_test.earns_its_keep,
+                    rules.deletion_test.no_finding,
+                )
+            ],
         },
         "reachableFromOutside": sorted(rules.reachable_from_outside),
         "typesEveryCallerAlreadyKnows": sorted(rules.already_known),

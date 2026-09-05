@@ -1,6 +1,17 @@
 {
   "modules": [
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -45,6 +56,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 0,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -74,6 +96,23 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 5,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService",
+          "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "io.dataroots.savingstreak.rewards.RewardsService",
+          "io.dataroots.savingstreak.web.CustomerController",
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+        "callers": 5,
+        "methods": 11,
+        "reach": 5,
+        "verdict": "pass-through"
+      },
       "depth": {
         "interfaceCost": 30,
         "leverage": 0.17,
@@ -269,6 +308,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 7,
         "leverage": 0.0,
@@ -352,6 +404,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.AccountsService",
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 2,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -421,6 +487,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 3,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 3,
         "leverage": 0.0,
@@ -478,6 +557,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.AccountsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -535,6 +627,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.AccountsService",
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 2,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -587,6 +693,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 0,
+        "methods": 1,
+        "reach": 7,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 2,
         "leverage": 3.5,
@@ -671,6 +788,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 1,
         "leverage": 0.0,
@@ -710,6 +840,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.accounts.AccountsService",
+          "io.dataroots.savingstreak.accounts.DemoData"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 2,
+        "methods": 3,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -792,6 +936,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 3,
+        "reach": 1,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 10,
         "leverage": 0.1,
@@ -866,6 +1021,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.clock.ClockService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 1,
         "leverage": 0.0,
@@ -905,6 +1073,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.clock.ClockOnStartUp",
+          "io.dataroots.savingstreak.clock.ClockService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 2,
+        "methods": 0,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -934,6 +1116,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 0,
+        "methods": 1,
+        "reach": 2,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 1,
         "leverage": 2.0,
@@ -981,6 +1174,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.clock.ClockService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 0,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 0,
         "leverage": null,
@@ -1007,6 +1213,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.DevelopmentClockController"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 1,
+        "methods": 2,
+        "reach": 5,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 5,
         "leverage": 1.0,
@@ -1090,6 +1309,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.clock.ClockService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -1143,6 +1375,21 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 3,
+        "moduleIds": [
+          "io.dataroots.savingstreak.clock.ClockConfiguration",
+          "io.dataroots.savingstreak.clock.ClockOnStartUp",
+          "io.dataroots.savingstreak.clock.ClockService"
+        ]
+      },
+      "deletionTest": {
+        "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+        "callers": 3,
+        "methods": 6,
+        "reach": 0,
+        "verdict": "pass-through"
+      },
       "depth": {
         "interfaceCost": 8,
         "leverage": 0.0,
@@ -1237,6 +1484,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService",
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+        "callers": 2,
+        "methods": 2,
+        "reach": 0,
+        "verdict": "pass-through"
+      },
       "depth": {
         "interfaceCost": 5,
         "leverage": 0.0,
@@ -1296,6 +1557,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 6,
         "leverage": 0.0,
@@ -1373,6 +1647,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 3,
         "leverage": 0.0,
@@ -1414,6 +1701,21 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 3,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
+          "io.dataroots.savingstreak.deposits.DepositsService",
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 3,
+        "methods": 4,
+        "reach": 1,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -1502,6 +1804,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 1,
+        "reach": 1,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 1,
         "leverage": 1.0,
@@ -1543,6 +1856,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.CustomerController",
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 2,
+        "methods": 3,
+        "reach": 8,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 10,
         "leverage": 0.8,
@@ -1665,6 +1992,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 4,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -1740,6 +2080,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -1830,6 +2183,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -1883,6 +2249,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 4,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 4,
         "leverage": 0.0,
@@ -1955,6 +2334,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 2,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 2,
         "leverage": 0.0,
@@ -2005,6 +2397,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2057,6 +2462,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 3,
         "leverage": 0.0,
@@ -2098,6 +2516,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.WithdrawalsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2150,6 +2581,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 1,
+        "methods": 2,
+        "reach": 11,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 8,
         "leverage": 1.38,
@@ -2281,6 +2725,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.jobs.ScheduledJobs"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 4,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2352,6 +2809,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.jobs.ScheduledJobs"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 3,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2408,6 +2878,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.jobs.ScheduledJobs"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 0,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 0,
         "leverage": null,
@@ -2434,6 +2917,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.jobs.ScheduledJobs"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 0,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 0,
         "leverage": null,
@@ -2460,6 +2956,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.DevelopmentJobsController"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 1,
+        "methods": 3,
+        "reach": 4,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 8,
         "leverage": 0.5,
@@ -2554,6 +3063,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 0,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 0,
         "leverage": null,
@@ -2580,6 +3100,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.points.PointsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 3,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 10,
         "leverage": 0.0,
@@ -2648,6 +3181,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.points.PointsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 3,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2737,6 +3283,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 0,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2766,6 +3323,22 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 4,
+        "moduleIds": [
+          "io.dataroots.savingstreak.deposits.DepositsService",
+          "io.dataroots.savingstreak.rewards.RewardsService",
+          "io.dataroots.savingstreak.web.CustomerController",
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+        "callers": 4,
+        "methods": 4,
+        "reach": 3,
+        "verdict": "pass-through"
+      },
       "depth": {
         "interfaceCost": 12,
         "leverage": 0.25,
@@ -2881,6 +3454,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.rewards.Redemption"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -2967,6 +3553,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.rewards.RewardsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 2,
+        "reach": 2,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 12,
         "leverage": 0.17,
@@ -3047,6 +3646,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.rewards.RewardsService"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3099,6 +3711,21 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 3,
+        "moduleIds": [
+          "io.dataroots.savingstreak.rewards.Redemption",
+          "io.dataroots.savingstreak.rewards.RewardsService",
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 3,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3173,6 +3800,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.rewards.RewardsService"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 1,
+        "methods": 1,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 3,
         "leverage": 0.0,
@@ -3214,6 +3854,20 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 2,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.RewardController",
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 2,
+        "methods": 3,
+        "reach": 7,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 10,
         "leverage": 0.7,
@@ -3327,6 +3981,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3369,6 +4034,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3411,6 +4087,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 7,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3517,6 +4206,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.DevelopmentClockController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 3,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3587,6 +4289,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.CustomerController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3647,6 +4362,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 0,
+        "methods": 3,
+        "reach": 4,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 11,
         "leverage": 0.36,
@@ -3745,6 +4471,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 4,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3822,6 +4559,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3875,6 +4623,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -3967,6 +4728,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 2,
+        "reach": 2,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 7,
         "leverage": 0.29,
@@ -4032,6 +4804,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 2,
+        "reach": 2,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 7,
         "leverage": 0.29,
@@ -4105,6 +4888,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.DevelopmentJobsController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4193,6 +4989,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 6,
+        "reach": 0,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 28,
         "leverage": 0.0,
@@ -4307,6 +5114,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "callers": 0,
+        "methods": 1,
+        "reach": 1,
+        "verdict": "no finding"
+      },
       "depth": {
         "interfaceCost": 3,
         "leverage": 0.33,
@@ -4357,6 +5175,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 5,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4441,6 +5270,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "callers": 0,
+        "methods": 7,
+        "reach": 10,
+        "verdict": "earns its keep"
+      },
       "depth": {
         "interfaceCost": 31,
         "leverage": 0.32,
@@ -4632,6 +5472,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 4,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4707,6 +5560,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 4,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4780,6 +5644,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 1,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4822,6 +5697,17 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 0,
+        "moduleIds": []
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 0,
+        "methods": 2,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -4875,6 +5761,19 @@
       "root": "backend/src/main/java"
     },
     {
+      "callers": {
+        "count": 1,
+        "moduleIds": [
+          "io.dataroots.savingstreak.web.SavingsAccountController"
+        ]
+      },
+      "deletionTest": {
+        "because": null,
+        "callers": 1,
+        "methods": 6,
+        "reach": 0,
+        "verdict": null
+      },
       "depth": {
         "interfaceCost": null,
         "leverage": null,
@@ -5095,9 +5994,42 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/3",
+  "schema": "module-depth-map/4",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
+    "deletionTest": {
+      "earnsItsKeep": {
+        "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller.",
+        "verdict": "earns its keep"
+      },
+      "modulesByVerdict": [
+        {
+          "modules": 4,
+          "verdict": "pass-through"
+        },
+        {
+          "modules": 9,
+          "verdict": "earns its keep"
+        },
+        {
+          "modules": 22,
+          "verdict": "no finding"
+        }
+      ],
+      "noFinding": {
+        "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist.",
+        "verdict": "no finding"
+      },
+      "passThrough": {
+        "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+        "callersAtLeast": 2,
+        "reachAtMost": {
+          "neverBelow": 1,
+          "perMethod": 1
+        },
+        "verdict": "pass-through"
+      }
+    },
     "exclusions": [
       {
         "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and ranking them beside the modules that do hide something would bury the finding.",

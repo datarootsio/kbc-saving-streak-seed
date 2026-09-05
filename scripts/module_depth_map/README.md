@@ -66,7 +66,8 @@ Run its tests with the standard library's own runner, also from the repository r
   fields with a value assigned to them (nine loggers and a `SecureRandom`), 3 nested
   records — short enough to read and check.
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
-  beside this file holds the interface-cost weights and every exclusion rule. Change a
+  beside this file holds the interface-cost weights, every exclusion rule, what makes a
+  reached thing an adapter or a record, and where the deletion test draws its line. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
   is edited, and no rule name or weight is written into it to fall back on. Every name a
   rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
@@ -105,8 +106,9 @@ Run its tests with the standard library's own runner, also from the repository r
 - **The graph says which shape it is.** `schema` in the document is the contract an agent
   reading it is promised: it moved to `module-depth-map/2` when the document gained a
   top-level `scoring` object and gave every module an `interface` and an `excludedBy`, and
-  to `module-depth-map/3` when every module gained a `reach` and a `depth`. The
-  page checks it before drawing, and says so rather than drawing half a document, because
+  to `module-depth-map/3` when every module gained a `reach` and a `depth`, and to
+  `module-depth-map/4` when every module gained its `callers` and the `deletionTest`
+  verdict read off them. The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
@@ -122,8 +124,9 @@ modules of their own, each named by where it sits inside that module — `Body.K
 second `Kind` a reader cannot tell from the first.
 
 Each module is drawn as a bar whose width is what its interface costs a caller, over a fan
-with one line out to each thing it coordinates on that caller's behalf. Nothing is ranked,
-and nothing is proposed for change.
+with one line out to each thing it coordinates on that caller's behalf, and under both a
+verdict on what deleting it would do — read off the fan, the bar and the number of modules
+that go through it. Nothing is ranked, and nothing is proposed for change.
 
 ## What an interface costs
 
@@ -303,6 +306,61 @@ as an adapter and the fans change with it.
 Each fan is drawn against one number, `scoring.widestReach` in the graph, so that two of
 them can be compared by eye. A deep module reads as a short bar over a wide fan; a module
 coordinating one thing per method reads as a bar as wide as its fan.
+
+## The deletion test
+
+Beside each scored module the page prints a verdict on one question: would deleting this
+module concentrate complexity, or merely move it to the modules that were going through
+it? It is mechanical, and it is read off three counts printed with it:
+
+- **what it reaches** — the fan above it, described in the section before this one;
+- **how many methods it presents** — the ones a caller can reach, the same ones the bar
+  counts;
+- **how many modules go through it** — its `callers`, which every module in the graph
+  carries as a count and as the list of ids behind it. A caller is a module with a line in
+  its fan to this one: reaching a module is going through it, and building one is reaching
+  it, so `new B(a)` makes a caller of `B` exactly as `B.of(a)` does. A module never counts
+  as its own caller, because reach never names the module it was read from.
+
+A module that coordinates no more things than the methods it presents has concentrated
+nothing for deletion to remove: a caller learns one call for each thing they could have
+reached themselves. When two or more modules go through such a module, deleting it moves
+that coordination to them rather than removing it, and the verdict is **pass-through**. A
+module that coordinates more than it presents is concentrating it, and **earns its keep**.
+The third verdict is the honest one: a module that concentrates nothing and that fewer
+than two modules go through has nowhere for its complexity to move to, so the test says
+**no finding** rather than either of the other two.
+
+Both thresholds live in `scoring.json` beside the weights — `reachAtMost.perMethod`,
+`reachAtMost.neverBelow`, and `callersAtLeast` — with the sentence each verdict is argued
+for, which the page prints. Move a number and every verdict on the page moves with it;
+nothing in the analyser names a verdict or draws the line, and a test asserts that by
+grepping for the words. `reachAtMost.neverBelow` is the floor that says coordinating one
+thing is coordinating nothing however few methods it is presented behind — without it a
+module presenting no reachable method at all would be allowed nothing and would read as
+concentrating something by reaching once.
+
+A module no rule scores is given no verdict: it was never measured, and a mechanical
+judgement on something the rules declined to price would be the score they declined to
+give, wearing a word. Its three counts are still reported, because they are facts about
+the source rather than judgements.
+
+A verdict is only as good as the fan it is read from, and that fan is a floor. A module
+coordinating things this graph does not hold reaches nothing here and reads as
+coordinating nothing, so it can be reported as a pass-through on a count that is short —
+`MovableClock` is the specimen on this repository, coordinating a JDK `Clock` and an
+`AtomicLong` that no rule here can see. The counts are printed beside every verdict for
+exactly that reason. And a verdict is an observation about deleting a module rather than a
+proposal to delete it; nothing on the page is ranked, and no module on it is proposed for
+change.
+
+On this repository the test names four pass-throughs, and one of them is the module the
+specification predicted from reading before the tool existed: `AccountsService`
+coordinates five things behind eleven methods with five modules going through it, while
+`DepositsService` — which calls it — coordinates eight behind three and earns its keep.
+Every run logs each pass-through at INFO with the three counts and the callers behind
+them, so the finding does not need the page to be read.
+
 
 ## What is drawn but never scored
 
