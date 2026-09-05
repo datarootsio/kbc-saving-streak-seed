@@ -14,9 +14,9 @@ numerator.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-review
+**Status:** needs-info
 
-- [x] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
+- [ ] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
 - [x] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
 - [x] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
 - [x] The fan beneath each module is drawn from its reach, with one line per thing reached
@@ -1344,3 +1344,249 @@ A refused deposit of `0` leaves no `io.dataroots.savingstreak` WARN line — onl
 `ExceptionHandlerExceptionResolver` at DEBUG — and so does a refused reward claim.
 `WithdrawalsService` logs its refusal; `DepositsService` and `RewardsService` do not. Pre-existing,
 untouched here, flagged by all five reviews now.
+
+## Review feedback - attempt 6
+
+All four of attempt 5's findings are genuinely fixed. I ran every repro verbatim myself rather
+than taking the implementer's log for it, and each answers what it should. The counted claim is
+gone from all three places it lived. **Do not redo any of that work** — the full list of what I
+re-checked and found good is at the bottom of this section, and it is nearly the whole ticket.
+`docs/module-depth-map.json` is byte-identical to a fresh run and **every one of its 76 reach
+entries verifies against the source** with a checker I wrote myself.
+
+What sends it back is that **the fix for attempt 5's finding 2 introduced a new defect of the
+same class**, in ordinary Java, and that two older ones survive in places nobody has looked yet.
+Finding 1 below is the one that matters: it is a regression on this attempt, it fires on a
+one-line field any participant might write, and the DEBUG line it prints about it is a false
+statement about the source — in the file whose whole promise is that nothing is dropped in
+silence and nothing is repaired into a guess.
+
+All three are latent on this repository: there is no wildcard import, no qualified supertype and
+no lambda-initialised field in `backend/src/main/java` (I grepped for each). The committed graph
+is unaffected.
+
+### 1. A field initialised with a lambda is thrown away, and the reason logged for it is false (blocks criterion 1) — NEW ON THIS ATTEMPT
+
+`_declares_several_names` (`scripts/module_depth_map/javasource.py:942`, added by commit
+`2fcad1a`) counts `<` as an opener and `>` as a closer. A lambda arrow and a relational operator
+each write a bare `>`, which drops the depth back to zero, and the **next argument comma** is then
+read as a declarator separator. The field is declined and every call written through it reaches
+nothing.
+
+Reproduce at the parser — no source tree needed:
+
+    python3 - <<'EOF'
+    import logging, sys
+    sys.path.insert(0, "scripts")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s %(message)s", stream=sys.stdout)
+    from module_depth_map import javasource
+    for spelling in (
+        "private final Register register = make(x -> x.a(), 1);",
+        "private final Register register = make(a > b, 1);",
+        "private final Comparator<Long> c = Comparator.comparing(x -> x.a(), Long::compare);",
+        "private final Register register = make(x, 1);",
+    ):
+        src = "package p;\npublic class M {\n    %s\n    public long go() { return 1; }\n}\n" % spelling
+        print("\n>>>", spelling)
+        for d in javasource.parse(src, "M.java").types:
+            print("   fields:", [(f.name, f.written) for f in d.fields])
+    EOF
+
+The first three print `fields: []` and
+
+    DEBUG member not read as a field line=3 reason=it declares several names at once, and
+    which type each of them holds is not read from a header written that way
+    member=private final Register register = make(x -> x.a(), 1)
+
+That member declares **one** name. The reason is wrong, and a reader who greps the log for why
+their field vanished is told something they can check against their own file and find false. The
+fourth spelling — the same field with no `>` anywhere in it — reads correctly as
+`[('register', 'Register')]`, so the arrow is the whole of the difference.
+
+Downstream: a call through such a field falls to the receiver-as-type-name branch, resolves to
+nothing, and the fan loses the collaborator. `Comparator.comparing(x -> x.a(), Long::compare)`
+and `Collectors.toMap(x -> x.a(), x -> x.b())` are ordinary Java, not corner cases.
+
+The existing control test does not cover it. `test_a_comma_inside_a_field_is_not_read_as_a_second_name`
+(`scripts/module_depth_map/tests/reachandthefan/test_reach_is_the_numerator_of_depth.py:1204`)
+tries a type-argument list, an initialiser's arguments and an array initialiser — none of which
+contains a `>` outside a type. Add the lambda spelling to that list and it reddens today.
+
+What to do: `>` closes a depth only when it is matching a `<` this scan actually opened, so track
+`<`/`>` separately from `(`/`[`/`{` and never let a `>` with no open `<` change the depth. The
+docstring's premise — "every other comma a field can write sits inside brackets of one kind or
+another" — is what is false, so it wants rewriting too.
+
+### 2. A qualified supertype is resolved against the reading file's own package (blocks criterion 1)
+
+`_supertypes_in` (`scripts/module_depth_map/javasource.py:752`) does
+`written.strip().split(".")[-1]`, so `class Till extends other.Base` is carried as `Base`, and
+`_inherited_by` (`scripts/module_depth_map/scoring.py:710`) then resolves that `Base` against the
+file's **own** package. This is the same `rsplit`/`split(".")[-1]` mistake attempt 3 filed as its
+findings 1 and 3, in the one place the supertype work put it.
+
+Reproduce — four files in a directory, then point the tool at it:
+
+    // shop/Base.java   package shop;  class Base { static class Row { long n() { return 1; } } }
+    // other/Base.java  package other; public class Base {}
+    // shop/Row.java    package shop;  class Row { static long of(long n) { return n; } }
+    // shop/Till.java   package shop;  class Till extends other.Base { long go() { return Row.of(1); } }
+
+    python3 scripts/module-depth-map.py --source <that dir> --graph /tmp/g.json --page /tmp/p.html --log-level DEBUG
+
+Graph says `shop.Till 0 []`, with
+
+    DEBUG module_depth_map.scoring name not followed name=Row in=Till, because a type of that
+    name is declared inside this module or inherited by it, or is one of its type parameters,
+    and none of those is a module
+
+`Till` extends `other.Base`, which declares nothing at all. The real reach to `shop.Row` is lost
+and the reason given for losing it is false. Delete ` extends other.Base` from the same file and
+the tool answers correctly: `shop.Till 1 [('module', 'shop.Row', 'called on Row')]`.
+
+The mirror is as bad: when only `other.Base` exists in the tree, the simple name `Base` resolves
+to nothing, the module is marked `opaque`, and **every** static-import reading is disabled for it
+— again with a reason that is not what the source says.
+
+What to do: keep the supertype's written spelling and put it through the same dotted/simple
+branch `resolve` already uses for `new other.Receipt()`. Add the negative twin beside the existing
+supertype tests, and check it reddens if you put the `split(".")[-1]` back.
+
+### 3. A module writing its own simple name is credited to a wildcard-imported package (blocks criterion 1)
+
+`resolve` (`scripts/module_depth_map/scoring.py:536`) skips a candidate equal to `module_id` and
+then keeps going into the on-demand-import candidates. In Java the type's own name binds to
+itself; a wildcard import cannot win.
+
+Reproduce:
+
+    // other/Till.java  package other; public class Till { public static long of(long n) { return n; } }
+    // shop/Till.java   package shop;  import other.*;
+    //                  class Till { long go() { return Till.of(1); } static long of(long n) { return n; } }
+
+    shop.Till 1 [('module', 'other.Till', 'called on Till')]
+
+`shop.Till` calls itself. Expected reach 0. This is the overstating direction: a fan line to a
+card the module never calls, with an evidence string a reader can check against the file and find
+wrong, and it is not one of the readings the page names. Put the module's own name into
+`shadowed`, or make `resolve` stop rather than continue when the package candidate is `module_id`.
+
+### 4. Two smaller readings, neither a blocker, both worth a line
+
+- **A qualified annotation is read as a call on the type it is written under.** `_A_RECEIVER`
+  matches `Holder.Ann(` in `@Holder.Ann(1)` exactly as it matched `new Holder.Row()`. Verified:
+
+      // shop/Holder.java  package shop; public class Holder { public @interface Ann { long value(); }
+      //                                                       public long tick() { return 1; } }
+      // shop/Till.java    package shop; public class Till { @Holder.Ann(1) public long ring() { return 2; } }
+
+      shop.Till 1 [('module', 'shop.Holder', 'called on Holder')]
+
+  `Till` calls nothing on `Holder`. Overstating, and not named on the page. This repository
+  declares no `@interface` at all, so it is far from live — but the guard that fixes it is the
+  one you just wrote for `new`, one line away.
+- **A method reference reaches nothing and is not named among the omissions.** Neither
+  `_A_RECEIVER`, `_CONSTRUCTED` nor `_A_CALL` matches `Type::member`, and
+  `backend/src/main/java/io/dataroots/savingstreak/web/RewardController.java:26` really does write
+  `.map(RewardResponse::of)` while its card reads `reaches 1` with no `RewardResponse` on it. The
+  direction is the safe one, but the page's omissions list undertakes to name the ones known, and
+  this one is now known.
+
+### Everything I checked myself and found good — do not redo this work
+
+- **All four of attempt 5's repros, run verbatim.** (1) `new Holder.Row()` → `shop.Till 0 []`
+  with `DEBUG module_depth_map.javasource name not read as a receiver name=Holder reason=new is
+  written in front of it, so it qualifies the type being built rather than holding something a
+  call was written on`. Three controls I added: a real `Holder.tick()` still gives
+  `1 [('module','shop.Holder','called on Holder')]`; `new Holder().tick()` gives
+  `1 [… 'builds one']`; `new Holder.Row(shelf.take(1))` keeps `shelf` and drops `Holder`; and a
+  file writing **both** `new Holder.Row()` and `Holder.tick()` still reaches `shop.Holder` once —
+  the suppression is per match, not per name. (2) both multi-declarator spellings are now
+  declined with a line (see finding 1 for what that guard also swallows). (3)
+  `java.util.List.<String>of()` beside a statically imported `of` → `p.M 1 [('module','p.Money',
+  'calls of, imported statically from it')]`, the same answer as with the `<String>` deleted, and
+  the false `this module's body declares that name itself` DEBUG line is gone; a module declaring
+  `public java.util.Map<String, Long> of(long)` still has the static import declined, so the
+  generic-return-type reading did not regress. (4) the page, the README and `reach_of`'s docstring
+  carry no count in front of either list — I grepped all three and read the rendered paragraph in
+  chromium (`…review.6.floor.png`).
+- **`./.scratch/module-depth-map/lab.sh checks` → exit 0.** Backend **113 tests, 0 failures, BUILD
+  SUCCESS**; `npm run typecheck` clean.
+  `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` → **325 OK**.
+- **Determinism.** Two fresh `python3 scripts/module-depth-map.py` runs are byte identical to each
+  other **and** to the committed `docs/module-depth-map.json` and `docs/module-depth-map.html`
+  (`cmp` on all four).
+- **Every reach entry in the committed graph verifies against the source.** My own checker greps
+  each module's `.java` for what its evidence string claims — a `new X(`, a receiver `X.m(`, a
+  call through the named field plus that field's declared type, a static import plus a bare call,
+  `@Transactional`. **76 of 76 verify, 0 problems.** So findings 1-3 change no number on the
+  committed page.
+- **Playwright/chromium over the committed page** (`file://docs/module-depth-map.html`), light and
+  dark, 1024 and 1280: **71 cards each pass, 0 console messages, 0 page errors, 0 failed
+  requests** (`…review.6.browser.log`), `scrollWidth - clientWidth == 0` in all four. Per card,
+  cross-checked against the graph: the count and order of `svg.fan line` and `svg.fan circle`
+  equal `reach.reaches`, each `class` equals the entry's `kind` on both, each `<title>` equals
+  `kind name — matched`, the bar carries `unscored` exactly for the excluded modules, and every
+  foot sits inside the viewBox allowing for its radius **and** its computed stroke width.
+  **0 problems in all four passes**, no clipped feet anywhere.
+- **Criterion 5 reads without a label.** `WithdrawalsService` a narrow bar over an 11-line fan
+  spanning 97.5%; `DemoData` a stub of a bar over a 7-line fan at 62%; `SavingsAccountController`
+  a full-width bar over a full-width 10-line fan; `RefusalsAsHttp` a 90%-wide bar over nothing.
+  Screenshots at `…review.6.card-{WithdrawalsService,DemoData,SavingsAccountController,RefusalsAsHttp}.png`
+  and `…review.6.{light,dark}.{1024,1280}.top.png`.
+- **Criteria 2, 3 and 7 are real, not decorative.**
+  `test_a_deep_module_coordinates_several_things_behind_one_method` pins
+  `{"reach": 5, "interfaceCost": 2, "leverage": 2.5}`;
+  `test_a_pass_through_coordinates_one_thing_per_method` pins
+  `{"reach": 2, "interfaceCost": 4, "leverage": 0.5}` with `len(methods) == reach.count`;
+  `test_padding_the_implementation_changes_neither_reach_nor_depth` asserts the padded fixture is
+  more than twice the lines with `reach` and `depth` identical; `DemoData` carries
+  `depth {interfaceCost: 2, leverage: 3.5, reach: 7}` in the graph.
+- **Four mutation checks, each applied to the real tree and reverted, tree left clean.** The
+  `new`-receiver guard disabled → 2 red; the multi-declarator decline removed → 2 red; the
+  type-argument lookthrough removed → 1 red; a count put back on the page → 2 red, including
+  `test_the_committed_page_is_byte_identical_to_a_fresh_run`. Attempt 6's tests are load-bearing.
+- **Refusals work and say why.** A configuration with `reach` deleted exits **4**, writes neither
+  output file, and logs `WARNING module_depth_map.cli refused to run: … reach is missing, and it
+  has to be an object. Nothing is scored with a rule nobody wrote`. One still claiming
+  `module-depth-map-scoring/1` exits **4** with `schema is 'module-depth-map-scoring/1', and this
+  tool reads 'module-depth-map-scoring/2'`.
+- **The tool logs its own flow.** A full `--log-level DEBUG` run over the repository: **341 lines,
+  0 WARNING, 0 ERROR**, `INFO module_depth_map.graph graph built roots=backend/src/main/java
+  filesSeen=71 filesParsed=71 filesUnparsed=0 packages=8 modules=71 scored=35 neverScored=36`,
+  `INFO module_depth_map.graph furthest reach
+  module=io.dataroots.savingstreak.deposits.WithdrawalsService reach=11 over interfaceCost=8
+  leverage=1.38`, `INFO module_depth_map.graph deepest
+  module=io.dataroots.savingstreak.accounts.DemoData leverage=3.5 reach=7 interfaceCost=2`.
+  Neither of attempt 6's two new decline readings fires on the real tree (0 lines each).
+- **The array-initialiser stray line is not new.** `private int[] ys = {1, 2, 3};` leaves a
+  `member not read as a field … reason=nothing at the end of it reads as a name member=` line on
+  this branch and on its parent alike. Pre-existing, not attempt 6's.
+- **Application smoke test** on the throwaway database (this branch touches no Java and no TS —
+  `git diff --name-only` over the range returns only `docs/`, `scripts/` and `.scratch/`):
+  `POST /api/savings-accounts/1/deposits` 12.50 → **201** with `INFO i.d.s.deposits.DepositsService :
+  deposit accepted depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=12.50
+  pointsEarned=12`; amount 0 → **400**; withdrawal 9999.00 → **400** with
+  `WARN i.d.s.deposits.WithdrawalsService : withdrawal rejected savingsAccountId=1
+  toCurrentAccountId=1 amount=9999.00 balance=12.50 reason=There is not enough in that savings
+  account to move EUR 9999.00. It holds EUR 12.50.`; `SNACK_VOUCHER` claim → **400**;
+  `CHARITY_DONATION` → **201** with `INFO i.d.savingstreak.rewards.RewardsService : claim issued
+  redemptionId=1 …`; `GET /api/savings-accounts/9999` → **404**. **0 ERROR lines** in
+  `…app.6.backend.log`. The Vite page at 5173 renders the sign-in card with only Vite's connect
+  messages and the React DevTools notice (`…review.6.app.browser.log`, `…review.6.app.png`).
+
+### Four things closed in earlier attempts, still not re-litigated
+
+- A data carrier called statically counts as a *module called*. Closed in attempt 1.
+- The transaction is the one fan line with no `moduleId`. Closed in attempt 1.
+- `a.b.C.d()` — a fully-qualified static call — is not followed, and is named as an omission.
+  Accepted in attempt 2.
+- A type argument inside a field's type counts as reached. Closed in attempt 4.
+
+### Still unrelated to this branch, still worth its own ticket
+
+A refused deposit of `0` leaves no `io.dataroots.savingstreak` WARN line — only Spring's
+`ExceptionHandlerExceptionResolver` at DEBUG — and so does a refused reward claim. I saw both
+again in `…app.6.backend.log`: the withdrawal refusal logs its reason, the deposit and claim
+refusals log nothing. `WithdrawalsService` logs its refusal; `DepositsService` and
+`RewardsService` do not. Pre-existing, untouched here, flagged by all six reviews now.
