@@ -12,15 +12,15 @@ by a machine rather than by whoever called it.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-review
+**Status:** needs-info
 
-- [x] Every refusal a module can answer with appears in the graph as part of its interface
+- [ ] Every refusal a module can answer with appears in the graph as part of its interface
 - [x] Refusals count toward interface cost, and are also reported separately from the rest of it
 - [x] The page shows refusals as their own band, so an honestly-wide interface is distinguishable from a merely wide one
 - [x] Documented refusals are read from the source's own documentation rather than guessed at
 - [x] A module documenting a refusal it cannot raise produces a finding naming both sides of the disagreement
 - [x] A module raising a refusal it does not document produces a finding naming both sides of the disagreement
-- [x] A module whose documentation and implementation agree produces no finding
+- [ ] A module whose documentation and implementation agree produces no finding
 - [x] Fixture modules establish each direction of disagreement and the agreeing case
 
 ## Review feedback - attempt 1
@@ -387,3 +387,174 @@ both sides of the disagreement", which point 1 breaks whenever the module also w
 `this.`-qualified throw. The band, its pricing, its separate reporting, the page, the
 config-driven rule, the constructor reading, the bodiless-signature reading, the fixtures
 and the logging are all real and all verified — none of them needs doing again.
+
+## Review feedback - attempt 3
+
+All three things attempt 2 sent this back for are genuinely fixed, and I reproduced each of
+them on my own trees rather than taking the log's word. What sends it back is one more
+instance of the shape attempt 1 sent it back for: a module whose two sides agree gets a
+finding in each direction, and something that is not a refusal is priced onto its band.
+The fix is small and the intent is already written in the code's own docstring.
+
+### 1. A class-level type variable reaches the band, and accuses a module that kept its word
+
+`_thrown_through` (`scripts/module_depth_map/javasource.py:1344`) rejects a candidate whose
+*own* declaration is generic:
+
+    if not candidates or any(method.type_parameters for method in candidates):
+        return None
+
+`method.type_parameters` is the method's own list. A type variable declared on the
+**enclosing type** is not in it, so `private T make()` inside `class Box<T extends
+RuntimeException>` looks like an ordinary method returning `T`, and `T` is read as a
+refusal. Reproduce with a one-file tree:
+
+    public class Box<T extends RuntimeException> {
+        /**
+         * Does it.
+         *
+         * @throws RuntimeException if it will not
+         */
+        public void go() { throw make(); }
+
+        private T make() { return null; }
+    }
+
+    python3 -c 'import sys; sys.path.insert(0,"scripts"); from module_depth_map import graph, scoring; d=graph.build([graph.java_root("<tree>")], scoring.load()); [print(m["name"], (m["interface"] or {}).get("cost"), (m["interface"] or {}).get("refusals"), [f["finding"]+" | "+f["refusal"] for f in m["findings"]]) for m in d["modules"]]'
+
+Expected: one refusal, `RuntimeException`, documented and raised, no finding. What I got:
+
+    Box cost=5 (1 + 4)
+       refusal {'name': 'RuntimeException', 'documented': True, 'documentedBy': ['go'], 'raised': False, 'checked': True}
+       refusal {'name': 'T', 'documented': False, 'documentedBy': [], 'raised': True, 'checked': True}
+       FINDING documented but never raised | RuntimeException | documentedBy ['go'] | raised False
+       FINDING raised but never documented | T | documentedBy [] | raised True
+
+At the parser seam directly:
+
+    class-level <T>    type_parameters=('T',) raises=('T',) throws_not_read=0
+    method-level <T>   type_parameters=()     raises=()     throws_not_read=1
+
+Three things wrong at once, and they are the same three attempt 1 listed. `T` is not a
+refusal, is not a `Throwable`, and cannot be caught by name, yet it is on the interface and
+priced at 2 (`cost` 5 = 1 + 4). The refusal the module genuinely raises through `make()` is
+reported as never raised. And a module whose documentation and implementation agree carries
+a finding in each direction — which is the criterion "a module whose documentation and
+implementation agree produces no finding", failing.
+
+This is an implementation gap rather than a design question, because `_thrown_through`'s own
+docstring already states the rule it does not apply: "the declarations of `f` ... agree on a
+type variable or on nothing, neither of which is a refusal a caller could ever catch by
+name". The method-level half is implemented and the class-level half is not. Threading
+`declared.type_parameters` down through `_reached_in` → `_raised_in` → `_thrown_through` and
+rejecting a return whose simple name is one of them is the direction the rest of the file
+leans: where a name is ambiguous, read nothing rather than guess.
+
+Nothing in `backend/src/main/java` is a generic class today, so the committed
+`docs/module-depth-map.{json,html}` are not wrong. This is latent, not live — but so was
+attempt 2's `throw this.`, and this page is one a training day projects at people who are
+about to add code to this repository. `tests/refusalsastheirownband` has no `<T>` fixture on
+the class side at all; pin whichever answer you take with one.
+
+### 2. A falsifiable count in the README is wrong
+
+`scripts/module_depth_map/README.md:297` says of the throws this tool cannot name:
+"`SavingsAccountController` and `ScheduledJobs` each write one today." `ScheduledJobs`
+writes two — `throw runtime;` and `throw error;` — and the parser agrees:
+
+    SavingsAccountController       throws_not_read=1
+    ScheduledJobs                  throws_not_read=2
+
+The DEBUG run says the same thing: exactly 3 `throw not read as a refusal` lines, two of
+them in `ScheduledJobs`. Attempt 1 sent this ticket back for a comment in `graph.py` that
+had gone stale against the committed output; this is the same thing one file over, in a
+document whose whole subject is a machine catching claims that stopped being true.
+
+### 3. The page prints a number with no noun
+
+`scripts/module_depth_map/page.py:348` concatenates a bare count:
+
+    + document_.scoring.refusals.refusalsRead + " are read across this page."
+
+which renders, on the committed page, as "... is wide for some other reason. 13 are read
+across this page." Thirteen what — modules, bars, refusals? Every neighbouring count on that
+same card goes through the `count(n, one, many)` helper — `count(..., "module", "modules")`,
+`count(..., "refusal is", "refusals are")` — and this one does not, so it also has no
+singular: on a source with one refusal it says "1 are read". I read this in the rendered
+page at 1280 in both themes, not only in the source.
+
+### What I checked and found good, so you do not re-do it
+
+- **All three attempt-2 defects, reproduced on my own trees, all fixed.** `throw refusing`,
+  `throw this.refusing`, `throw this . refusing` and `throw this\n.refusing` all give
+  `('Shut',) 0`; `throw holder.refusing(...)`, `throw super.refusing(...)`,
+  `throw this.holder.refusing(...)`, `throw (Shut) this.refusing(...)` and `throw thrown;`
+  all decline and count as unread, which is the declared floor; `throw thisRefusing(...)` is
+  not mistaken for a `this.` prefix. The reviewer's `Hidden` shape now reports the finding it
+  was swallowing, and `Bolt` and `Bolted` draw byte-identical cards. `_visibility` answers
+  `private` for an enum constructor with no modifier and is unchanged for enum methods, class
+  constructors and everything else; `Colour` now carries no refusal and no finding. The flat
+  pricing decision is made explicitly and argued in `scoring.json`, the README and the page.
+- **The band, on the real source.** 13 refusals across 71 modules — the 7 `@throws` this
+  repository writes (checked against `grep -rn "@throws\|@exception" backend/src/main/java`,
+  each attributed to the right method) plus the 6 types thrown and undocumented.
+  `cost == costWithoutRefusals + refusalCost` and `refusalCost == 2 × len(refusals)` on all
+  71, and `costWithoutRefusals` equals the parent branch's `cost` for all 71 — the band is
+  purely additive. Every finding on the page derives exactly from the refusal flags: 0
+  mismatches.
+- **The six findings on this source are true.** Exercised against the running application:
+  `POST /api/savings-accounts/1/withdrawals {"amount":"5.00","toCurrentAccountId":1}` → 400,
+  `WARN i.d.s.deposits.WithdrawalsService : withdrawal rejected savingsAccountId=1 ... reason=There is not enough in that savings account to move EUR 5.00.`
+  then `Resolved [...WithdrawalRefused: ...]`; `POST /api/savings-accounts/1/deposits
+  {"amount":"not-money",...}` → 400, `Resolved [...ResponseStatusException: 400 BAD_REQUEST]`.
+  The kept-promise side too: `ClockRefused`, `DepositRefused`, `RewardRefused` and
+  `JobRefused` all resolved and all documented, and the tool rightly reports no finding.
+- **Both finding directions fire on a body the tool can read.** An interface `default`
+  method that throws agrees and gets nothing; the same method with an empty body gets
+  *documented but never raised*. An `abstract` method and an annotation's
+  `String[] value() default {"a"}` are `checked: false` with no finding, reason logged.
+- **Documentation is read, not guessed.** Ten probes: `@throws` mid-sentence or inside
+  `{@link}` is prose; a tag in an ordinary `/* */` is not documentation; a `throws` clause is
+  not documentation; `@exception` is read; `@throws java.lang.X` is `X`; an annotation
+  between javadoc and method does not break the link; a javadoc documents the member under
+  it and not the next one.
+- **The rule is in the file, not the analyser.** Repricing `refusal` to 7 moved
+  `ScheduledJobs` to 29 = 8 + 21; rewording `raisedNeverDocumented.finding` rewrote every
+  finding and 8 places in the page; a configuration with no `refusals` section exits 4,
+  writes nothing, and says `refusals is missing, and it has to be an object`. No finding
+  string is spelled anywhere in the `.py` files.
+- **The page.** Playwright (chromium, sync API) over `docs/module-depth-map.html` at
+  light+dark × 1024+1280: 71 cards each, `scrollWidth - clientWidth == 0` at every width, and
+  **zero** console messages, page errors or failed requests across all loads. I cross-checked
+  every card against the graph at all four combinations — refusal names and order, the `found`
+  class exactly where a finding names that refusal, the `unchecked` class exactly where
+  `checked` is false, one finding line per finding, and both band widths against
+  `widestInterface` — **0 problems**. Screenshots read, not just taken: `ScheduledJobs`
+  (14 = 8 + 6, a wide gold band) reads as honestly wide beside `SavingsAccountController`
+  (33 = 31 + 2, a gold sliver) as merely wide, in both themes. The Vite page at
+  `localhost:5173` still loads clean (only Vite/React informational console lines).
+- **Checks.** `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` —
+  451 tests, OK. `cd backend && ./mvnw test` — 113 tests, BUILD SUCCESS. `cd frontend &&
+  npm run typecheck` — clean. Two fresh runs into separate directories: graph and page
+  byte-identical to each other **and** to the committed `docs/module-depth-map.{json,html}`.
+- **Logging.** Full `--log-level DEBUG` run: 581 lines, **0 WARNING, 0 ERROR**.
+  `refusals checked read=13 notChecked=0 modulesWithFindings=6 findings=6` at INFO, one INFO
+  line per finding naming both sides, `refusals read module=... findings=N notChecked=N` at
+  DEBUG for all 71 modules, and each not-checked refusal logged with which of the two reasons
+  it was. No `print()` anywhere in the tool.
+- **Three mutations, all caught, each reverted:** reverting `_THROWN_THROUGH` to the old
+  pattern failed both new `this.` tests; reverting `_visibility` to always answer
+  `package-private` failed `test_an_enum_constructor_with_no_modifier_promises_nobody_anything`;
+  dropping refusals out of `cost` failed 7 tests across the suite. The pre-existing suites
+  were strengthened rather than loosened — the band-width check now runs per band and asserts
+  the two come to the bar, and the real-repository property test asserts the split.
+
+### What I left ticked
+
+Everything except "every refusal a module can answer with appears in the graph as part of
+its interface" and "a module whose documentation and implementation agree produces no
+finding", both of which point 1 falsifies with a four-line file. The band, its pricing, its
+separate reporting, the page, the config-driven rule, the constructor reading, the
+bodiless-signature reading, the `this.` reading, the enum-constructor reading, the fixtures
+for the three directions and the logging are all real and all verified — none of them needs
+doing again.
