@@ -12,7 +12,7 @@ by a machine rather than by whoever called it.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] Every refusal a module can answer with appears in the graph as part of its interface
 - [x] Refusals count toward interface cost, and are also reported separately from the rest of it
@@ -192,3 +192,104 @@ documentation and implementation agree produces no finding" (broken by 1 and 2).
 its pricing, its separate reporting, the page, the config-driven rule, the fixtures for the
 three directions and the logging are all real and all verified — they do not need doing
 again.
+
+## Verified
+
+Reviewed on `ticket/05-refusals-as-their-own-band` at `1be10a0`, over the diff against
+`ticket/04-the-deletion-test`. The three defects that sent attempt 1 back are fixed, and I
+reproduced each of them on a fresh fixture tree rather than taking the implementer's word.
+
+**The three attempt-1 defects, re-run on my own trees.** I rebuilt the reviewer's
+`Overloaded`, `Built` and `DepositsPort` fixtures from scratch and ran
+`graph.build([...], scoring.load())` over them:
+
+- `Overloaded` (two private `refusing` helpers returning `Shut` and `String`): one refusal,
+  `Shut`, `documented: True`, `checked: False`, **no finding in either direction**, and no
+  `String` anywhere on the interface. The bogus refusal and the double false accusation are
+  gone. `DEBUG refusal not held against the implementation module=Overloaded refusal=Shut
+  documentedBy=go reason=1 throw(s) in this body name a type only javac could resolve, so
+  what it raises was not read whole`. It reports `raised: False` rather than resolving the
+  overload — a floor, argued in `_thrown_through`'s docstring, and it costs nothing here
+  because no finding is made from it.
+- `Built` (constructor `@throws` plus `throw new IllegalArgumentException`):
+  `documented: True, documentedBy: ['Built'], raised: True, checked: True`, no finding. A
+  record's compact constructor (`Compact`) behaves the same.
+- `DepositsPort` (interface method with `@throws`, no body): `checked: False`, no finding,
+  `reason=every member promising it is a signature with no body of its own, so the promise
+  is to whoever implements it`.
+- Both directions still fire on real disagreements: `Stale` gives *documented but never
+  raised*, `Silent` gives *raised but never documented*, each naming both sides.
+- The stale `graph.py` comment is rewritten as a rule with no claim about this week's
+  source.
+
+**The band, on the real source.** 13 refusals across 71 modules — exactly the 7 `@throws`
+this repository writes plus the 6 types thrown but undocumented, checked one by one against
+`grep -rn "@throws\|throw " backend/src/main/java`. `cost == costWithoutRefusals +
+refusalCost` on every module, and `costWithoutRefusals` is byte-for-byte the parent
+branch's `cost` for all 71 — the band is purely additive and shifted nothing else.
+
+**All six findings are true.** I triggered two against the running application:
+`POST /api/savings-accounts/1/withdrawals {"amount":"5.00","toCurrentAccountId":1}` on an
+empty account returned HTTP 400 and logged
+`WARN i.d.s.deposits.WithdrawalsService : withdrawal rejected savingsAccountId=1
+toCurrentAccountId=1 amount=5.00 balance=0.00 reason=There is not enough in that savings
+account to move EUR 5.00.` followed by `Resolved
+[io.dataroots.savingstreak.deposits.WithdrawalRefused: ...]` — so `WithdrawalRefused`
+really does reach a caller with nothing on the seam telling them to catch it. The
+documented-and-kept side checks out too: `POST /api/dev/clock/advance {"days":0}` resolved
+`ClockRefused`, which `ClockService.advanceBy` documents, and the tool rightly reports no
+finding on it.
+
+**The page.** Playwright over `docs/module-depth-map.html` at light+dark x 1024+1280: 71
+cards each, `scrollWidth - clientWidth == 0` at every width, and **zero** console messages,
+page errors or failed requests across nine page loads. I cross-checked every card against
+the graph at all four combinations — band classes, both band widths against
+`widestInterface`, bar and band titles, refusal names and order, the `found` class exactly
+where a finding exists, the `unchecked` class exactly where `checked` is false, one finding
+line per finding naming both sides — **0 problems**. Screenshots read, not just taken:
+`SavingsAccountController` is a near-full blue bar with a 2-wide gold sliver (33 = 31 + 2,
+merely wide) against `ScheduledJobs` at 14 = 8 + 6 (honestly wide), and the two are
+distinguishable at a glance in both themes. On a fixture page carrying every shape at once
+the unchecked refusal renders `underline dotted` in band ink, distinct from the alarm ink a
+finding gets, in both themes.
+
+**Parser probes for new false findings.** Fourteen shapes, none of which misfired: an
+`@throws` mid-sentence or inside `{@link}` is prose; a tag in a field's javadoc does not
+document the method under it; a class-level `@throws` does not document its first method; a
+`throws` clause on a signature is not documentation; `@exception` is read as a synonym; a
+one-line `/** @throws Shut ... */` is read; annotations between the javadoc and the method
+do not break the link; an `@interface`'s `String[] value() default {"a"}` parses and
+promises nothing; an interface's `default` method with a body **is** checked and agrees; a
+generic `<T extends RuntimeException> T refusing(...)` is declined rather than guessed at;
+an enum with constants reads its documented method correctly; a nested type's `throw`
+counts as the module's. A refusal documented on both a bodiless signature and a method with
+a body is checked on the body (`Mixed` gives a genuine finding).
+
+**Known limitation, deliberate and logged.** `throws_not_read` is module-wide, so one throw
+the tool cannot name suppresses *every* documented-but-never-raised finding on that module
+(`Masked` fixture: a genuinely stale `@throws` goes unreported because the module also
+writes `throw caught;`). This errs toward silence, which is the direction attempt 1
+demanded, and the reason is logged at DEBUG per refusal. `refusalsNotChecked` is 0 on this
+repository, so nothing is lost here today.
+
+**Checks I ran myself.** `python3 -m unittest discover -t scripts -s
+scripts/module_depth_map/tests` — 447 tests, OK. `.scratch/module-depth-map/lab.sh checks`
+— backend 113 tests, 0 failures, BUILD SUCCESS; frontend typecheck clean. Two fresh runs
+into separate directories: graph and page byte-identical to each other **and** to the
+committed `docs/module-depth-map.{json,html}` (4 silent `cmp`s). The Vite page at :5173
+still loads clean.
+
+**Five mutations, all caught**, each applied to the committed tree and reverted: `checked`
+always true (7 failures), constructors dropped from the documenters (5), every member
+counted as having a body (5), refusals dropped out of `cost` (7), last-declaration-wins for
+a throw-through (3). The pre-existing suites were strengthened rather than loosened —
+`test_this_repository_is_read_whole` now asserts the band split on every module in the real
+repository.
+
+**Logging.** Full `--log-level DEBUG` run: 581 lines, **0 WARNING, 0 ERROR**. `INFO ...
+refusals checked read=13 notChecked=0 modulesWithFindings=6 findings=6`, one INFO line per
+finding naming both sides, `refusals read module=... refusals=... findings=N notChecked=N`
+at DEBUG for all 71 modules, the rule once at DEBUG. Exactly 3 `throw not read as a refusal`
+lines, and they are the three the source actually writes: `throw runtime;` and `throw
+error;` in `ScheduledJobs`, `throw notAnAmountOfMoney;` in `SavingsAccountController`. No
+`print()` anywhere in the tool.
