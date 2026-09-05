@@ -236,10 +236,13 @@ code inside the same braces, and telling them apart needs a JSX parser whose mis
 would blank real code rather than merely add to a fan — so a word in a paragraph with a
 bracket after it can be read as a call, and it draws a line only where the file also
 imports something of exactly that name. And **a quote in prose is not a string**: a `'`
-opens a string only where a matching one follows on the same line, because JavaScript
-strings do not span lines and JSX prose is full of apostrophes. That rule cannot be wrong
-about legal source, and without it one `account's` in a paragraph blanked out the rest of
-the file and took every module after it along.
+opens a string only where a matching one follows on the same line and only where it is not
+written against the end of a word, because JavaScript strings do not span lines, nothing
+JavaScript compiles puts a string against an identifier, and JSX prose is full of
+apostrophes. Neither half can be wrong about legal source. Without the first, one
+`account's` in a paragraph blanked out the rest of the file and took every module after it
+along; without the second, the same apostrophe on a line that also carried a real string
+paired with that string's opening quote and blanked the code between them.
 
 A file this reading cannot make sense of is failed by name, exactly as a Java one is:
 braces that do not balance, a block comment or a template literal or a regular expression
@@ -262,15 +265,57 @@ fixture in `tests/thefrontendhonestly` now:
 - a **`const` initialised with a bracket group** that is not an arrow — `(1 + 2)`;
 - a **JSDoc `@throws` above a `const`-bound arrow**, which was dropped, so the module was
   then reported for raising a refusal it had documented;
-- a **generic function's own type variables**, charged as types a caller had to learn;
-- a **return type written as an object literal**, read as the empty string, and one
-  **written as a function type**, whose `=>` was counted as a bracket closing;
+- a **generic function's own type variables**, charged as types a caller had to learn, and
+  those a **function type written into a signature** opens for itself —
+  `pick: <T>(items: T[]) => T`;
+- a **return type written as an object literal**, read as the empty string;
+- a **return type written as a function type** — `(): [boolean, () => void]`,
+  `(): Promise<() => void>`, `(): () => void` — where the `>` of the `=>` was counted as a
+  bracket closing. The same miscount collapsed a **parameter list around an arrow inside a
+  generic**, so `ring(m: Map<string, () => string>, n: number)` came back as one parameter
+  rather than two, and swallowed the front of a body into a **return type written on the
+  same line as it**, which then charged a caller for learning a type called `return`;
+- a **side-effect import that is not the last one** — `import './index.css'` third of the
+  stock Vite four, with no semicolons — whose clause ran over the newline and took the
+  statement under it;
+- an **apostrophe in JSX prose on a line that also carries a string**, which paired with
+  the string's opening quote and blanked the code between them, braces included;
+- **`export abstract class`**, whose body is right there in the file;
+- **every declarator after the first** of an `export const a = 1, b = () => {}`;
 - a **parameter typed by the binding above it** — `const ring: Ring = (a) => a`, where
-  TypeScript reads the parameter's type off the annotation.
+  TypeScript reads the parameter's type off the annotation;
+- a **type predicate** — `asserts x is number` — where the parameter's own name was read
+  as a type to learn.
+
+Two exports are still failed by name on purpose, and they are the whole of the exception
+to the sentence above: `export declare` and `export namespace`. What either describes is
+not a signature this reading can price — one says the implementation lives somewhere this
+tool was not pointed at, and the other opens a container of declarations rather than being
+one — so naming the file and stopping is the honest answer, where guessing would put a
+made-up interface on the page. Both are `.d.ts`-shaped writing, and `.d.ts` is on the list
+of paths never read at all. `export =` and `import x = require(...)` are failed too, and
+neither is legal here: `tsc` refuses both against this repository's own configuration,
+because they are CommonJS and this frontend is ECMAScript modules.
+
+One reading that was wrong in the other direction is here too: `new api.Thing()` writes
+exactly the characters a call on `api` writes, and drew a fan line whose evidence read
+"called on api" over a file that calls nothing on it. The Java reading declines that
+spelling and calls it the one failure it exists to make impossible; this one is now built
+the same way.
 
 Every one was found by review rather than by the suite, which is why each is written down
 as a test rather than only fixed: an alarm that cries wolf stops being read, and a page
 that accused a module which kept its word would stop being read with it.
+
+Six helpers are one function read by both sides rather than two — `after_balanced` and
+`in_evaluation_order`, which always were, and `split_on_commas`, `normalised`, `line_of`
+and `ends_an_arrow`, which are now. Matching a bracket to its partner, evaluating a call's
+arguments before the call, splitting a list on the commas that separate it, spelling a
+type, counting a line, and knowing that the `>` of an `=>` closes nothing are facts about
+punctuation rather than about either language, and both readings have to answer every one
+of them the same way or "measured by the same rules" is not true of the page. Three of
+them were hand-copied here once; the copies drifted, and two of the misreadings above are
+what the drift cost.
 
 ## What a line count is worth here
 

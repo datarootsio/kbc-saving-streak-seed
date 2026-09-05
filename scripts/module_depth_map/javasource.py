@@ -667,10 +667,16 @@ def _blank(character):
 
 
 def _never_closed(form, text, opened):
-    return "%s is never closed: opened on line %d" % (form, _line_of(text, opened))
+    return "%s is never closed: opened on line %d" % (form, line_of(text, opened))
 
 
-def _line_of(text, position):
+def line_of(text, position):
+    """Which line of this text the offset sits on, counting from one.
+
+    Public, and read by the TypeScript side too, for the reason `after_balanced` is: a
+    line number is about newlines rather than about Java, and every reason either reading
+    prints names one.
+    """
     return text.count("\n", 0, position) + 1
 
 
@@ -747,7 +753,7 @@ def parse(text, path, root=None):
     if closed_too_many_at is not None:
         raise ParseFailure(
             "braces do not balance: a closing brace with nothing open on line %d"
-            % _line_of(text, closed_too_many_at)
+            % line_of(text, closed_too_many_at)
         )
     if final_depth != 0:
         raise ParseFailure("braces do not balance: %d unclosed at end of file" % final_depth)
@@ -893,14 +899,14 @@ def _declared_types(masked, depths, documented):
         if bool(open_types) != (depth > 0):
             raise ParseFailure(
                 "a type this parser cannot place: %s on line %d sits %d brace(s) deep in "
-                "nothing it can name" % (match.group(2), _line_of(masked, start), depth)
+                "nothing it can name" % (match.group(2), line_of(masked, start), depth)
             )
         # Every one of the five kinds of type Java declares has a body, so a declaration
         # whose body this parser cannot find is a declaration it is no longer reading.
         # Carrying on with an empty header would read the type's whole interface as
         # nothing and price it at zero, which is a finding-shaped answer to a parse
         # failure — exactly what this file refuses to hand anybody.
-        line = _line_of(masked, start)
+        line = line_of(masked, start)
         body_starts_at = _body_starts_at(depths, start, depth)
         if body_starts_at is None:
             raise ParseFailure(
@@ -956,7 +962,7 @@ def _declared_types(masked, depths, documented):
         if keyword.start() not in declared_at:
             raise ParseFailure(
                 "a type declaration this parser cannot read: %s on line %d"
-                % (keyword.group(0), _line_of(masked, keyword.start()))
+                % (keyword.group(0), line_of(masked, keyword.start()))
             )
     return types
 
@@ -1094,7 +1100,7 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, docume
         method = _method_in(
             member,
             kind,
-            _line_of(masked, at),
+            line_of(masked, at),
             _documented_before(masked, at, documented),
             body,
         )
@@ -1175,7 +1181,7 @@ def _fields_of(masked, kind, header, body_starts_at, body_ends_at, line):
         for spelled, name, dots in _components_in(header, line):
             found.append(Field(name, spelled + ("[]" if dots else "")))
     for member, at, _body in _member_headers(masked, kind, body_starts_at, body_ends_at):
-        field = _field_in(member, _line_of(masked, at))
+        field = _field_in(member, line_of(masked, at))
         if field is not None:
             found.append(field)
     return tuple(found)
@@ -1229,7 +1235,7 @@ def _field_in(member, line):
             _one_line(member),
         )
         return None
-    written = _normalised(rest[:name.start()]) + brackets
+    written = normalised(rest[:name.start()]) + brackets
     if not written or not _reads_as_a_type(written):
         log.debug(
             "member not read as a field line=%d reason=%s member=%s",
@@ -1828,7 +1834,7 @@ def _method_in(member, holder_kind, line, documented_refusals=(), body=None):
     if name is None:
         return _declined(member, line, "nothing before the brackets reads as a name")
     closed = after_balanced(text, opened)
-    returns = _normalised(signature[:name.start()])
+    returns = normalised(signature[:name.start()])
     if not returns:
         return _declined(member, line, "it hands nothing back, so it is a constructor")
     # `int f()[]` declares the array after the parameters rather than on the type, the way
@@ -1968,7 +1974,7 @@ def _declared_parameters(text, line):
     record's accessor for it, which hands the array back.
     """
     declared = []
-    for part in _split_on_commas(text):
+    for part in split_on_commas(text):
         if not part.strip():
             continue
         _, rest = _modifiers_in(_without_annotations(part))
@@ -1977,7 +1983,7 @@ def _declared_parameters(text, line):
         rest, brackets = _brackets_after_the_name(rest)
         name = _TRAILING_NAME.search(rest)
         # `String... names` hands over a String: the dots say how many, not what.
-        spelled = _normalised(rest[:name.start()] if name else "")
+        spelled = normalised(rest[:name.start()] if name else "")
         written = spelled.rstrip(". ")
         if name is None or not written or not _reads_as_a_type(written + brackets):
             raise ParseFailure(
@@ -2096,7 +2102,7 @@ def _type_parameters_in(text):
         return ()
     inside = text[1:after_balanced(text, 0, "<", ">") - 1]
     names = []
-    for part in _split_on_commas(inside):
+    for part in split_on_commas(inside):
         found = _LEADING_TYPE_PARAMETER.match(_without_annotations(part))
         if found is not None:
             names.append(found.group(1))
@@ -2147,21 +2153,50 @@ def _without_groups(text):
     return "".join(out)
 
 
-def _split_on_commas(text):
-    """Split on the commas between things, never on one inside a type or an annotation."""
+def split_on_commas(text):
+    """Split on the commas between things, never on one inside a type or a bracket group.
+
+    Public, and read by the TypeScript side as well, for the reason `after_balanced` and
+    `in_evaluation_order` are: splitting a list on the commas that separate it is about
+    brackets rather than about Java. It was hand-copied there once and the copy drifted —
+    it dropped the clamp below, so one stray `>` put every comma after it at a depth that
+    was never zero, and `ring(m: Map<string, () => string>, n: number)` came back as one
+    parameter instead of two. A second account of it would be one that could drift again.
+
+    A brace is a bracket here. Java writes one inside an annotation's arguments —
+    `@Values({1, 2}) int each` — and TypeScript writes one around a destructured
+    parameter, `{ customer, onSignOut }: Props`, which is one parameter however many names
+    the caller's object is taken apart into.
+    """
     parts = []
     depth = 0
     start = 0
     for position, character in enumerate(text):
-        if character in "<([":
+        if character in "<([{":
             depth += 1
-        elif character in ">)]":
+        elif character in ">)]}" and not ends_an_arrow(text, position):
             depth = max(0, depth - 1)
         elif character == "," and depth == 0:
             parts.append(text[start:position])
             start = position + 1
     parts.append(text[start:])
     return parts
+
+
+def ends_an_arrow(text, position):
+    """Whether the `>` here is the second half of an `=>`, and so closes nothing at all.
+
+    Public, and the one thing every scanner on either side has to agree about, because
+    getting it wrong is silent: TypeScript writes a function type `(a: A) => B`, and a `>`
+    counted as a bracket closing there drops the depth below what the source has. The
+    comma between two parameters is then seen at a depth that is not zero and never splits
+    them, and the brace that opens a body is never found at all — an interface cheaper
+    than the source makes it, and a whole file failed for a return type "nothing closes".
+
+    Java writes `->` for a lambda and never `=>`, so the rule costs the Java side nothing
+    and one scanner can be read by both.
+    """
+    return text[position] == ">" and text[position - 1: position] == "="
 
 
 def after_balanced(text, position, opening="(", closing=")"):
@@ -2201,14 +2236,19 @@ def _before_balanced(text, opening="(", closing=")"):
     return None
 
 
-def _normalised(written):
-    """A type as the graph carries it: one space where Java needs one, none where it does not.
+def normalised(written):
+    """A type as the graph carries it: one space where it needs one, none where it does not.
 
     Every bracket is closed up against what it holds and every comma between two type
     arguments is followed by exactly one space, whether or not the source wrote one. The
     comma is the one that matters: while the space after it was carried through, one
     document held both `Map<String, Long>` and `Map<String,Long>`, which reads as two
     types a caller has to learn where there is one.
+
+    Public, and read by the TypeScript side as well. It was hand-copied there once and the
+    copy left the comma out, so `Record<string,number>` and `Record<string, number>` stayed
+    two strings on one page — the exact hazard this docstring already named. Spelling is
+    about brackets and spaces rather than about Java, so there is one account of it.
     """
     tidy = re.sub(r"\s+", " ", written).strip()
     for bracket in ("<", ">", ",", "[", "]"):

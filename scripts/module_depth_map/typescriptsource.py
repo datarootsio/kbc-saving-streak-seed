@@ -42,10 +42,13 @@ apart:
   Masking it instead would need a JSX parser, and a JSX parser that got it wrong would
   blank real code — the failure that costs a module rather than adding to one.
 - **A quote in prose is not a string.** A `'` or `"` opens a string only when a matching
-  one follows it on the same line, because JavaScript strings do not span lines and JSX
-  prose is full of apostrophes. The rule cannot be wrong about legal source — a real
-  string always closes on its line — and without it a single `account's` in prose blanked
-  out the rest of the file.
+  one follows it on the same line, and only when it is not written against the end of a
+  word: JavaScript strings do not span lines, nothing JavaScript compiles puts a string
+  against an identifier, and JSX prose is full of apostrophes. Neither half can be wrong
+  about legal source. Without the first, a single `account's` in prose blanked out the
+  rest of the file; without the second, the same apostrophe on a line that also carried a
+  real string reached forward to that string's quote and blanked the code in between,
+  braces included.
 """
 
 import logging
@@ -60,9 +63,22 @@ from .javasource import (
     ParsedFile,
     ParseFailure,
     after_balanced,
+    ends_an_arrow,
     in_evaluation_order,
+    line_of,
+    normalised,
+    split_on_commas,
 )
 
+# Nine names come from the Java reading and none of them is about Java. A bracket's
+# partner, the order a call's arguments are evaluated in, where a comma splits a list, how
+# a type is spelled, which line an offset sits on and whether a `>` closes anything are
+# facts about punctuation, and both readings have to give the same answer to every one of
+# them or "measured by the same rules" is not true of the page. `split_on_commas`,
+# `normalised` and `line_of` were hand-copies here once; the copies drifted, and two
+# review findings — a parameter list that collapsed around an `=>` and one type left
+# spelled two ways — are what the drift cost. They are shared for the same reason
+# `after_balanced` always was: a second account of one of them is one that can drift.
 log = logging.getLogger("module_depth_map.typescriptsource")
 
 # What this reading is called in the graph, and which files it is the reading of.
@@ -109,9 +125,17 @@ _MODULE_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts")
 # specifier's characters are blanked and its quotes are not, so the offsets of the
 # specifier are known and the original text can be sliced for it. Reading it out of the
 # raw text instead would read an `import` written inside a comment or a string.
+#
+# The clause holds no quote, and that is what stops it spanning the statement after it. A
+# clause may run over several lines — `import {\n  a,\n  b,\n} from './api'` is how a long
+# one is written — so newlines cannot end it, and a side-effect import written above
+# another one then swallowed it: `import './index.css'` third of the stock Vite four, with
+# no semicolons anywhere, failed the file for an import on the next line "naming no
+# module". No import clause TypeScript compiles carries a quote, so this cannot be wrong
+# about legal source, and reordering two imports is about as ordinary an edit as there is.
 _IMPORT_FROM = re.compile(
-    r"(?<![\w$.])import[ \t\r\n]+(?:type[ \t\r\n]+)?([^;]*?)[ \t\r\n]+from[ \t\r\n]+"
-    r"(['\"])([^'\"\n]*)\2"
+    r"(?<![\w$.])import[ \t\r\n]+(?:type[ \t\r\n]+)?([^;'\"]*?)[ \t\r\n]*"
+    r"(?<![\w$.])from(?![\w$])[ \t\r\n]*(['\"])([^'\"\n]*)\2"
 )
 
 # `import './index.css'`: a file brought in for what loading it does, naming nothing.
@@ -158,6 +182,11 @@ _A_CALL = re.compile(
 
 # `new SignInFailed(...)`: building a collaborator is coordinating it.
 _CONSTRUCTED = re.compile(r"(?<![\w$.])new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
+
+# What stands in front of a name that is being built rather than called on. `new api.Thing()`
+# writes exactly the characters a call on `api` writes, and is neither: it builds the thing
+# the name qualifies, and nothing at all is called on `api`.
+_PRECEDED_BY_NEW = re.compile(r"(?<![\w$.])new$")
 
 # `<App />`, `<StrictMode>`: a JSX element naming a component is that component being
 # used, which is what it compiles to — `createElement(App)` — and is coordination the
@@ -225,6 +254,19 @@ _BEFORE_A_REGEX = frozenset(
      "throw", "typeof", "void", "yield"]
 )
 
+# The words a string may be written straight up against, so that a quote touching one of
+# them still opens one: `return'x'`, `typeof'x'`, `from'./api'`. Every other quote written
+# against the end of a word is an apostrophe inside it — `don't`, `a customer's account`,
+# `the 1970's` — because JavaScript has no syntax at all that puts a string against an
+# identifier. So the rule cannot be wrong about legal source, and without it one
+# apostrophe in JSX prose paired with the quote that opened a real string later on the
+# same line and blanked every character between them, braces included: `<p>Don't miss
+# it</p> && {label('key')}` lost its `{` and kept its `}`, and the file was failed for
+# braces that do not balance — a reason that is not true of the source.
+_A_STRING_CAN_FOLLOW = _BEFORE_A_REGEX | frozenset(
+    ["as", "default", "export", "extends", "from", "import", "keyof", "satisfies"]
+)
+
 # What may stand between a JSDoc block and the declaration it documents: the keywords an
 # export is written with, and nothing else. Anything with punctuation in it is a statement
 # standing in between, and a block above that documents that one.
@@ -234,7 +276,17 @@ _NOTHING_BUT_WORDS = re.compile(r"[\s\w$]*")
 # guessed at, because `declare` and `namespace` describe types that live somewhere else
 # entirely and reading them as this module's own interface would be a claim about a file
 # nobody pointed the tool at.
-_NOT_READ_HERE = ("declare", "namespace", "module", "abstract")
+#
+# `abstract` was on this list and did not belong: what `export abstract class Shape {}`
+# describes is written right there in the file, and a plain `export class Shape {}` is
+# merely named on the module and skipped. So the reason printed was untrue of the source
+# and one abstract class anywhere took the whole file off the page.
+_NOT_READ_HERE = ("declare", "namespace", "module")
+
+# The words that stand between `export` and the declaration they modify, and say nothing
+# about what a caller of it must learn. Stepped over so the declaration behind them is
+# read on its own terms.
+_MODIFIES_A_DECLARATION = ("async", "abstract")
 
 # The words that can only open a declaration, and therefore cannot be part of a type. A
 # return type ends where one of them starts, which is the whole of how an overload
@@ -246,6 +298,17 @@ _NOT_READ_HERE = ("declare", "namespace", "module", "abstract")
 # have to learn whole.
 _OPENS_A_DECLARATION = re.compile(
     r"(?<![\w$.])(?:export|function|class|const|let|var|declare|enum|async)(?![\w$])"
+)
+
+# The words that can only open a statement of their own, and so can never be written
+# inside the value a `const` is assigned. They are where a declaration list ends in a file
+# with no semicolons in it, so that `export const a = 1, b = () => {}` stops before the
+# next declaration rather than reading a comma written further down the file as one of its
+# own. `function`, `class` and `async` are deliberately not among them: `const f =
+# function () {}` and `const g = async () => {}` each write one inside a value.
+_OPENS_A_STATEMENT = re.compile(
+    r"(?<![\w$.])(?:export|import|const|let|var|type|interface|enum|declare|return"
+    r"|throw)(?![\w$])"
 )
 
 # What tells `export default App` from `export default connect(App)`: whether the name is
@@ -312,10 +375,39 @@ def crosses_the_seam(written):
     the name of the thing rather than the type of it, so it is dropped. Read without that
     rule a caller of a function taking `{ id: number }` was charged for learning a type
     called `id`.
+
+    A type variable a function type written *inside* this one introduces is not a type
+    either, for the reason a generic method's own `<T>` is not: `pick: <T>(of: T[]) => T`
+    asks the caller for a type they already hold, and `T` is a letter standing in for it.
+    The Java side has the same rule one level up, where the declaration's own variables
+    are filtered out by what read them.
     """
     if written in (NOTHING_RETURNED, INFERRED):
         return []
-    return [name.rsplit(".", 1)[-1] for name in written_names_in(written)]
+    holes = _type_variables_declared_in(written)
+    return [
+        name.rsplit(".", 1)[-1]
+        for name in written_names_in(written)
+        if name.rsplit(".", 1)[-1] not in holes
+    ]
+
+
+def _type_variables_declared_in(written):
+    """The names a function type written inside this one opens for itself.
+
+    Told from `Array<T>`, where `T` really is a type the caller meets, by what stands
+    after the group and nothing else: a function type's type parameters are followed by
+    the brackets its own parameters go in.
+    """
+    holes = set()
+    for at, character in enumerate(written):
+        if character != "<":
+            continue
+        closed = _after_angles(written, at)
+        if closed is None or written[closed:].lstrip()[:1] != "(":
+            continue
+        holes.update(_type_parameters_in(written[at + 1:closed - 1]))
+    return holes
 
 
 def written_names_in(written):
@@ -325,6 +417,13 @@ def written_names_in(written):
     `RecordedDeposit`; `string | null` is both of them; `React.ReactNode` is kept whole,
     because what stands in front of the dot is part of the answer for anybody following
     the name rather than merely counting it.
+
+    A parameter's name is not a type either, and there are two places it is written into
+    one. In front of a colon — `{ id: number }`, `(signal: AbortSignal) => void` — and in
+    front of an `is`: `asserts x is number` and `x is Customer` are type predicates, where
+    `x` names the parameter the promise is about. Read without that rule the card named a
+    type `x` a reader can go looking for and will never find, and the invented type was
+    charged into the cost that leverage is divided by.
     """
     if written in (NOTHING_RETURNED, INFERRED):
         return []
@@ -339,6 +438,10 @@ def written_names_in(written):
         if rest.startswith(":"):
             # `id` in `{ id: number }`, `signal` in `(signal: AbortSignal) => void`: the
             # name of a property or of a parameter inside a written type, never a type.
+            continue
+        if re.match(r"is(?![\w$])", rest):
+            # `x` in `x is Customer` and in `asserts x is number`: the parameter a type
+            # predicate is about, which is a name in the signature and not a type in it.
             continue
         found.append(name)
     return found
@@ -566,7 +669,7 @@ def _refuse_unreadable_imports(masked, text):
         if found.start() not in accounted:
             raise ParseFailure(
                 "the import on line %d could not be read: it names no module in either "
-                "of the two forms this tool reads" % _line_of(text, found.start())
+                "of the two forms this tool reads" % line_of(text, found.start())
             )
 
 
@@ -620,13 +723,13 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
     default = token == "default"
     if default:
         token, start, after = _token_at(masked, after)
-    if token == "async":
+    while token in _MODIFIES_A_DECLARATION:
         token, start, after = _token_at(masked, after)
     if token in _NOT_READ_HERE:
         raise ParseFailure(
             "the export on line %d is written `export %s`, which this tool has no reading "
             "of: what it describes is declared somewhere this tool was not pointed at"
-            % (_line_of(text, start), token)
+            % (line_of(text, start), token)
         )
     if token == "function":
         method = _function_from(masked, text, after, matching, documented, module, jsx)
@@ -647,9 +750,9 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
             types.append(named)
         return
     if token in ("const", "let", "var"):
-        method = _binding_from(masked, text, after, matching, documented, module, jsx)
-        if method is not None:
-            methods.append(method)
+        methods.extend(
+            _bindings_from(masked, text, after, matching, documented, module, jsx)
+        )
         return
     if token == "{":
         # `export { ring, of as price }`, and `export { ring } from './till'`. The first
@@ -659,10 +762,10 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
         if closed < 0:
             raise ParseFailure(
                 "the export on line %d could not be read: nothing closes the list of "
-                "names it opens" % _line_of(text, start)
+                "names it opens" % line_of(text, start)
             )
         elsewhere = _token_at(masked, closed + 1)[0] == "from"
-        for part in _split_on_commas(masked[after:closed]):
+        for part in split_on_commas(masked[after:closed]):
             named, called = _renamed(part)
             if named is None:
                 continue
@@ -714,7 +817,7 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
         return
     raise ParseFailure(
         "the export on line %d could not be read: it is followed by %r, which this tool "
-        "has no reading of" % (_line_of(text, start), token)
+        "has no reading of" % (line_of(text, start), token)
     )
 
 
@@ -749,7 +852,7 @@ def _decline(text, position, what, why):
     """
     log.debug(
         "export not read as a method line=%d export=%s reason=%s",
-        _line_of(text, position),
+        line_of(text, position),
         what,
         why,
     )
@@ -781,7 +884,7 @@ def _function_from(masked, text, position, matching, documented, module, jsx,
     if token != "(":
         raise ParseFailure(
             "the function %s on line %d could not be read: %r stands where its parameters "
-            "should" % (name, _line_of(text, opened), token)
+            "should" % (name, line_of(text, opened), token)
         )
     closed = after_balanced(masked, opened)
     parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
@@ -799,6 +902,63 @@ def _function_from(masked, text, position, matching, documented, module, jsx,
         has_a_body=body is not None,
         calls=_calls_in(masked[body[0]:body[1]], jsx) if body is not None else (),
     )
+
+
+def _bindings_from(masked, text, position, matching, documented, module, jsx):
+    """Every declarator one exported `const`, `let` or `var` writes, read one at a time.
+
+    `export const a = 1, b = () => {}` exports two names, and `b` is a function anybody can
+    import. Read only as far as the first declarator, `b` was in `methods`, in `types` and
+    in the declined log alike — nowhere at all, which is the one thing this reading must
+    never do with something a caller can reach: an export left out is an interface cheaper
+    than the source makes it, and there is nothing to fail on because the source is legal.
+    """
+    methods = []
+    at = position
+    while at is not None:
+        method = _binding_from(masked, text, at, matching, documented, module, jsx)
+        if method is not None:
+            methods.append(method)
+        at = _next_declarator(masked, at)
+    return methods
+
+
+def _next_declarator(masked, position):
+    """Where the declarator after this one starts, or None when this was the last of them.
+
+    A comma written outside every bracket is what separates two of them, and in a
+    declaration list it can be nothing else: the comma operator needs brackets of its own
+    — `const a = (1, 2)` — and a comma inside a type, a destructuring pattern, an argument
+    list or a body is inside one.
+
+    Three things end the list. The `;` that closes the statement is the written one. Where
+    the source writes no `;` at all, a word that can only open a statement of its own does
+    it instead: `function`, `class` and `async` are deliberately not among them, because
+    `const f = function () {}` and `const g = async () => {}` each write one inside a
+    value. And a bracket closing something this list never opened is the brace holding the
+    whole declaration, which ends it whatever else is written after.
+    """
+    depth = 0
+    at = position
+    while at < len(masked):
+        character = masked[at]
+        if character in "([{<":
+            depth += 1
+        elif character in ")]}>" and not ends_an_arrow(masked, at):
+            if character != ">" and depth == 0:
+                return None
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if character == ",":
+                return at + 1
+            if character == ";":
+                return None
+            if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(
+                masked, at
+            ):
+                return None
+        at += 1
+    return None
 
 
 def _binding_from(masked, text, position, matching, documented, module, jsx):
@@ -886,7 +1046,7 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
         if token != "(":
             raise ParseFailure(
                 "the function %s on line %d could not be read: %r stands where its "
-                "parameters should" % (name, _line_of(text, opened), token)
+                "parameters should" % (name, line_of(text, opened), token)
             )
     closed = after_balanced(masked, opened)
     parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
@@ -894,12 +1054,12 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
     token, at, after = _token_at(masked, closed)
     if token == ":":
         written, at = _up_to_the_arrow(masked, after)
-        returns = _normalised(written)
+        returns = normalised(written)
         token, at, after = _token_at(masked, at)
     if token != "=>":
         raise ParseFailure(
             "the function %s on line %d could not be read: %r stands where its arrow "
-            "should" % (name, _line_of(text, at), token)
+            "should" % (name, line_of(text, at), token)
         )
     token, body_at, _ = _token_at(masked, after)
     body = None
@@ -956,23 +1116,20 @@ def _up_to_the_arrow(masked, position):
 
     The arrow is the boundary, and `=>` inside the type — `(): () => void => {...}` — is
     counted through its brackets like everything else, so the one that ends the type is
-    the one written outside them all.
+    the one written outside them all. An arrow's `>` closes nothing, by the one rule every
+    scanner here reads: counted as a bracket, the `>` in a return type of `(() => void)`
+    closed the group its own `(` had opened, and the arrow that ends the type was never
+    found.
     """
     depth = 0
     at = position
     while at < len(masked):
-        if masked.startswith("=>", at):
-            # An arrow, and never a bracket closing: counted as one, the `>` in a return
-            # type of `(() => void)` closed the group its own `(` had opened, every depth
-            # after it was one too few, and the arrow that ends the type was never found.
-            if depth == 0:
-                return masked[position:at], at
-            at += 2
-            continue
+        if depth == 0 and masked.startswith("=>", at):
+            return masked[position:at], at
         character = masked[at]
         if character in "(<[{":
             depth += 1
-        elif character in ")>]}":
+        elif character in ")>]}" and not ends_an_arrow(masked, at):
             depth -= 1
         at += 1
     return masked[position:], at
@@ -1009,7 +1166,7 @@ def _past_type_parameters(masked, text, position):
     if closed is None:
         raise ParseFailure(
             "a type parameter list opened on line %d is never closed"
-            % _line_of(text, position)
+            % line_of(text, position)
         )
     return closed, _type_parameters_in(masked[position + 1:closed - 1])
 
@@ -1019,14 +1176,16 @@ def _after_angles(masked, position):
 
     Non-raising, because it is asked the question as well as answered with it: whether a
     `<` opens a generic's type parameters at all is settled by what stands after the
-    group, and a `<` that closes nowhere is a `<` that opens none.
+    group, and a `<` that closes nowhere is a `<` that opens none. The `>` of an `=>`
+    closes none either — `<T = () => void>` writes a default that is a function type —
+    which is the same rule every other scanner here reads.
     """
     depth = 0
     at = position
     while at < len(masked):
         if masked[at] == "<":
             depth += 1
-        elif masked[at] == ">":
+        elif masked[at] == ">" and not ends_an_arrow(masked, at):
             depth -= 1
             if depth == 0:
                 return at + 1
@@ -1044,7 +1203,7 @@ def _type_parameters_in(inside):
     name and are not one either.
     """
     found = []
-    for part in _split_on_commas(inside):
+    for part in split_on_commas(inside):
         word = re.match(
             r"[\s]*(?:const[ \t\r\n]+)?(?:(?:in|out)[ \t\r\n]+)*([A-Za-z_$][\w$]*)", part
         )
@@ -1090,7 +1249,7 @@ def _returns_and_body(masked, text, position, matching, name):
     if token != ":":
         raise ParseFailure(
             "the return of %s on line %d could not be read: %r stands where its type or "
-            "its body should" % (name, _line_of(text, at), token)
+            "its body should" % (name, line_of(text, at), token)
         )
     written = after
     scan = after
@@ -1098,20 +1257,20 @@ def _returns_and_body(masked, text, position, matching, name):
         opened = _first_brace_at_depth_zero(masked, scan)
         finished = _where_the_signature_ends(masked, scan)
         if finished is not None and (opened is None or finished < opened):
-            return _normalised(masked[written:finished]), None
+            return normalised(masked[written:finished]), None
         if opened is None:
             raise ParseFailure(
                 "the return type of %s on line %d could not be read: nothing closes it"
-                % (name, _line_of(text, at))
+                % (name, line_of(text, at))
             )
         if opened not in matching:
             raise ParseFailure(
                 "the return type of %s on line %d could not be read: a brace in it is "
-                "never closed" % (name, _line_of(text, at))
+                "never closed" % (name, line_of(text, at))
             )
         following = _token_at(masked, matching[opened] + 1)[0]
         if masked[written:opened].strip() and following != "{":
-            return _normalised(masked[written:opened]), (opened + 1, matching[opened])
+            return normalised(masked[written:opened]), (opened + 1, matching[opened])
         scan = matching[opened] + 1
 
 
@@ -1140,7 +1299,14 @@ def _first_brace_at_depth_zero(masked, position):
 
 
 def _first_at_depth_zero(masked, position, wanted):
-    """Where this character is first written outside every bracket, from `position` on."""
+    """Where this character is first written outside every bracket, from `position` on.
+
+    The `>` of an `=>` closes nothing, and that is the whole of what stands between this
+    scanner and every `function` whose return type is written as one. Counted as a
+    bracket, the `>` in `function useToggle(): [boolean, () => void]` took the depth below
+    zero, this returned None, and `_returns_and_body` failed the file for a return type
+    "nothing closes" — 1545 lines off the page for source `tsc` compiles without a word.
+    """
     depth = 0
     at = position
     while at < len(masked):
@@ -1149,7 +1315,7 @@ def _first_at_depth_zero(masked, position, wanted):
             return at
         if character in "(<[":
             depth += 1
-        elif character in ")>]":
+        elif character in ")>]" and not ends_an_arrow(masked, at):
             depth -= 1
             if depth < 0:
                 return None
@@ -1184,7 +1350,7 @@ def _parameters_in(inside, text, position, name, annotated=False):
     parameter crosses the seam there, and no type was read to name.
     """
     parameters = []
-    for part in _split_on_commas(inside):
+    for part in split_on_commas(inside):
         written = part.strip()
         if not written:
             continue
@@ -1198,7 +1364,7 @@ def _parameters_in(inside, text, position, name, annotated=False):
                 continue
             raise ParseFailure(
                 "a parameter of %s on line %d could not be read: %r has no type written "
-                "on it" % (name, _line_of(text, position), written[:40])
+                "on it" % (name, line_of(text, position), written[:40])
             )
         called = written[:colon].strip().rstrip("?").strip()
         if called == "this":
@@ -1206,7 +1372,7 @@ def _parameters_in(inside, text, position, name, annotated=False):
             continue
         rest = written[colon + 1:]
         default = _first_in_the_open(rest, "=")
-        parameters.append(_normalised(rest if default is None else rest[:default]))
+        parameters.append(normalised(rest if default is None else rest[:default]))
     return tuple(parameters)
 
 
@@ -1268,7 +1434,7 @@ def _fields_in(masked, depth_of):
             continue
         written, _ = _up_to_the_assignment(masked, after)
         if written.strip():
-            found.append(Field(match.group(2), _normalised(written)))
+            found.append(Field(match.group(2), normalised(written)))
     return tuple(found)
 
 
@@ -1285,7 +1451,7 @@ def _up_to_the_assignment(masked, position):
         character = masked[at]
         if character in "(<[{":
             depth += 1
-        elif character in ")>]}":
+        elif character in ")>]}" and not ends_an_arrow(masked, at):
             depth -= 1
         elif depth == 0 and character in "=;\n":
             return masked[position:at], at
@@ -1355,7 +1521,7 @@ def _reached_in(masked, jsx):
     throws = len(_A_THROW.findall(masked))
     read = len(_THROWN.findall(masked))
     plain = _THROUGH_THIS.sub("", masked)
-    receivers = {found.group(1) for found in _A_RECEIVER_CALL.finditer(plain)}
+    receivers = _receivers_in(plain)
     called = {
         found.group(1)
         for found in _A_CALL.finditer(masked)
@@ -1389,6 +1555,31 @@ def _reached_in(masked, jsx):
     }
 
 
+def _receivers_in(plain):
+    """What calls in this file were written against, a qualified `new` left out.
+
+    `new api.Thing()` writes exactly the characters a call on `api` writes, and is
+    neither: it builds the thing the name qualifies, and nothing at all is called on
+    `api`. Read as a receiver it drew a fan line whose evidence said "called on api" over
+    a file that calls nothing on it — a sentence a reader can check against the source and
+    find false, which the Java side calls the one failure it exists to make impossible and
+    which this reading reintroduced by building receivers with no guard. The ones declined
+    are logged: nothing is dropped here without a word.
+    """
+    found = set()
+    for match in _A_RECEIVER_CALL.finditer(plain):
+        if _PRECEDED_BY_NEW.search(plain[:match.start(1)].rstrip()):
+            log.debug(
+                "name not read as a receiver name=%s reason=%s",
+                match.group(1),
+                "new is written in front of it, so it qualifies the thing being built "
+                "rather than holding something a call was written on",
+            )
+            continue
+        found.add(match.group(1))
+    return found
+
+
 def _calls_in(body, jsx):
     """Every call this one function's body makes, in the order the source evaluates them.
 
@@ -1405,7 +1596,7 @@ def _calls_in(body, jsx):
     found = []
     for match in _A_RECEIVER_CALL.finditer(body):
         receiver, name = match.group(1), match.group(2)
-        if re.search(r"(?<![\w$.])new$", body[:match.start(1)].rstrip()):
+        if _PRECEDED_BY_NEW.search(body[:match.start(1)].rstrip()):
             continue
         opened = match.end() - 1
         found.append(
@@ -1417,7 +1608,7 @@ def _calls_in(body, jsx):
         if name in _NOT_A_CALL:
             continue
         before = body[:match.start(1)].rstrip()
-        if before.endswith(".") or re.search(r"(?<![\w$.])new$", before):
+        if before.endswith(".") or _PRECEDED_BY_NEW.search(before):
             continue
         if re.search(r"(?<![\w$.])(?:function|class)$", before):
             continue
@@ -1490,7 +1681,7 @@ def _masked(text):
     if ended < len(text):
         raise ParseFailure(
             "braces do not balance: a closing brace with nothing open on line %d"
-            % _line_of(text, ended)
+            % line_of(text, ended)
         )
     return "".join(out), documentation
 
@@ -1559,7 +1750,7 @@ def _mask_block_comment(text, out, position, documentation):
     ends_at = text.find("*/", position + 2)
     if ends_at < 0:
         raise ParseFailure(
-            "a block comment opened on line %d is never closed" % _line_of(text, position)
+            "a block comment opened on line %d is never closed" % line_of(text, position)
         )
     if text.startswith("/**", position):
         documentation.append((position, ends_at + 2))
@@ -1570,12 +1761,20 @@ def _mask_block_comment(text, out, position, documentation):
 def _mask_quoted(text, out, position):
     """The string starting here, blanked, or the lone quote blanked when it opens none.
 
-    A quote with no partner on its line opens no string. JavaScript strings do not span
-    lines, so the rule cannot be wrong about legal source — and without it a single
-    apostrophe in JSX prose blanked out the rest of the file and took every declaration
-    after it along.
+    Two things say a quote opens no string, and neither can be wrong about source `tsc`
+    compiles. One is a quote with no partner on its line, because JavaScript strings do
+    not span lines — without it a single apostrophe in JSX prose blanked out the rest of
+    the file and took every declaration after it along. The other is a quote written
+    against the end of a word, because nothing JavaScript compiles puts a string there:
+    `Don't` is a word with an apostrophe in it, and read as a string it reached forward to
+    the quote that opened a real one later on the line and blanked the code in between.
+    A handful of reserved words really can be written against a string — `return'x'`,
+    `from'./api'` — and they are named rather than guessed at.
     """
     quote = text[position]
+    if _an_apostrophe_inside_a_word(text, position):
+        out[position] = " "
+        return position + 1
     at = position + 1
     length = len(text)
     while at < length:
@@ -1591,6 +1790,20 @@ def _mask_quoted(text, out, position):
         at += 1
     out[position] = " "
     return position + 1
+
+
+def _an_apostrophe_inside_a_word(text, position):
+    """Whether the quote here stands at the end of a word rather than opening a string.
+
+    What is written immediately in front of it is the whole of the answer, the same way it
+    is for a slash that might open a regular expression. An identifier or a number means
+    prose, because `total'x'` is not something JavaScript compiles; one of the few
+    reserved words a string may be written straight after means a string.
+    """
+    at = position
+    while at > 0 and (text[at - 1].isalnum() or text[at - 1] in "_$"):
+        at -= 1
+    return at < position and text[at:position] not in _A_STRING_CAN_FOLLOW
 
 
 def _mask_template(text, out, position, documentation):
@@ -1612,7 +1825,7 @@ def _mask_template(text, out, position, documentation):
             if closed >= length:
                 raise ParseFailure(
                     "a template substitution opened on line %d is never closed"
-                    % _line_of(text, at)
+                    % line_of(text, at)
                 )
             out[closed] = " "
             at = closed + 1
@@ -1621,7 +1834,7 @@ def _mask_template(text, out, position, documentation):
             out[at] = " "
         at += 1
     raise ParseFailure(
-        "a template literal opened on line %d is never closed" % _line_of(text, position)
+        "a template literal opened on line %d is never closed" % line_of(text, position)
     )
 
 
@@ -1700,7 +1913,7 @@ def _braces(masked, text):
             if depth < 0:
                 raise ParseFailure(
                     "braces do not balance: a closing brace with nothing open on line %d"
-                    % _line_of(text, position)
+                    % line_of(text, position)
                 )
             matching[opened.pop()] = position
         depth_of.append(depth)
@@ -1731,30 +1944,3 @@ def _token_at(masked, position):
     if masked.startswith("=>", position):
         return "=>", position, position + 2
     return character, position, position + 1
-
-
-def _split_on_commas(text):
-    """The parts this text is written in, split on the commas outside every bracket."""
-    parts = []
-    depth = 0
-    start = 0
-    for position, character in enumerate(text):
-        if character in "(<[{":
-            depth += 1
-        elif character in ")>]}":
-            depth -= 1
-        elif character == "," and depth == 0:
-            parts.append(text[start:position])
-            start = position + 1
-    parts.append(text[start:])
-    return parts
-
-
-def _normalised(written):
-    """A written type with its whitespace made uniform, so two spellings of one are one."""
-    tidy = re.sub(r"\s+", " ", written).strip()
-    return tidy.replace("< ", "<").replace(" >", ">").replace("[ ", "[").replace(" ]", "]")
-
-
-def _line_of(text, position):
-    return text.count("\n", 0, position) + 1

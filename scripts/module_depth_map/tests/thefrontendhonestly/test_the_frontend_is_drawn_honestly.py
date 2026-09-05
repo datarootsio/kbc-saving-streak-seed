@@ -14,6 +14,7 @@ the same module with two hundred more lines of implementation has to come out at
 the numbers it had before.
 """
 
+import logging
 import os
 import re
 
@@ -1002,6 +1003,314 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         self.assertEqual(["(a: number) => void"], interface["methods"][0]["parameters"])
 
 
+    def test_a_function_return_type_written_as_a_function_type_is_read(self):
+        """The `=>` counted as a bracket closing failed the file, and only here.
+
+        The `const`-bound arrow above has been read this way for an attempt; the
+        `function` form goes through a different scanner, which counted the `>` of an `=>`
+        as a bracket closing, took the depth below zero and reported that nothing closed
+        the return type. Every shape below `tsc --strict` compiles without a word, and
+        each of them took the whole file — and every fan line into it — off the page.
+        """
+        written = (
+            "() => void",
+            "(x: number) => number",
+            "(() => void)",
+            "Array<() => void>",
+            "Promise<(x: number) => number>",
+            "[boolean, () => void]",
+        )
+        tree = self.tree("web")
+        for index, each in enumerate(written):
+            tree.typescript(
+                "", "f%d.ts" % index,
+                "export function f(): %s {\n  return null as any\n}\n" % each,
+            )
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        self.assertEqual([], document["source"]["unparsed"])
+        self.assertEqual(
+            list(written),
+            [
+                module["interface"]["methods"][0]["returns"]
+                for module in sorted(document["modules"], key=lambda each: each["id"])
+            ],
+        )
+
+    def test_an_async_function_returning_a_function_type_is_read_too(self):
+        interface = self.interface_of(
+            "till.ts",
+            "export async function f(): Promise<() => void> {\n  return () => {}\n}\n",
+        )
+
+        self.assertEqual("Promise<() => void>", interface["methods"][0]["returns"])
+
+    def test_a_parameter_and_a_return_both_written_as_function_types_are_read(self):
+        interface = self.interface_of(
+            "till.ts",
+            "export function useDebounce(fn: () => void, ms: number): () => void {\n"
+            "  return fn\n}\n",
+        )
+
+        self.assertEqual(["() => void", "number"], interface["methods"][0]["parameters"])
+        self.assertEqual("() => void", interface["methods"][0]["returns"])
+
+    def test_a_return_type_on_the_same_line_as_its_body_is_read_whole(self):
+        """Read short, the type carried the front of the body and invented a type to learn.
+
+        No warning was printed for it either: the return came out as
+        `(url: string) => Promise<Response> { return`, and `return` was charged to a
+        caller as a type they must go and learn — a name a reader can look for and will
+        never find, sitting in the cost that leverage is divided by.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export function makeFetcher(): (url: string) => Promise<Response> "
+            "{ return async u => fetch(u) }\n",
+        )
+
+        self.assertEqual(
+            "(url: string) => Promise<Response>", interface["methods"][0]["returns"]
+        )
+        self.assertNotIn(
+            "return", [type_["name"] for type_ in interface["typesCrossingTheSeam"]]
+        )
+
+    def test_two_parameters_are_two_when_the_first_is_a_generic_holding_an_arrow(self):
+        """A parameter list that collapsed left an interface cheaper than the source.
+
+        The comma between the two parameters sits after a `>` that closes the generic and
+        after the `>` of an `=>` that closes nothing. Counted as one, the depth never came
+        back to zero, the comma never split, and one method taking two things was charged
+        for taking one.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export function ring(m: Map<string, () => string>, n: number): void {}\n",
+        )
+
+        self.assertEqual(
+            ["Map<string, () => string>", "number"],
+            interface["methods"][0]["parameters"],
+        )
+
+    def test_a_generic_parameter_list_comes_out_at_the_same_numbers_in_both_languages(self):
+        """Which is the claim the ticket makes: the Java reader read this and this did not.
+
+        Two parameters, the first a generic holding another type, and everything a caller
+        meets on the list each language calls familiar. The numbers have to be the same on
+        both sides or "measured by the same rules" is not true of the page.
+        """
+        java = self.tree("backend")
+        java.java(
+            "shop", "Till",
+            "import java.util.List;\nimport java.util.Map;\npublic class Till {\n"
+            "    public void ring(Map<String, List<String>> m, long n) { }\n}",
+        )
+        web = self.tree("web2")
+        web.typescript(
+            "", "till.ts",
+            "export function ring(m: Map<string, () => string>, n: number): void {}",
+        )
+        rules = scoring.load()
+
+        def built(tree, module_id):
+            document = graph.build([graph.source_root(tree.root)], rules)
+            self.assertEqual([], document["source"]["unparsed"])
+            return {module["id"]: module for module in document["modules"]}[module_id]
+
+        one = built(java, "shop.Till")["interface"]
+        other = built(web, "web2/till")["interface"]
+
+        self.assertEqual(2, len(one["methods"][0]["parameters"]))
+        self.assertEqual(2, len(other["methods"][0]["parameters"]))
+        self.assertEqual(
+            rules.weights["method"] + 2 * rules.weights["parameter"], other["cost"]
+        )
+        self.assertEqual(one["cost"], other["cost"])
+
+    def test_the_stock_vite_import_ordering_is_read(self):
+        """A side-effect import that is not the last one, in a file with no semicolons.
+
+        This is what `npm create vite@latest -- --template react-ts` writes, and it is what
+        this repository's own `main.tsx` writes with the one line moved. The import clause
+        was allowed to run over newlines — a long one really does — so `import
+        './index.css'` swallowed the statement under it and the file was failed for an
+        import "naming no module". `main` off the page takes the only fan line into `App`
+        with it.
+        """
+        modules = self.read(
+            "main.tsx",
+            "import { StrictMode } from 'react'\n"
+            "import { createRoot } from 'react-dom/client'\n"
+            "import './index.css'\n"
+            "import App from './App.tsx'\n"
+            "\n"
+            "export function go(): void {\n"
+            "  createRoot(document.body).render(<StrictMode><App /></StrictMode>)\n"
+            "}\n",
+            ("App.tsx", "export default function App() {\n  return <p>hi</p>\n}\n"),
+        )
+
+        self.assertEqual(
+            ["web/App"],
+            [reached["moduleId"] for reached in modules["web/main"]["reach"]["reaches"]],
+        )
+
+    def test_an_import_clause_written_over_several_lines_is_still_one_import(self):
+        """The other half of the same rule: a clause really may run over newlines."""
+        modules = self.read(
+            "uses.ts",
+            "import {\n  one,\n  two as second,\n} from './api'\n"
+            "export function load(): number {\n  return one() + second()\n}\n",
+            ("api.ts",
+             "export function one(): number {\n  return 1\n}\n"
+             "export function two(): number {\n  return 2\n}\n"),
+        )
+
+        self.assertEqual(
+            ["web/api"],
+            [reached["moduleId"] for reached in modules["web/uses"]["reach"]["reaches"]],
+        )
+
+    def test_an_apostrophe_in_prose_beside_a_real_string_leaves_the_braces_alone(self):
+        """The JSX-prose rule one step further along than the README used to describe it.
+
+        A `'` opened a string wherever a matching one followed on the same line, and in
+        `<p>Don't miss it {label('key')}</p>` the matching one is the quote that opens a
+        real string. Everything between them was blanked, `{` included and `}` not, and
+        the file was failed for braces that do not balance — a reason that is not true of
+        the source. Nothing JavaScript compiles writes a string against the end of a word,
+        so a quote written there is an apostrophe.
+        """
+        interface = self.interface_of(
+            "note.tsx",
+            "function label(k: string): string {\n  return k\n}\n"
+            "export function Note(): unknown {\n"
+            "  return <p>Don't miss it {label('key')}</p>\n"
+            "}\n",
+        )
+
+        self.assertEqual(["Note"], [method["name"] for method in interface["methods"]])
+
+    def test_prose_full_of_apostrophes_is_read_whichever_side_the_string_is_on(self):
+        interface = self.interface_of(
+            "note.tsx",
+            "const key = 'k'\n"
+            "export function Note(): unknown {\n"
+            "  return <p>Anke's savings, the 1970's, and it's fine</p>\n"
+            "}\n"
+            "export function read(): string {\n  return key\n}\n",
+        )
+
+        self.assertEqual(
+            ["Note", "read"], [method["name"] for method in interface["methods"]]
+        )
+
+    def test_a_string_written_against_the_word_before_it_is_still_a_string(self):
+        """`from'./api'` and `return'x'` are legal, and the few words that allow it are named."""
+        modules = self.read(
+            "uses.ts",
+            "import { one }from'./api'\n"
+            "export function load(): number {\n  return one()\n}\n",
+            ("api.ts", "export function one(): number {\n  return 1\n}\n"),
+        )
+
+        self.assertEqual(
+            ["web/api"],
+            [reached["moduleId"] for reached in modules["web/uses"]["reach"]["reaches"]],
+        )
+
+    def test_an_exported_abstract_class_is_named_on_the_module_rather_than_failed(self):
+        """`abstract` was read as a declaration living somewhere this tool was not pointed at.
+
+        It is not: the body of `export abstract class Shape {}` is right there in the
+        file, and a plain `export class Shape {}` is merely named on the module and
+        skipped. So the reason printed was untrue of the source, and one abstract class
+        anywhere in a file took every line of it off the page.
+        """
+        with self.assertLogs("module_depth_map.typescriptsource", level=logging.DEBUG) as logged:
+            modules = self.read(
+                "shape.ts", "export abstract class Shape {\n  abstract area(): number\n}\n"
+            )
+
+        self.assertEqual(["Shape"], modules["web/shape"]["nested"])
+        self.assertTrue(
+            any("export not read as a method" in line and "export=Shape" in line
+                for line in logged.output),
+            logged.output,
+        )
+
+    def test_every_declarator_of_an_exported_const_is_read(self):
+        """`export const a = 1, b = () => {}` exports two names and `b` is a function.
+
+        Read only as far as the first declarator, `b` was in `methods`, in `types` and in
+        the declined log alike — nowhere at all. An export left out is an interface
+        cheaper than the source makes it, and there is nothing to fail on, because the
+        source is perfectly legal.
+        """
+        with self.assertLogs("module_depth_map.typescriptsource", level=logging.DEBUG) as logged:
+            interface = self.interface_of("till.ts", "export const a = 1, b = () => {}\n")
+
+        self.assertEqual(["b"], [method["name"] for method in interface["methods"]])
+        self.assertTrue(
+            any("export not read as a method" in line and "export=a" in line
+                for line in logged.output),
+            logged.output,
+        )
+
+    def test_a_declarator_after_one_with_a_body_of_its_own_is_read(self):
+        interface = self.interface_of(
+            "till.ts",
+            "export const ring = (a: number): number => {\n  return a\n}, "
+            "of = (b: number): number => b\n",
+        )
+
+        self.assertEqual(
+            ["of", "ring"], sorted(method["name"] for method in interface["methods"])
+        )
+
+    def test_a_declarator_list_stops_at_the_declaration_after_it(self):
+        """With no semicolon anywhere, a word that can only open a statement ends the list."""
+        interface = self.interface_of(
+            "till.ts",
+            "export const a = 1, b = (): number => 2\n"
+            "export const c = 3, d = (): number => 4\n",
+        )
+
+        self.assertEqual(
+            ["b", "d"], sorted(method["name"] for method in interface["methods"])
+        )
+
+    def test_a_type_predicate_names_no_type_after_the_parameter_it_is_about(self):
+        """`asserts x is number` writes a parameter's name where a type is read from.
+
+        The same fault as a return type read short: a name on the card that a reader can
+        go looking for and will never find, charged into the cost leverage is divided by.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export function isCustomer(each: unknown): each is { id: number } {\n"
+            "  return typeof each === 'object'\n}\n",
+        )
+
+        self.assertNotIn(
+            "each", [type_["name"] for type_ in interface["typesCrossingTheSeam"]]
+        )
+
+    def test_a_function_type_written_as_a_parameter_charges_no_type_variable(self):
+        """A `<T>` inside a written type is a hole the caller fills, exactly as a method's is."""
+        interface = self.interface_of(
+            "till.ts",
+            "export function pick(of: <T>(items: T[]) => T, xs: string[]): string {\n"
+            "  return of(xs)\n}\n",
+        )
+
+        self.assertNotIn(
+            "T", [type_["name"] for type_ in interface["typesCrossingTheSeam"]]
+        )
+
+
 class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
     """A fan line is followed from the name the body wrote, not the name the module was asked for.
 
@@ -1100,6 +1409,39 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
         self.assertEqual([], modules["web/uses"]["reach"]["reaches"])
 
 
+    def test_a_name_a_construction_qualifies_is_not_a_name_called_on(self):
+        """`new api.Thing()` writes the characters a call on `api` writes and is neither.
+
+        Read as a receiver it drew a fan line whose evidence read "called on api" over a
+        file that calls nothing on it — a sentence a reader can check against the source
+        and find false, which is the one failure the Java side says its own receiver
+        reading exists to make impossible. This reading reintroduced it by building
+        receivers with no guard at all.
+        """
+        modules = self.modules(
+            ("api.ts", "export class Thing {}"),
+            ("uses.ts",
+             "import * as api from './api'\n"
+             "export function make(): number {\n  const t = new api.Thing()\n  return 1\n}"),
+        )
+
+        self.assertEqual([], modules["web/uses"]["reach"]["reaches"])
+
+    def test_a_name_a_namespace_import_binds_is_still_reached_by_calling_through_it(self):
+        """The floor above it: what really is called on the namespace still draws a line."""
+        modules = self.modules(
+            ("api.ts", "export function one(): number {\n  return 1\n}"),
+            ("uses.ts",
+             "import * as api from './api'\n"
+             "export function make(): number {\n  return api.one()\n}"),
+        )
+
+        self.assertEqual(
+            ["web/api"],
+            [reached["moduleId"] for reached in modules["web/uses"]["reach"]["reaches"]],
+        )
+
+
 class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
     """The familiar-type list is one list per language, and the file writes both.
 
@@ -1161,6 +1503,74 @@ class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
         self.assertEqual(["java", "typescript"], sorted(published))
         for language in ("java", "typescript"):
             self.assertEqual(sorted(self.rules.already_known[language]), published[language])
+
+
+class OneAccountOfWhatBothReadingsShareTest(SourceTreeTest):
+    """The helpers both readings need are one function, because a copy of one drifts.
+
+    `after_balanced` and `in_evaluation_order` were made public on the Java side from the
+    start, on the grounds that matching a bracket to its partner and evaluating arguments
+    before a call are facts about punctuation rather than about Java. Three more —
+    splitting a list on its commas, spelling a type, and counting the line an offset sits
+    on — were hand-copied instead, and the copies drifted. Two findings against this branch
+    are what the drift cost, and both are held here.
+    """
+
+    def read(self, tree, module_id):
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["id"]: module for module in document["modules"]}[module_id]
+
+    def test_one_type_spelled_two_ways_is_one_string_in_typescript(self):
+        """`Record<string,number>` and `Record<string, number>` are one type, not two.
+
+        The Java copy of this rule names the hazard in its own words — one document held
+        both `Map<String, Long>` and `Map<String,Long>`, which reads as two types a caller
+        has to learn where there is one — and the TypeScript copy dropped the comma.
+        """
+        tree = self.tree("web")
+        tree.typescript(
+            "", "till.ts",
+            "export function a(m: Record<string,number>): void {}\n"
+            "export function b(m: Record<string, number>): void {}\n",
+        )
+
+        interface = self.read(tree, "web/till")["interface"]
+
+        self.assertEqual(
+            ["Record<string, number>"],
+            sorted({method["parameters"][0] for method in interface["methods"]}),
+        )
+
+    def test_one_type_spelled_two_ways_is_one_string_in_java_too(self):
+        """The same fixture on the side the rule was written for, so the two cannot part."""
+        tree = self.tree("backend")
+        tree.java(
+            "shop", "Till",
+            "import java.util.Map;\npublic class Till {\n"
+            "    public void a(Map<String,Long> m) { }\n"
+            "    public void b(Map<String, Long> m) { }\n}",
+        )
+
+        interface = self.read(tree, "shop.Till")["interface"]
+
+        self.assertEqual(
+            ["Map<String, Long>"],
+            sorted({method["parameters"][0] for method in interface["methods"]}),
+        )
+
+    def test_the_typescript_reading_holds_no_copy_of_a_helper_the_java_one_owns(self):
+        """A guard on the arrangement itself, since a copy is what drifted last time."""
+        for name in ("split_on_commas", "normalised", "line_of", "after_balanced",
+                     "in_evaluation_order", "ends_an_arrow"):
+            with self.subTest(helper=name):
+                self.assertIs(
+                    getattr(javasource, name), getattr(typescriptsource, name)
+                )
+        source = open(typescriptsource.__file__, encoding="utf-8").read()
+        for name in ("split_on_commas", "normalised", "line_of"):
+            with self.subTest(helper=name):
+                self.assertNotIn("def %s(" % name, source)
 
 
 class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
