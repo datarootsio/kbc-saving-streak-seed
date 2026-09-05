@@ -7835,6 +7835,11 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // the one in the file, and a reader could not tell which of the two the shape was drawn
   // from.
   var BEHIND_NAME = "behind-the-shape";
+  // The one button that opens and closes things. Both ends of this page's pointer rules —
+  // the card that opens a panel and the backdrop that shuts one — read it, because
+  // `mousedown` and `mouseup` fire for every button on the mouse and neither gesture is
+  // meant for the one that opens a context menu.
+  var PRIMARY_BUTTON = 0;
   var panel = add(root, "dialog", "behind");
   panel.setAttribute("aria-labelledby", BEHIND_NAME);
   var behindBody = add(panel, "div", "behindBody");
@@ -7869,8 +7874,16 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // browser's own light dismiss uses, and it also leaves a press that began on the
   // backdrop and ended inside the panel alone, the way a button ignores a release
   // dragged off it.
+  //
+  // Primary button only, because that is the other half of the rule light dismiss uses:
+  // `mousedown` and `mouseup` fire for every button, so without the guard a right-press
+  // beside the panel dismisses it — and a context menu opening over the page the panel
+  // just left is a menu about nothing. A right-click inside the panel already leaves it
+  // alone, so the guard is also what stops the two ends disagreeing.
   var pressedOn = null;
-  panel.addEventListener("mousedown", function (event) { pressedOn = event.target; });
+  panel.addEventListener("mousedown", function (event) {
+    pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;
+  });
   panel.addEventListener("mouseup", function (event) {
     if (event.target === panel && pressedOn === panel) { shutBehind(); }
   });
@@ -7964,11 +7977,22 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
         split.appendChild(
           document.createTextNode(NOT_THE_SAME_AS_NOTHING_TO_LEARN));
       }
-      add(part, "p", null,
+      var over = add(part, "p", null,
         "reach " + module.depth.reach + " over interface cost " + module.depth.interfaceCost
         + (module.depth.leverage === null
           ? " — nothing on the bar to read it against"
           : " — " + module.depth.leverage + " reached per unit of interface"));
+      // The same guard the card carries over its fan, said here because this panel prints
+      // the depth's reach in one section and lists the reach itself in the next. The card
+      // can be argued with by opening the panel; the panel is where that argument stops,
+      // so a disagreement it printed in silence is one nothing else would catch. Both
+      // numbers are the document's own — neither is counted here — and all this adds is
+      // which of the two the reader is looking at.
+      if (module.depth.reach !== module.reach.count) {
+        over.appendChild(document.createTextNode(
+          " — but this panel lists " + module.reach.count + " below, so the depth above "
+          + "was taken over a reach this panel does not show"));
+      }
     }
     drawBehindMethods(part, module);
     drawBehindTypes(part, module);
@@ -8110,6 +8134,16 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       " — coordinates " + count(test.reach, "thing", "things") + " behind "
       + count(test.methods, "method", "methods") + " a caller can reach, with "
       + count(test.callers, "module", "modules") + " going through it");
+    // The three counts are the argument for the word in front of them, and two of the
+    // three are listed out in full further up this same panel. A verdict read off some
+    // other reach, or some other number of callers, is a second claim inside one panel —
+    // and a reader who opened the panel to check the card has nowhere further to go.
+    if (test.reach !== module.reach.count || test.callers !== module.callers.count) {
+      add(line, "span", "says",
+        " — but this panel lists " + module.reach.count + " reached and "
+        + module.callers.count + " going through it, so this verdict was read off counts "
+        + "the rest of this panel was not drawn from");
+    }
     add(part, "p", "because", test.because);
   }
 
@@ -8130,6 +8164,51 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     });
   }
 
+  // Where the pointer went down on a card, so that the click which follows can tell a
+  // click from a drag. The whole card is the control, and a card is text a reader wants:
+  // module names, the cost line, `pass-through — coordinates 5 things behind 11 methods`.
+  // A click's target is the nearest common ancestor of the press and the release, so a
+  // drag across a card's own text reports the card — and a handler reading only the click
+  // throws a modal over the page and takes the half-made selection with it, because
+  // opening a panel moves the focus and a focus move collapses a selection. This is the
+  // rule the backdrop one element up already uses, said for a control whose two ends are
+  // both inside itself: there, press and release have to have landed on the same element;
+  // here, in the same place.
+  var pressedAt = null;
+  // A trackpad click drifts a pixel or two under a steady hand, so an exact match would
+  // make the cards feel broken. Wider than the drift and narrower than a word.
+  var A_STEADY_HAND = 3;
+
+  function pressedOnACard(event) {
+    pressedAt = event.button === PRIMARY_BUTTON
+      ? {x: event.clientX, y: event.clientY}
+      : null;
+  }
+
+  // Read once and cleared, because a press that never became a click — dragged off the
+  // card and released on the page — must not still be standing behind the next one.
+  function aDragRatherThanAClick(event, card) {
+    var at = pressedAt;
+    pressedAt = null;
+    // A click with no mouse behind it at all: Enter on the name button, which is how a
+    // keyboard opens the panel and which has to keep working. `detail` counts the clicks
+    // of the pointer that raised the event, and for the keyboard's there were none.
+    if (event.detail === 0) { return false; }
+    if (at === null) { return true; }
+    if (Math.abs(event.clientX - at.x) > A_STEADY_HAND) { return true; }
+    if (Math.abs(event.clientY - at.y) > A_STEADY_HAND) { return true; }
+    // A press and a release in the same place that still left text selected: a reader
+    // taking one word out of the card. The gesture the guard exists for, at the one size
+    // the distance above cannot see.
+    return selectionInside(card);
+  }
+
+  function selectionInside(card) {
+    var selected = window.getSelection ? window.getSelection() : null;
+    if (!selected || selected.isCollapsed || selected.rangeCount === 0) { return false; }
+    return card.contains(selected.getRangeAt(0).commonAncestorContainer);
+  }
+
   var byId = {};
   document_.modules.forEach(function (module) { byId[module.id] = module; });
 
@@ -8145,12 +8224,18 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       // The whole card is the control, and the name inside it is a real button: a
       // pointer opens the panel by clicking anywhere on the card, and a keyboard opens
       // the same panel by tabbing to the name and pressing Enter, whose click bubbles up
-      // to the one handler here. Written as two handlers, a click on the name would have
-      // opened it twice.
+      // to the one opening handler here. Written with a second one on the button, a click
+      // on the name would have opened the panel twice. The press beside it arms nothing
+      // and opens nothing: it only records where the gesture began, so that the click can
+      // tell a reader who meant to open this card from one who meant to select from it.
       var opens = add(item, "button", "name", module.name);
       opens.setAttribute("type", "button");
       opens.setAttribute("aria-haspopup", "dialog");
-      item.addEventListener("click", function () { openBehind(module, opens); });
+      item.addEventListener("mousedown", pressedOnACard);
+      item.addEventListener("click", function (event) {
+        if (aDragRatherThanAClick(event, item)) { return; }
+        openBehind(module, opens);
+      });
       add(item, "div", "kind", module.kind);
       drawShape(item, module);
       drawInterface(item, module);

@@ -170,16 +170,24 @@ class ClickingAModuleOpensWhatStandsBehindItTest(BehindTheShapeTest):
     def test_the_card_is_the_control_and_the_name_on_it_is_a_button(self):
         """A pointer opens the panel anywhere on the card; a keyboard opens it by tabbing.
 
-        One handler, on the card, is deliberate: the button's own click bubbles up to it,
-        and a second handler on the button would open the same panel twice.
+        One opening handler, on the card, is deliberate: the button's own click bubbles up
+        to it, and a second handler on the button would open the same panel twice. The
+        press beside it opens nothing — it only records where the gesture began.
         """
         card = self.card()
 
         self.assertIn('add(item, "button", "name", module.name)', card)
         self.assertIn('opens.setAttribute("type", "button")', card)
         self.assertIn('opens.setAttribute("aria-haspopup", "dialog")', card)
-        self.assertIn('item.addEventListener("click", function () { openBehind(module, opens); });', card)
-        self.assertEqual(1, card.count("addEventListener"))
+        self.assertIn('item.addEventListener("mousedown", pressedOnACard);', card)
+        self.assertIn(
+            'item.addEventListener("click", function (event) {\n'
+            "        if (aDragRatherThanAClick(event, item)) { return; }\n"
+            "        openBehind(module, opens);",
+            card,
+        )
+        self.assertEqual(1, card.count("openBehind("))
+        self.assertEqual(2, card.count("addEventListener"))
 
     def test_the_panel_is_a_dialog_so_that_the_keyboard_is_the_browsers_business(self):
         """Escape, the focus that goes in and the focus that comes back out are all free.
@@ -255,8 +263,8 @@ class WhatCountsAsAClickOnTheBackdropTest(BehindTheShapeTest):
         script = self.script()
 
         self.assertIn(
-            'panel.addEventListener("mousedown", function (event) '
-            "{ pressedOn = event.target; });",
+            'panel.addEventListener("mousedown", function (event) {\n'
+            "    pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;",
             script,
         )
         self.assertIn(
@@ -271,6 +279,112 @@ class WhatCountsAsAClickOnTheBackdropTest(BehindTheShapeTest):
 
         self.assertNotIn("if (event.target === panel) { shutBehind(); }", script)
         self.assertNotIn('panel.addEventListener("click"', script)
+
+
+class OnlyTheButtonThatOpensThingsOpensOrClosesThePanelTest(BehindTheShapeTest):
+    """`mousedown` and `mouseup` fire for every button, and one of them means "menu".
+
+    Without a guard, a right-press beside the panel dismisses it, so the context menu the
+    reader asked for opens over a page the panel has just left — and a right-click inside
+    the panel, which the browser handles itself, correctly leaves it open, so the two ends
+    of the same gesture disagree. The card is the same story from the other side: the
+    press that records where a gesture began must not record one that was never going to
+    open anything.
+    """
+
+    def test_the_page_names_the_button_rather_than_writing_the_number_twice(self):
+        self.assertIn("var PRIMARY_BUTTON = 0;", self.script())
+
+    def test_the_backdrop_reads_it_before_it_remembers_where_a_press_landed(self):
+        self.assertIn(
+            "pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;",
+            self.script(),
+        )
+
+    def test_the_card_reads_it_before_it_remembers_where_a_press_landed(self):
+        self.assertIn(
+            "pressedAt = event.button === PRIMARY_BUTTON\n"
+            "      ? {x: event.clientX, y: event.clientY}\n"
+            "      : null;",
+            self.script(),
+        )
+
+
+class WhatCountsAsAClickOnACardTest(BehindTheShapeTest):
+    """The backdrop's rule, said for the card, because the card is text a reader wants.
+
+    A click's target is the nearest common ancestor of the press and the release, so a
+    drag across a module's name reports the card itself — and a handler reading only the
+    click throws a modal over the page and takes the half-made selection with it, because
+    opening the panel moves the focus and a focus move collapses a selection. On the
+    backdrop a stray drag lost a selection; on the card it loses the selection and covers
+    the page. The card's two ends are both inside itself, so the rule is where the press
+    and the release landed rather than what they landed on.
+    """
+
+    def gesture(self):
+        """The three functions the card's pointer rule is written in."""
+        return "\n".join(
+            self.body(name)
+            for name in ("pressedOnACard", "aDragRatherThanAClick", "selectionInside")
+        )
+
+    def test_the_press_records_where_it_landed_and_opens_nothing(self):
+        pressing = self.body("pressedOnACard")
+
+        self.assertIn("pressedAt = event.button === PRIMARY_BUTTON", pressing)
+        self.assertIn("{x: event.clientX, y: event.clientY}", pressing)
+        self.assertNotIn("openBehind", pressing)
+
+    def test_a_release_away_from_the_press_is_a_drag_and_opens_nothing(self):
+        deciding = self.body("aDragRatherThanAClick")
+
+        self.assertIn(
+            "if (Math.abs(event.clientX - at.x) > A_STEADY_HAND) { return true; }",
+            deciding,
+        )
+        self.assertIn(
+            "if (Math.abs(event.clientY - at.y) > A_STEADY_HAND) { return true; }",
+            deciding,
+        )
+
+    def test_a_press_that_left_text_selected_is_a_drag_however_short_it_was(self):
+        """A reader taking one word out of a card moves the pointer by a few pixels."""
+        self.assertIn("return selectionInside(card);", self.body("aDragRatherThanAClick"))
+        selecting = self.body("selectionInside")
+
+        self.assertIn("window.getSelection", selecting)
+        self.assertIn("selected.isCollapsed", selecting)
+        self.assertIn(
+            "return card.contains(selected.getRangeAt(0).commonAncestorContainer);",
+            selecting,
+        )
+
+    def test_the_keyboards_click_has_no_press_behind_it_and_opens_the_panel(self):
+        """Enter on the name button is a click with no mouse in it: `detail` is 0.
+
+        Which is why the card arms on the press and decides on the click, rather than
+        moving the opening to `mouseup` the way the backdrop's dismissal moved: a
+        `mouseup` the keyboard never fires is a panel the keyboard cannot open.
+        """
+        deciding = self.body("aDragRatherThanAClick")
+
+        self.assertIn("if (event.detail === 0) { return false; }", deciding)
+        self.assertLess(
+            deciding.index("event.detail === 0"), deciding.index("at === null")
+        )
+        self.assertNotIn('item.addEventListener("mouseup"', self.card())
+
+    def test_a_press_that_never_became_a_click_is_not_left_standing(self):
+        """Dragged off the card and released on the page, then a click somewhere else."""
+        deciding = self.body("aDragRatherThanAClick")
+
+        self.assertIn("var at = pressedAt;\n    pressedAt = null;", deciding)
+        self.assertIn("if (at === null) { return true; }", deciding)
+
+    def test_the_tolerance_is_named_and_narrower_than_a_word(self):
+        """A trackpad click drifts a pixel or two; an exact match would feel broken."""
+        self.assertIn("var A_STEADY_HAND = 3;", self.script())
 
 
 class ThePanelWithoutAModalDialogToOpenItInTest(BehindTheShapeTest):
@@ -506,6 +620,47 @@ class TheVerdictAndTheFindingsAgainstItTest(BehindTheShapeTest):
             [("raised but never documented", "IllegalStateException")],
             [(finding["finding"], finding["refusal"]) for finding in barrier["findings"]],
         )
+
+
+class ThePanelCannotPrintTwoDisagreeingNumbersInSilenceTest(BehindTheShapeTest):
+    """The guards the card carries, said again in the place a reader checks the card with.
+
+    The panel prints the reach a depth was taken over in one section and lists the reach
+    itself in the next, and prints a verdict's three counts under both. All of them are
+    the document's own — nothing here counts anything — so a disagreement between them is
+    a disagreement inside the file, and the panel is where a reader's argument with the
+    shape stops: there is nowhere further to open.
+    """
+
+    def test_a_depth_taken_over_some_other_reach_than_the_panel_lists_says_so(self):
+        drawn = self.body("drawBehindInterface")
+
+        self.assertIn("if (module.depth.reach !== module.reach.count) {", drawn)
+        self.assertIn("but this panel lists ", drawn)
+
+    def test_a_verdict_read_off_some_other_counts_than_the_panel_lists_says_so(self):
+        drawn = self.body("drawBehindVerdict")
+
+        self.assertIn(
+            "if (test.reach !== module.reach.count "
+            "|| test.callers !== module.callers.count) {",
+            drawn,
+        )
+        self.assertIn("the rest of this panel was not drawn from", drawn)
+
+    def test_the_document_this_page_carries_holds_no_such_disagreement(self):
+        """So the branches above are a guard rather than a sentence anybody reads today."""
+        for module in self.document["modules"]:
+            test = module["deletionTest"]
+            if module["depth"]["reach"] is not None:
+                self.assertEqual(
+                    module["reach"]["count"], module["depth"]["reach"], module["id"]
+                )
+            if test["verdict"] is not None:
+                self.assertEqual(module["reach"]["count"], test["reach"], module["id"])
+                self.assertEqual(
+                    module["callers"]["count"], test["callers"], module["id"]
+                )
 
 
 class AnExcludedModulesPanelNamesTheRuleRatherThanAScoreTest(BehindTheShapeTest):

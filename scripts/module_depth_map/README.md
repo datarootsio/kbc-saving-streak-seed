@@ -532,7 +532,7 @@ takes the focus before the panel opens, because that is the note the browser mak
 where to hand focus back to: without it, a click on the body of a card focuses nothing,
 and closing the panel drops the keyboard on a hidden element.
 
-Three smaller things about the panel that are easier to get wrong than to notice:
+A few smaller things about the panel that are easier to get wrong than to notice:
 
 - **It opens at the top, every time.** The scrolling body outlives every open — it is
   emptied and refilled rather than rebuilt — and a browser keeps the scroll offset of an
@@ -547,10 +547,35 @@ Three smaller things about the panel that are easier to get wrong than to notice
   itself — and this panel is full of caller ids and method signatures a reader will want
   to copy. The press and the release are read separately, and both have to have landed on
   the backdrop, which is the same rule the browser's own light dismiss uses.
+- **A click on a card opens the panel; a drag across a card's text does not.** The same
+  problem one element up, and worse there: a card is text a reader wants — module names,
+  the cost line, `pass-through — coordinates 5 things behind 11 methods` — and the whole
+  card is the control, so a drag across it reported the card and opened a modal over the
+  page, taking the half-made selection with it, because opening the panel moves the focus
+  and a focus move collapses a selection. The card's two ends are both inside itself, so
+  the rule is where the press and the release landed rather than what they landed on: a
+  release more than a few pixels from the press is a drag, and so is one that left text
+  selected inside the card however short it was. The press arms and the click decides,
+  rather than the opening moving to `mouseup` the way the dismissal did, because the
+  keyboard's Enter on the name button is a click with no mouse events behind it at all —
+  it is told apart by `detail`, which counts the pointer clicks that raised the event and
+  is 0 for that one.
+- **Only the button that opens things opens or closes anything.** `mousedown` and
+  `mouseup` fire for every button on the mouse, so without a guard a right-press beside
+  the panel dismissed it and the context menu the reader asked for opened over a page the
+  panel had just left — while a right-click *inside* the panel, which the browser handles
+  itself, correctly left it open. Both ends read `PRIMARY_BUTTON`.
 - **A cost of 0 is caveated wherever it is printed.** The card and the panel say
   "nothing this bar counts, which is not the same as nothing to learn" from one string,
   because the panel is where a reader goes to check the card and so is the last place that
   should make the stronger claim.
+- **The panel says so when two numbers in it disagree.** The card warns when the depth it
+  draws was taken over some other reach than its fan, and when a verdict was read off some
+  other reach or some other number of callers than the card was drawn from. The panel
+  carries both guards, because it prints the depth's reach in one section and lists the
+  reach itself in the next, and prints the verdict's three counts under both — and a
+  reader who opened the panel to check the card has nowhere further to open. Both numbers
+  in each guard are the document's own; nothing is counted to make the comparison.
 
 Where there is no modal dialog to open — a browser old enough that `<dialog>` is an unknown
 element — the panel falls back to setting and clearing the `open` attribute, and the
