@@ -11,12 +11,12 @@ frontend as one tidy box would be a picture that lies by omission.
 
 **Blocked by:** 03 (Reach, and the fan).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] Frontend source is analysed at file grain and appears on the page beside the backend modules
-- [ ] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
-- [ ] What a frontend module exports, and what it reaches, are both derived from the source
-- [ ] A large frontend module presenting a small interface is not reported as deep on account of its size
-- [ ] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
-- [ ] Frontend source the tool cannot parse is reported loudly and named, as backend source is
-- [ ] Test code, build output and dependencies are excluded from the graph
+- [x] Frontend source is analysed at file grain and appears on the page beside the backend modules
+- [x] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
+- [x] What a frontend module exports, and what it reaches, are both derived from the source
+- [x] A large frontend module presenting a small interface is not reported as deep on account of its size
+- [x] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
+- [x] Frontend source the tool cannot parse is reported loudly and named, as backend source is
+- [x] Test code, build output and dependencies are excluded from the graph
