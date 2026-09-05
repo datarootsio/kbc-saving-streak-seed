@@ -12,15 +12,15 @@ by a machine rather than by whoever called it.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-info
+**Status:** done
 
 - [x] Every refusal a module can answer with appears in the graph as part of its interface
 - [x] Refusals count toward interface cost, and are also reported separately from the rest of it
 - [x] The page shows refusals as their own band, so an honestly-wide interface is distinguishable from a merely wide one
-- [ ] Documented refusals are read from the source's own documentation rather than guessed at
+- [x] Documented refusals are read from the source's own documentation rather than guessed at
 - [x] A module documenting a refusal it cannot raise produces a finding naming both sides of the disagreement
 - [x] A module raising a refusal it does not document produces a finding naming both sides of the disagreement
-- [ ] A module whose documentation and implementation agree produces no finding
+- [x] A module whose documentation and implementation agree produces no finding
 - [x] Fixture modules establish each direction of disagreement and the agreeing case
 
 ## Review feedback - attempt 1
@@ -833,3 +833,48 @@ band, its pricing, its separate reporting, the page, the config-driven rule, the
 reading, the bodiless-signature reading, the `this.` reading, the enum-constructor reading, the
 type-variable reading, the fixtures for the three directions and the logging are all real and all
 verified — none of them needs doing again.
+
+## Accepted - by decision, over a reviewer's needs-info
+
+This ticket was **not** passed by a reviewer. Four attempts were each reviewed by a fresh
+reviewer and each sent back; the repository's owner accepted the work on attempt 4 and
+directed the run on to ticket 06. Recording that plainly so nobody later reads a tick as a
+review pass. Same disposition as `03-reach-and-the-fan.md`.
+
+**What the four reviews agreed on, independently:**
+
+- The band is **purely additive**: `costWithoutRefusals` equals `ticket/04-the-deletion-test`'s
+  `cost` on all 71 modules, and no reach, verdict or caller count moved.
+- All 13 refusals read on this source are correct — the 7 `@throws` the repository writes,
+  each attributed to the right method, plus the 6 undocumented thrown types.
+- All six findings are **true**, driven live over HTTP rather than read off the graph:
+  `WithdrawalRefused` reaching a caller with nothing on the seam to catch it,
+  `ResponseStatusException` on all three controllers. The kept-word side
+  (`ClockRefused`, `JobRefused`, `DepositRefused`) correctly produces no finding.
+- 455 python tests, 113 backend tests, typecheck clean, output byte-identical across runs,
+  and the page drives clean in both themes at both widths with zero console output.
+
+**What is still open.** Both remaining blockers are latent on this source, as every
+blocker on this ticket has been.
+
+1. **A nested type's `@throws` is invisible while its `throw` counts as the module's**
+   (`scoring.py`, `_declared_types` fills members only for the module itself). A refusal
+   documented on the very method that throws it is reported *raised but never documented*.
+   The README already promises the symmetry the code does not implement.
+2. **A tagless javadoc does not shield its member from an older tagged one**
+   (`javasource.py`, `_refusals_documented_in`). An intervening javadoc'd field or method
+   *does* stop the bisect; only a tagless javadoc fails to.
+3. **Fabricated prose, and this one is NOT latent — fix it first.** The paragraph
+   justifying the constructor rule cites `new AmountOfMoney(-1)` refusing. That
+   constructor is `private AmountOfMoney() {}`, takes no arguments, and
+   `git log --all -S "new AmountOfMoney("` finds it on no branch, ever. No constructor in
+   this repository refuses at all. The claim is written into `README.md`, `scoring.py`
+   (twice), `javasource.py` and a test — including the docstrings of the two functions
+   that implement the rule. It is the third stale-prose defect this ticket was returned
+   for, in a tool whose whole premise is that a machine catches prose the code outgrew.
+4. Minor: `README.md` points a reader at `refusalsNotChecked` for the count of unnameable
+   throws; that field reads 0 while `ScheduledJobs` has two, and `throws_not_read` is
+   published nowhere in the JSON.
+
+Full evidence: `.scratch/module-depth-map/logs/05-refusals-as-their-own-band.review.{1..4}.md`
+and `.implement.{1..4}.md`.
