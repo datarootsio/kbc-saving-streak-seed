@@ -71,6 +71,15 @@ _IMPORT = re.compile(r"^\s*import\s+(static\s+)?([\w.]+(?:\.\*)?)\s*;", re.M)
 # said out loud rather than dropped in silence.
 _A_RECEIVER = re.compile(r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*\s*\(")
 
+# The same call read for a *flow* rather than for reach, which needs both halves of it:
+# what it was written against and what it called. Reach is a set of distinct things and
+# has no use for the method's name; a flow is a path and cannot be walked without it,
+# because the next module along is decided by which method was called and not merely by
+# which module holds it.
+_A_RECEIVER_CALL = re.compile(
+    r"(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*\("
+)
+
 # The `new` in front of `new Holder.Row()`, looked for behind a receiver rather than
 # folded into the pattern above so that a declined match can be logged with its name.
 _PRECEDED_BY_NEW = re.compile(r"(?<![\w.$])new$")
@@ -253,6 +262,45 @@ class ParseFailure(Exception):
         self.reason = reason
 
 
+class CallSite:
+    """One call a method's body writes, as the source wrote it.
+
+    Read for one reason and used for one thing: a flow is a path through modules, and a
+    path cannot be walked out of a set. Reach answers *what* a module coordinates and is
+    deliberately a set of distinct names — a module writing the same call ten more times
+    coordinates nothing new. A flow answers *in what order one call goes through them*,
+    which needs the opposite: every call site, kept where the source put it, and the
+    method each one names so the walk knows which body to read next.
+
+    `receiver` is what the call was written against — `deposits` in `deposits.save(...)`,
+    `AmountOfMoney` in `AmountOfMoney.whyItIsNotOne(...)` — or None when nothing was
+    written in front of it. Whether that name is a field, a type, a local or a member
+    imported statically is not this file's business to decide, exactly as it is not for
+    reach. `this.deposits.save(...)` writes `deposits`, because `this.` is a prefix a
+    writer may put on a call and nothing more.
+
+    `name` is the method called, or the type built when `builds` is set: `new Deposit(...)`
+    is coordination the same way a call is, and the walk steps into the module either way.
+
+    The order is the order the source *evaluates* them, not the order it writes them.
+    Java evaluates a call's arguments before the call, so `deposits.save(new Deposit(...))`
+    builds the deposit and then saves it, and reading it the other way round numbered the
+    repository ahead of the record it was handed. A site written inside another's argument
+    list therefore comes first, and siblings keep the order they were written in.
+    """
+
+    def __init__(self, receiver, name, builds=False):
+        self.receiver = receiver
+        self.name = name
+        self.builds = builds
+
+    def __repr__(self):
+        written = "new " + self.name if self.builds else (
+            self.name if self.receiver is None else self.receiver + "." + self.name
+        )
+        return "CallSite(%r)" % written
+
+
 class Method:
     """One method a module declares, as a caller meets it.
 
@@ -276,10 +324,18 @@ class Method:
     no body is a promise made to whoever implements it, and holding it against *this*
     module's body would accuse every interface in the source of breaking a word it never
     gave.
+
+    `calls` is what *this* method's body calls, in the order it evaluates them, and it is
+    the only reading in this file taken at method grain rather than over the whole type.
+    Everything else here is either what a caller must learn or what the module as a whole
+    reaches, and neither needs to know which method wrote which call. A flow does: it is
+    a path through modules entered by one named call, and read off the type's reach
+    instead it becomes a claim about everything the type does, which is a different and
+    much larger claim.
     """
 
     def __init__(self, name, visibility, parameters, returns, type_parameters=(),
-                 annotations=(), documented_refusals=(), has_a_body=True):
+                 annotations=(), documented_refusals=(), has_a_body=True, calls=()):
         self.name = name
         self.visibility = visibility
         self.parameters = tuple(parameters)
@@ -288,6 +344,7 @@ class Method:
         self.annotations = tuple(annotations)
         self.documented_refusals = tuple(documented_refusals)
         self.has_a_body = has_a_body
+        self.calls = tuple(calls)
 
 
 class Constructor:
@@ -999,7 +1056,7 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, docume
     is named by a line a reader can go and open.
     """
     written_here = []
-    for member, at, has_a_body in _member_headers(
+    for member, at, body in _member_headers(
         masked, kind, body_starts_at, body_ends_at
     ):
         method = _method_in(
@@ -1007,7 +1064,7 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, docume
             kind,
             _line_of(masked, at),
             _documented_before(masked, at, documented),
-            has_a_body,
+            body,
         )
         if method is not None:
             written_here.append(method)
@@ -1045,7 +1102,7 @@ def _constructors_of(masked, kind, name, body_starts_at, body_ends_at, documente
     constructor nobody typed.
     """
     found = []
-    for member, at, _ in _member_headers(masked, kind, body_starts_at, body_ends_at):
+    for member, at, _body in _member_headers(masked, kind, body_starts_at, body_ends_at):
         constructor = _constructor_in(
             member, kind, name, _documented_before(masked, at, documented)
         )
@@ -1085,7 +1142,7 @@ def _fields_of(masked, kind, header, body_starts_at, body_ends_at, line):
     if kind == "record":
         for spelled, name, dots in _components_in(header, line):
             found.append(Field(name, spelled + ("[]" if dots else "")))
-    for member, at, _ in _member_headers(masked, kind, body_starts_at, body_ends_at):
+    for member, at, _body in _member_headers(masked, kind, body_starts_at, body_ends_at):
         field = _field_in(member, _line_of(masked, at))
         if field is not None:
             found.append(field)
@@ -1384,6 +1441,140 @@ def _thrown_through(name, declared, type_parameters=()):
     return None if refusal == NOTHING_RETURNED or refusal in holes else refusal
 
 
+def _calls_in(body):
+    """Every call this one method's body makes, in the order the source evaluates them.
+
+    The reading a flow is walked out of, and the only one in this file that keeps order.
+    Reach cannot: it is a set of distinct things, deliberately, so that a module writing
+    the same call ten more times reaches nothing new. A path needs every site where it
+    was written and needs the method each one names, because which module the flow enters
+    next is decided by the call and not by whoever happens to hold the field.
+
+    Three spellings are read, and they are the three that can name a module:
+
+    - `deposits.save(...)` and `AmountOfMoney.whyItIsNotOne(...)`: something written in
+      front of a dot, and the method after it. `this.deposits.save(...)` writes the field
+      as its receiver and reads that way here, since `this.` sits in front of the whole
+      access rather than between the two names; `this.of(1)` writes `this` as the
+      receiver, which is a call to a method this module has and is read as a bare one. A
+      qualified `new` — `new Row.Of()` — writes the same characters as a static call and
+      calls nothing on `Row`, so it is left to the third reading, exactly as
+      `_receivers_in` leaves it.
+    - `refuseUnlessAnAmountOfMoney(amount)`: a name with a call's brackets after it and
+      nothing in front of it. That is either a method this module declares or a member
+      imported statically, and both are followed — by whoever resolves these, since which
+      of the two it is depends on what the file imported and what the module declares,
+      and neither is in front of this function. A declaration is written the same way and
+      is not a call, so `_declares_rather_than_calls` holds those out here as it does
+      there.
+    - `new Deposit(...)`: building a collaborator is coordinating it, the same way calling
+      one is — the reasoning `reach_of` already makes about `new B(a)` and `B.of(a)`. An
+      array creation builds none of its element type and is not one.
+
+    The order is evaluation order rather than the order the characters were typed, and
+    they differ in one shape that this repository writes constantly:
+    `deposits.save(new Deposit(...))` writes the repository first and builds the deposit
+    first. So a site written inside another's argument list is emitted before the site
+    that encloses it, and sites that enclose nothing keep the order they were written in.
+    Nothing else about evaluation is modelled: a branch not taken is still a call this
+    method can make, and a flow that showed only the branch that happened to be taken
+    would be a trace of one run rather than a reading of the source.
+
+    Everything inside a comment or a literal is already blanked out by the time this reads
+    it, so a call written in a javadoc example is not a step on any flow.
+    """
+    if body is None:
+        return ()
+    found = []
+    for match in _A_RECEIVER_CALL.finditer(body):
+        receiver, name = match.group(1), match.group(2)
+        if _PRECEDED_BY_NEW.search(body[:match.start(1)].rstrip()):
+            # `new Holder.Row()` builds the type `Holder` nests and calls nothing at all
+            # on `Holder`. The construction reading below reports it whole.
+            continue
+        opened = match.end() - 1
+        found.append(
+            (match.start(1), _after_balanced(body, opened),
+             CallSite(None if receiver == "this" else receiver, name))
+        )
+    for match in _A_CALL.finditer(body):
+        name = match.group(1)
+        if name in _NOT_A_CALL:
+            continue
+        before = _without_a_type_argument_list(body[:match.start(1)].rstrip())
+        if before.endswith("."):
+            # A member access, whose receiver the reading above has already had, or one
+            # written on the result of another call, whose receiver is not a name at all.
+            continue
+        if _PRECEDED_BY_NEW.search(before):
+            # `new Deposit(...)` puts a name in front of brackets with nothing but `new`
+            # before it, so it reads as a bare call to something spelled `Deposit`. It is
+            # a construction, reported once by the reading below; counted here as well it
+            # was a second step on every flow that builds anything.
+            continue
+        if _declares_rather_than_calls(body, match.start(1)):
+            continue
+        opened = match.end() - 1
+        found.append((match.start(1), _after_balanced(body, opened), CallSite(None, name)))
+    for match in _CONSTRUCTED.finditer(body):
+        built = match.group(1)
+        if _AN_ARRAY_CREATION.match(body, match.end(1)):
+            continue
+        found.append(
+            (match.start(), _after_the_arguments(body, match.end(1)),
+             CallSite(None, built, builds=True))
+        )
+    return _in_evaluation_order(found)
+
+
+def _after_the_arguments(body, after_the_name):
+    """Just past a construction's argument list, or the end of its name when it has none.
+
+    The span is wanted for one thing only — telling a site written inside another's
+    arguments from one written after it — so a spelling this cannot follow costs the
+    nesting and never a call: the site is still read, it merely keeps the place the
+    characters put it.
+    """
+    position = after_the_name
+    while position < len(body) and body[position] in " \t\r\n":
+        position += 1
+    if position < len(body) and body[position] == "<":
+        depth = 0
+        while position < len(body):
+            if body[position] == "<":
+                depth += 1
+            elif body[position] == ">":
+                depth -= 1
+                if depth == 0:
+                    position += 1
+                    break
+            position += 1
+        while position < len(body) and body[position] in " \t\r\n":
+            position += 1
+    if position < len(body) and body[position] == "(":
+        return _after_balanced(body, position)
+    return after_the_name
+
+
+def _in_evaluation_order(found):
+    """The sites sorted so that each one comes after everything written inside its arguments.
+
+    Java evaluates a call's arguments before the call itself, so the deposit in
+    `deposits.save(new Deposit(...))` is built before it is saved. Sorting on where each
+    site starts says the opposite, and put a repository on a flow one step ahead of the
+    record it was handed.
+    """
+    ordered = []
+    open_sites = []
+    for start, ends, site in sorted(found, key=lambda entry: (entry[0], -entry[1])):
+        while open_sites and open_sites[-1][0] <= start:
+            ordered.append(open_sites.pop()[1])
+        open_sites.append((ends, site))
+    while open_sites:
+        ordered.append(open_sites.pop()[1])
+    return tuple(ordered)
+
+
 def _receivers_in(plain):
     """What calls in this body were written against, a qualified `new` left out.
 
@@ -1502,27 +1693,34 @@ def _member_headers(masked, kind, body_starts_at, body_ends_at):
         elif character == ")":
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
-            headers.append(_header(masked, start, position, True))
-            position = _after_balanced(masked, position, "{", "}")
+            ends = _after_balanced(masked, position, "{", "}")
+            headers.append(_header(masked, start, position, masked[position:ends]))
+            position = ends
             start = position
             continue
         elif parens == 0 and character == ";":
-            headers.append(_header(masked, start, position, False))
+            headers.append(_header(masked, start, position, None))
             start = position + 1
         position += 1
     return headers
 
 
-def _header(masked, start, position, has_a_body):
-    """One member's text, the offset of the first thing written in it, and its body or not.
+def _header(masked, start, position, body):
+    """One member's text, the offset of its first word, and the body written under it.
 
     The offset is where the member's own first word is rather than where the member
     before it ended, because it is only ever used to name a line to a reader, and the
     line after the previous member's semicolon is not the line they need to open.
+
+    The body is the masked text between its braces, or None when the member ended at a
+    semicolon instead. Handed back rather than stepped over and forgotten, because a flow
+    is walked one method at a time: read only over the whole type, every method of a
+    module reaches everything every other method of it reaches, and a flow through the
+    entry *method* becomes a claim about everything the entry *module* does.
     """
     while start < position and masked[start] in " \t\r\n":
         start += 1
-    return masked[start:position], start, has_a_body
+    return masked[start:position], start, body
 
 
 def _after_enum_constants(masked, start, body_ends_at):
@@ -1548,7 +1746,7 @@ def _after_enum_constants(masked, start, body_ends_at):
     return body_ends_at
 
 
-def _method_in(member, holder_kind, line, documented_refusals=(), has_a_body=True):
+def _method_in(member, holder_kind, line, documented_refusals=(), body=None):
     """The method this member declares, or None when the member is not one.
 
     Fields, initialisers, enum constants, nested types and constructors all arrive here
@@ -1573,6 +1771,10 @@ def _method_in(member, holder_kind, line, documented_refusals=(), has_a_body=Tru
     wrong: a member declined here is a method missing from an interface, and a missing
     method reads as a module that asks less of its caller. `_declined` says which member
     and why.
+
+    `body` is the masked text between this member's braces, or None when it ended at a
+    semicolon instead. It answers two things at once: whether an implementation was
+    written under the signature at all, and what that implementation calls.
     """
     text = _without_annotations(member)
     opened = text.find("(")
@@ -1616,7 +1818,8 @@ def _method_in(member, holder_kind, line, documented_refusals=(), has_a_body=Tru
         # `String[] value() default {"a"};` — so the brace a body is recognised by is
         # there without a body under it. Answered by the kind rather than by the brace,
         # because the kind is the fact and the brace is the thing that misleads.
-        has_a_body and holder_kind != "annotation",
+        body is not None and holder_kind != "annotation",
+        _calls_in(body if holder_kind != "annotation" else None),
     )
 
 

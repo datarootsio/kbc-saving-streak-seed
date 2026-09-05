@@ -2,8 +2,16 @@
 
 A flow is defined by one thing and one thing only: the call a caller makes to enter it.
 Everything else about it — which modules it passes through, and in what order — is walked
-out of the reach every module already has, so a flow is a reading of the code rather than
-a second description of the code kept beside it by hand.
+out of the calls that call's body makes, and then out of the calls each of *those* bodies
+makes, so a flow is a reading of the code rather than a second description of the code
+kept beside it by hand.
+
+The grain is the method, and the tests below hold it there. Walked over each module's
+reach instead, a flow is the entry module's whole transitive reach: two flows differing
+only in their method come back identical, and the path names every module the entry class
+touches through any of its methods rather than the ones this call goes through. Reach is a
+set of distinct things and has to be — that is what stops a module raising its depth by
+writing more calls — and a set has neither an order nor any idea which method wrote it.
 
 The tests here drive the same seam as the rest of the suite: source directory in, graph
 document out, and the page asserted as a rendering of that document. What is established
@@ -29,11 +37,13 @@ AN_ENTRY_POINT = """public class Till {
     private final Prices prices;
     private final Rates rates;
     private final ReceiptRepository receipts;
+    private final Ledger ledger;
 
-    Till(Prices prices, Rates rates, ReceiptRepository receipts) {
+    Till(Prices prices, Rates rates, ReceiptRepository receipts, Ledger ledger) {
         this.prices = prices;
         this.rates = rates;
         this.receipts = receipts;
+        this.ledger = ledger;
     }
 
     public Receipt ring(long id) {
@@ -41,6 +51,10 @@ AN_ENTRY_POINT = """public class Till {
         rates.today();
         receipts.count();
         return new Receipt();
+    }
+
+    public long stocktake() {
+        return ledger.post();
     }
 }"""
 
@@ -81,6 +95,31 @@ A_MODULE_OFF_EVERY_FLOW = """public class Kiosk {
     public void open() {}
 }"""
 
+# Reached by the entry module and by no call the flow makes: `Till.stocktake` calls it and
+# `Till.ring` does not. It is in the entry module's reach, and a flow read off that reach
+# puts it on the path — which is the whole difference between a flow through a call and a
+# claim about everything the entry class does.
+A_MODULE_ONLY_ANOTHER_METHOD_REACHES = """public class Ledger {
+    public long post() { return 1; }
+}"""
+
+# A module whose one call writes another call inside its arguments. Java builds the receipt
+# before it saves it, and a path that read the characters left to right numbered the
+# repository ahead of the record it was handed.
+A_CALL_INSIDE_ANOTHERS_ARGUMENTS = """public class Bagger {
+    private final ReceiptRepository receipts;
+
+    Bagger(ReceiptRepository receipts) { this.receipts = receipts; }
+
+    public Receipt bag() { return receipts.save(new Receipt()); }
+}"""
+
+# An interface: it presents a call a caller can make and writes no body under it, so there
+# is nothing here for a walk to follow.
+A_PROMISE_WITH_NO_BODY_UNDER_IT = """public interface Tills {
+    Receipt ring(long id);
+}"""
+
 
 class FlowTest(SourceTreeTest):
     """A source tree with one flow through it, and configurations that name flows in it."""
@@ -98,6 +137,9 @@ class FlowTest(SourceTreeTest):
             ("ReceiptRepository", AN_ADAPTER),
             ("Receipt", A_PERSISTENT_RECORD),
             ("Kiosk", A_MODULE_OFF_EVERY_FLOW),
+            ("Ledger", A_MODULE_ONLY_ANOTHER_METHOD_REACHES),
+            ("Bagger", A_CALL_INSIDE_ANOTHERS_ARGUMENTS),
+            ("Tills", A_PROMISE_WITH_NO_BODY_UNDER_IT),
         ):
             tree.java("shop.till", name, body)
         self.root = graph.java_root(tree.root)
@@ -123,6 +165,11 @@ class FlowTest(SourceTreeTest):
         document = graph.build([self.root], scoring.load(self.rules_naming(*flows)))
         return document["flows"]
 
+    def module(self, module_id):
+        """One module of the graph this fixture builds, for reading its fan off."""
+        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())))
+        return {module["id"]: module for module in document["modules"]}[module_id]
+
     def one_flow(self, **entry_point):
         flows = self.flows_of(self.a_flow(**entry_point))
         self.assertEqual(1, len(flows))
@@ -138,14 +185,96 @@ class FlowTest(SourceTreeTest):
 class AFlowIsWalkedOutOfTheCallGraphTest(FlowTest):
     """The modules a flow passes through are read from the fans, never listed by hand."""
 
-    def test_the_flow_passes_through_every_module_reachable_from_its_entry_point(self):
+    def test_the_flow_passes_through_every_module_the_entry_call_reaches(self):
+        """`ring` calls Prices, then Rates, then the repository, then builds a receipt.
+
+        In that order, because that is the order the source makes the calls in. Not the
+        order the entry module's fan holds them — that is sorted by kind and then by name,
+        which would put the adapter first — and not the order the cards happen to be laid
+        out in either.
+        """
         flow = self.one_flow()
 
         self.assertTrue(flow["resolved"], flow["couldNotResolve"])
         self.assertEqual(
-            ["Till", "ReceiptRepository", "Prices", "Rates", "Receipt"],
+            ["Till", "Prices", "Rates", "ReceiptRepository", "Receipt"],
             [step["name"] for step in flow["path"]],
         )
+
+    def test_the_order_is_the_calls_order_and_not_the_fans(self):
+        """The fan is sorted by kind and then by name; a flow is sorted by nothing."""
+        flow = self.one_flow()
+        entry = self.module("shop.till.Till")
+
+        self.assertEqual(
+            ["ReceiptRepository", "Ledger", "Prices", "Rates", "Receipt"],
+            [reached["name"] for reached in entry["reach"]["reaches"]],
+        )
+        self.assertEqual(
+            ["Prices", "Rates", "ReceiptRepository", "Receipt"],
+            [step["name"] for step in flow["path"][1:]],
+        )
+
+    def test_a_module_only_another_method_of_the_entry_reaches_is_not_on_the_flow(self):
+        """The one thing method grain buys, and the reason a flow names its method.
+
+        `Till.stocktake` calls the ledger and `Till.ring` does not, so the ledger is in
+        the entry module's reach and is not on this flow. Read off that reach instead, a
+        flow through `ring` would claim a call to `ring` posts to the ledger.
+        """
+        flow = self.one_flow()
+
+        self.assertIn("shop.till.Ledger", [
+            reached["moduleId"] for reached in self.module("shop.till.Till")["reach"]["reaches"]
+        ])
+        self.assertNotIn("Ledger", [step["name"] for step in flow["path"]])
+
+    def test_two_flows_differing_only_in_their_method_are_two_different_paths(self):
+        """Otherwise the method is decoration on the entry point rather than half of it."""
+        flows = self.flows_of(
+            self.a_flow(flow="a sale"),
+            self.a_flow(method="stocktake", flow="a stocktake"),
+        )
+
+        self.assertEqual(
+            ["Till", "Prices", "Rates", "ReceiptRepository", "Receipt"],
+            [step["name"] for step in flows[0]["path"]],
+        )
+        self.assertEqual(["Till", "Ledger"], [step["name"] for step in flows[1]["path"]])
+
+    def test_a_call_a_private_helper_makes_is_on_the_flow(self):
+        """A call on the module's own method is followed and is not a step of its own.
+
+        `Rates` is reached by `Prices.of` rather than by anything `Till.ring` writes, and
+        a walk that stopped at the methods a caller can see would report this sale as
+        touching one module.
+        """
+        flow = self.one_flow()
+        reached_from = {step["name"]: step["reachedFrom"] for step in flow["path"][1:]}
+
+        self.assertEqual("shop.till.Prices", reached_from["Rates"])
+
+    def test_a_call_written_inside_anothers_arguments_is_the_earlier_step(self):
+        """Java builds the receipt before it saves it, whatever order the characters are in."""
+        flow = self.one_flow(module="shop.till.Bagger", method="bag")
+
+        self.assertEqual(
+            ["Bagger", "Receipt", "ReceiptRepository"],
+            [step["name"] for step in flow["path"]],
+        )
+
+    def test_every_step_says_which_call_put_the_flow_there(self):
+        """A step a reader cannot go and look up is a picture rather than a reading."""
+        flow = self.one_flow()
+        by_name = {step["name"]: step for step in flow["path"]}
+
+        self.assertEqual("ring", by_name["Prices"]["calledFrom"])
+        self.assertEqual("prices.of", by_name["Prices"]["call"])
+        self.assertEqual("of", by_name["Rates"]["calledFrom"])
+        self.assertEqual("rates.today", by_name["Rates"]["call"])
+        self.assertEqual("new Receipt", by_name["Receipt"]["call"])
+        self.assertIsNone(flow["path"][0]["calledFrom"])
+        self.assertIsNone(flow["path"][0]["call"])
 
     def test_the_order_is_the_order_the_walk_enters_them(self):
         """Numbered from the entry point outwards, one number per module, no gaps."""
@@ -206,7 +335,7 @@ class AFlowIsWalkedOutOfTheCallGraphTest(FlowTest):
         names = [step["name"] for step in flow["path"]]
 
         self.assertEqual(sorted(set(names)), sorted(names))
-        self.assertEqual(4, dict(zip(names, [step["step"] for step in flow["path"]]))["Rates"])
+        self.assertEqual(3, dict(zip(names, [step["step"] for step in flow["path"]]))["Rates"])
 
     def test_a_module_the_flow_never_reaches_is_not_on_it(self):
         """Otherwise choosing a flow would highlight the application and say nothing."""
@@ -265,7 +394,7 @@ class EveryModuleNamedInAFlowIsOneTheGraphHoldsTest(FlowTest):
 
 
 class AFlowThatCannotBeWalkedFailsRatherThanShortensTest(FlowTest):
-    """Three ways a walk can fail to start, and one answer to all three: no path at all.
+    """Four ways a walk can fail, and one answer to all four: no path at all.
 
     A flow half walked is the one output worse than no flow. Every module on it is real,
     the path is followable, and the business event it claims to trace stopped happening
@@ -295,12 +424,26 @@ class AFlowThatCannotBeWalkedFailsRatherThanShortensTest(FlowTest):
         self.assertIn("cashUp", flow["couldNotResolve"])
         self.assertIn("ring", flow["couldNotResolve"])
 
-    def test_a_flow_whose_entry_point_reaches_nothing_carries_no_path(self):
+    def test_a_flow_whose_entry_call_reaches_nothing_carries_no_path(self):
         flow = self.one_flow(module="shop.till.Kiosk", method="open")
 
         self.assertFalse(flow["resolved"])
         self.assertEqual([], flow["path"])
-        self.assertIn("reaches nothing this graph holds", flow["couldNotResolve"])
+        self.assertIn("reaches no other module this graph holds", flow["couldNotResolve"])
+        self.assertIn("open", flow["couldNotResolve"])
+
+    def test_a_flow_entered_through_a_call_with_no_body_under_it_carries_no_path(self):
+        """An interface promises the call and writes none of it, so there is nothing to follow.
+
+        Named as its own failure rather than left to come out as "reaches nothing", because
+        the two send a reader to different places: one method emptied out, or a flow
+        pointed at the promise instead of at the module that keeps it.
+        """
+        flow = self.one_flow(module="shop.till.Tills", method="ring")
+
+        self.assertFalse(flow["resolved"])
+        self.assertEqual([], flow["path"])
+        self.assertIn("writes no body for it here", flow["couldNotResolve"])
 
     def test_the_run_says_so_out_loud_rather_than_leaving_it_to_the_page(self):
         with self.assertLogs("module_depth_map.graph", level=logging.WARNING) as logged:
@@ -334,7 +477,7 @@ class TheFlowsAreDefinedByTheirEntryPointInTheConfigurationTest(FlowTest):
         from_prices = self.one_flow(module="shop.till.Prices", method="of")
 
         self.assertEqual(
-            ["Till", "ReceiptRepository", "Prices", "Rates", "Receipt"],
+            ["Till", "Prices", "Rates", "ReceiptRepository", "Receipt"],
             [step["name"] for step in from_the_till["path"]],
         )
         self.assertEqual(
@@ -482,6 +625,75 @@ class TheFlowsThisRepositoryShipsTest(SourceTreeTest):
 
         self.assertIn("PointsService", claim)
         self.assertIn("Redemption", claim)
+
+    def test_every_step_is_a_reach_the_module_it_came_from_already_has(self):
+        """The two readings of one source, held against each other.
+
+        A flow follows a name the way reach does — the same resolver, the same imports,
+        the same package — so every edge on a path has to be an edge in the fan the card
+        draws. An edge the fan does not hold would be the one fault this tool cannot
+        afford: a path drawn from one reading of the source and a shape drawn from
+        another, with a reader unable to say which of the two the page was showing them.
+        """
+        by_id = {module["id"]: module for module in self.document["modules"]}
+
+        for flow in self.document["flows"]:
+            for step in flow["path"][1:]:
+                reaches = {
+                    reached["moduleId"]
+                    for reached in by_id[step["reachedFrom"]]["reach"]["reaches"]
+                }
+                self.assertIn(
+                    step["moduleId"],
+                    reaches,
+                    "%s: %s is on the path from %s, which does not reach it"
+                    % (flow["flow"], step["moduleId"], step["reachedFrom"]),
+                )
+
+    def test_a_module_is_never_numbered_before_the_module_that_called_it(self):
+        """What "in the order it passes through them" has to mean, at minimum.
+
+        A flow cannot arrive somewhere before it arrives at whatever sent it there. The
+        walk gives every module the step it was first entered at, so this holds for any
+        source; it stops holding the moment the path is ordered by anything other than
+        the walk — sorting the steps by kind and name breaks it on the first flow.
+        """
+        for flow in self.document["flows"]:
+            at = {step["moduleId"]: step["step"] for step in flow["path"]}
+            for step in flow["path"][1:]:
+                self.assertLess(
+                    at[step["reachedFrom"]],
+                    step["step"],
+                    "%s: %s is numbered before %s, which called it"
+                    % (flow["flow"], step["moduleId"], step["reachedFrom"]),
+                )
+
+    def test_a_deposit_asks_the_accounts_before_it_records_anything(self):
+        """The order of the event, which is the order `DepositsService.deposit` is written in.
+
+        The accounts are asked first — a deposit is a movement between two of them, and if
+        there is no such movement to make the amount is beside the point — and the deposit
+        is saved after. Read off the entry module's fan instead, the steps come out sorted
+        by kind and then by name, which puts the repository first and tells a reader the
+        story backwards.
+        """
+        at = {step["name"]: step["step"] for step in self.flows["a deposit"]["path"]}
+
+        self.assertLess(at["AccountsService"], at["DepositRepository"])
+        self.assertLess(at["DepositRepository"], at["PointsCreditRepository"])
+
+    def test_a_deposit_does_not_pass_through_the_customers_table(self):
+        """A deposit names both accounts by identifier and never reads a customer.
+
+        `AccountsService.accountsOf` does, and `CustomerAccounts` is built nowhere else, so
+        both are in the entry module's transitive reach and neither is on this flow. Held
+        as a test because a flow read off that reach put both of them on the page, and the
+        SQL a deposit actually runs names no `customer` table at all.
+        """
+        deposit = [step["name"] for step in self.flows["a deposit"]["path"]]
+
+        self.assertNotIn("CustomerRepository", deposit)
+        self.assertNotIn("CustomerAccounts", deposit)
 
     def test_the_three_flows_are_three_different_paths(self):
         """Otherwise one entry point is doing the work of three, and none of them traces."""

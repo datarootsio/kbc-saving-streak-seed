@@ -30,8 +30,11 @@ log = logging.getLogger("module_depth_map.graph")
 # whether the two could be held against each other at all. It moved to /6 when the
 # document grew a top-level `flows` list: the business events the configuration asks to be
 # traced, each with the path through the modules that was walked for it, or the reason
-# there is none.
-SCHEMA = "module-depth-map/6"
+# there is none. It moved to /7 when that walk became a walk of the *calls* the entry
+# method makes rather than of the entry module's reach, so every step gained the
+# `calledFrom` and the `call` that put the flow there — the method the call was written
+# in, and the call as the source wrote it.
+SCHEMA = "module-depth-map/7"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -248,7 +251,7 @@ def build(roots, rules):
     _check_the_refusals(modules, rules)
     _measure_depth(read, rules)
     _run_the_deletion_test(modules, rules)
-    flows = _trace_the_flows(modules, rules)
+    flows = _trace_the_flows(read, modules, rules)
 
     packages = {}
     for module in modules:
@@ -451,35 +454,52 @@ def _run_the_deletion_test(modules, rules):
         )
 
 
-def _trace_the_flows(modules, rules):
-    """Walk each business event the configuration names out of the graph's own reach.
+def _trace_the_flows(read, modules, rules):
+    """Walk each business event the configuration names out of the calls the source writes.
 
     A fourth pass, and the only one about the whole application rather than about one
-    module. The configuration says where a flow starts — one module, one method on it —
-    and says nothing else; every module the flow passes through is walked from there
-    through the fan each module already has, so a flow is a reading of the code rather
-    than a second description of it kept beside the code by hand.
+    module. The configuration says where a flow starts — one module, and one method on it
+    a caller can call — and says nothing else. Everything below that is read out of the
+    source: the calls that method's body makes, in the order Java evaluates them, then
+    the calls the body of each *called* method makes, and so on until the walk runs out of
+    bodies this source tree holds.
 
-    The walk is depth first and takes each module's reach in the order the document holds
-    it, which is the order a reader sees under the card: entering a module, the flow goes
-    through what that module coordinates before it goes on to the next thing its caller
-    coordinates. A module already walked is not walked again — the graph has cycles in it
-    and a flow is a path through modules, not a transcript of calls — so the step it was
-    first entered at is the step it keeps.
+    The grain is the method, and that is the whole of what makes a flow a flow. Walked
+    over the reach on each card instead, a flow is the entry module's entire transitive
+    reach: `DepositsService.deposit` never goes near the customers table, but
+    `AccountsService.accountsOf` does, so a deposit walked that way passes through
+    `CustomerRepository` and `CustomerAccounts` — two modules a deposit does not touch —
+    and two flows differing only in their method come back byte-identical. Reach is right
+    for what it is for. It is a set of distinct things, so that a module cannot raise its
+    depth by writing more calls; a set has no order and no idea which method wrote it, and
+    a path needs both.
 
-    Nothing is followed that this graph does not hold. Every entry in a fan that names a
-    module names one the graph contains, and the transaction, which is reached and is not
-    a module, is not a step: a flow passes through modules, and nothing on the page could
-    be highlighted for it.
+    The order is the order the calls are written and evaluated. A module already entered
+    keeps the step it was first entered at — the graph has cycles in it and a flow is a
+    path through modules, not a transcript of calls — but the *method* is followed anyway,
+    because `pairingFor` and `withdrawFrom` on one module go different places.
 
-    Three things can stop a walk before it starts, and each of them ends with the flow
-    carrying no path at all rather than a shorter one. A flow whose modules are half
-    walked is the one output worse than no flow: it draws a path a reader can follow,
-    every module on it is real, and the event it claims to trace stopped happening that
-    way some commits ago. So the reason is recorded on the flow, logged as a warning, and
-    printed on the page in place of the path.
+    A call on the module's own method is followed and is not a step: the flow is already
+    in that module. This is not a nicety either — `deposit` does all three of its refusals
+    through private helpers, and a walk that only read the public method would report a
+    deposit as reaching nothing at all.
+
+    Nothing is followed that this graph does not hold, and nothing is guessed at.
+    `clock.instant()`, `log.debug(...)`, a call on the result of another call: each names
+    something outside this source or something only javac could resolve, and is dropped
+    rather than turned into a step nobody can check.
+
+    Four things can stop a walk, and each of them ends with the flow carrying no path at
+    all rather than a shorter one. A flow whose modules are half walked is the one output
+    worse than no flow: it draws a path a reader can follow, every module on it is real,
+    and the event it claims to trace stopped happening that way some commits ago. So the
+    reason is recorded on the flow, logged as a warning, and printed on the page in place
+    of the path.
     """
     by_id = {module["id"]: module for module in modules}
+    declared_by_id = {module["id"]: declared for module, declared, _ in read}
+    written_among = _written_among(read)
+    calls_of = _calls_reader(read, rules, declared_by_id, written_among)
     flows = []
     for flow in rules.flows:
         entry = {
@@ -492,7 +512,14 @@ def _trace_the_flows(modules, rules):
             "path": [],
         }
         flows.append(entry)
-        unresolved = _why_the_flow_cannot_start(flow, by_id)
+        unresolved = _why_the_flow_cannot_start(flow, by_id, declared_by_id)
+        path = [] if unresolved is not None else _walked_from(flow, by_id, calls_of)
+        if unresolved is None and len(path) < 2:
+            unresolved = (
+                "calling %s on %s reaches no other module this graph holds, so this flow "
+                "passes through the one module it starts at and is not a path through the "
+                "application" % (flow.method, flow.module)
+            )
         if unresolved is not None:
             entry["couldNotResolve"] = unresolved
             log.warning(
@@ -504,16 +531,16 @@ def _trace_the_flows(modules, rules):
                 unresolved,
             )
             continue
-        entry["path"] = _walked_from(flow, by_id)
+        entry["path"] = path
         entry["resolved"] = True
-        entry["modules"] = len(entry["path"])
+        entry["modules"] = len(path)
         log.info(
             "flow traced flow=%s entryPoint=%s.%s modules=%d through=%s",
             flow.flow,
             flow.module,
             flow.method,
             entry["modules"],
-            ",".join(step["moduleId"] for step in entry["path"]),
+            ",".join(step["moduleId"] for step in path),
         )
     log.info(
         "flows read flows=%d traced=%d notTraced=%d",
@@ -524,7 +551,40 @@ def _trace_the_flows(modules, rules):
     return flows
 
 
-def _why_the_flow_cannot_start(flow, by_id):
+def _calls_reader(read, rules, declared_by_id, written_among):
+    """A reader answering what one method of one module calls, remembering what it read.
+
+    Remembered because a walk asks the same question more than once — two flows enter
+    `AccountsService.pairingFor`, and one flow enters `AmountOfMoney.whyItIsNotOne` from
+    three different helpers — and re-reading a body to get the same answer is work the
+    tool can see is pointless. The answers are a pure function of the source, so a
+    remembered one and a fresh one cannot differ.
+    """
+    parsed_by_id = {module["id"]: parsed for module, _, parsed in read}
+    nested_by_id = {module["id"]: module["nested"] for module, _, _ in read}
+    answered = {}
+
+    def calls_of(module_id, method_name):
+        here = answered.get((module_id, method_name))
+        if here is None:
+            parsed = parsed_by_id[module_id]
+            here = rules.calls_from(
+                method_name,
+                declared_by_id[module_id],
+                module_id,
+                parsed.package,
+                parsed.imports,
+                declared_by_id,
+                nested_by_id[module_id],
+                written_among,
+            )
+            answered[(module_id, method_name)] = here
+        return here
+
+    return calls_of
+
+
+def _why_the_flow_cannot_start(flow, by_id, declared_by_id):
     """What stops this flow being walked, in a sentence, or None when nothing does.
 
     Each answer names the thing that was looked for and the thing that was found instead,
@@ -548,24 +608,33 @@ def _why_the_flow_cannot_start(flow, by_id):
                 ", ".join(sorted(set(reachable))) or "no such method at all",
             )
         )
-    if not any(reached["moduleId"] in by_id for reached in module["reach"]["reaches"]):
+    # A method with no body under it is a promise that somebody else will write one, and
+    # whoever does is in a file this walk was not pointed at. Named as its own failure
+    # rather than left to come out as "reaches nothing", because the two are different
+    # faults and send a reader to different places: one method emptied out, or a flow
+    # entered through an interface instead of the module that implements it.
+    written = [
+        method for method in declared_by_id[flow.module].methods
+        if method.name == flow.method and method.has_a_body
+    ]
+    if not written:
         return (
-            "%s reaches nothing this graph holds, so this flow passes through the one "
-            "module it starts at and is not a path through the application" % flow.module
+            "%s declares %s but writes no body for it here, so there are no calls to "
+            "follow — a flow is entered through the module that implements the call, not "
+            "through one that only promises it" % (flow.module, flow.method)
         )
     return None
 
 
-def _walked_from(flow, by_id):
-    """The modules this flow passes through, in the order the walk enters them."""
+def _walked_from(flow, by_id, calls_of):
+    """The modules this flow passes through, in the order the calls enter them."""
     path = []
     entered = set()
+    followed = set()
 
-    def go(module_id, reached_from, matched):
-        if module_id in entered:
-            return
-        entered.add(module_id)
+    def enter(module_id, reached_from, called_from, call, matched):
         module = by_id[module_id]
+        entered.add(module_id)
         path.append(
             {
                 "step": len(path) + 1,
@@ -573,19 +642,58 @@ def _walked_from(flow, by_id):
                 "name": module["name"],
                 "package": module["package"],
                 "reachedFrom": reached_from,
+                "calledFrom": called_from,
+                "call": call,
                 "matched": matched,
             }
         )
-        for reached in module["reach"]["reaches"]:
-            if reached["moduleId"] in by_id:
-                go(reached["moduleId"], module_id, reached["matched"])
 
-    go(
+    def go(module_id, method_name):
+        # One (module, method) pair is read once. The pair rather than the module, because
+        # two methods of one module go two places; and read once rather than every time it
+        # is called, because this application's modules call each other in circles and a
+        # flow is a path through them, not a transcript that never ends.
+        if (module_id, method_name) in followed:
+            return
+        followed.add((module_id, method_name))
+        for call in calls_of(module_id, method_name):
+            if call["own"]:
+                go(module_id, call["method"])
+                continue
+            target = call["moduleId"]
+            if target not in by_id:
+                continue
+            if target not in entered:
+                enter(target, module_id, method_name, call["call"], call["matched"])
+            if call["method"] is not None:
+                go(target, call["method"])
+
+    enter(
         flow.module,
+        None,
+        None,
         None,
         "the flow is entered here, by calling %s" % flow.method,
     )
+    go(flow.module, flow.method)
     return path
+
+
+def _written_among(read):
+    """What each module was written among, by id: its package, its imports, its nested types.
+
+    Wanted for the modules *above* the one being read as well as for that one — a
+    supertype's method shadows a static import of its name, and a supertype's nested type
+    shadows the package — and which module a supertype's own name means is settled by the
+    file that names it rather than by the file being read. Built here rather than twice,
+    because reach and the flows follow a name the same way and have to: a fan drawn from
+    one reading and a path drawn from another would leave a reader unable to say which of
+    the two the page was showing them.
+    """
+    return {
+        module["id"]: (parsed.package, parsed.imports, module["nested"])
+        for module, _, parsed in read
+    }
 
 
 def _measure_depth(read, rules):
@@ -609,16 +717,7 @@ def _measure_depth(read, rules):
     the member types of whatever it is built on, and those shadow the same way.
     """
     declared_by_id = {module["id"]: declared for module, declared, _ in read}
-    # What each module was written among, by id: the package it sits in, the imports of
-    # its file, and the types it nests. Reach needs this for the modules *above* the one
-    # it is reading as well as for that one — a supertype's method shadows a static import
-    # of its name, and a supertype's nested type shadows the package — and which module a
-    # supertype's own name means is settled by the file that names it rather than by the
-    # file being read.
-    written_among = {
-        module["id"]: (parsed.package, parsed.imports, module["nested"])
-        for module, _, parsed in read
-    }
+    written_among = _written_among(read)
     for module, declared, parsed in read:
         module["reach"] = rules.reach_of(
             declared, module["id"], parsed.package, parsed.imports, declared_by_id,

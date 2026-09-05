@@ -8,9 +8,11 @@
         "moduleId": "io.dataroots.savingstreak.deposits.DepositsService"
       },
       "flow": "a deposit",
-      "modules": 14,
+      "modules": 12,
       "path": [
         {
+          "call": null,
+          "calledFrom": null,
           "matched": "the flow is entered here, by calling deposit",
           "moduleId": "io.dataroots.savingstreak.deposits.DepositsService",
           "name": "DepositsService",
@@ -19,22 +21,28 @@
           "step": 1
         },
         {
-          "matched": "called through the field deposits, which holds a DepositRepository",
-          "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
-          "name": "DepositRepository",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
-          "step": 2
-        },
-        {
-          "matched": "called on AccountsService",
+          "call": "accounts.pairingFor",
+          "calledFrom": "refuseUnlessOneCustomersOwnAccounts",
+          "matched": "called through the field accounts, which holds a AccountsService",
           "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
           "name": "AccountsService",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
+          "step": 2
+        },
+        {
+          "call": "savingsAccounts.findHolderIdById",
+          "calledFrom": "pairingFor",
+          "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
+          "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
+          "name": "SavingsAccountRepository",
+          "package": "io.dataroots.savingstreak.accounts",
+          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
           "step": 3
         },
         {
+          "call": "currentAccounts.findHolderIdById",
+          "calledFrom": "pairingFor",
           "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
           "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
           "name": "CurrentAccountRepository",
@@ -43,54 +51,68 @@
           "step": 4
         },
         {
-          "matched": "called through the field customers, which holds a CustomerRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerRepository",
-          "name": "CustomerRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 5
-        },
-        {
-          "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
-          "name": "SavingsAccountRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 6
-        },
-        {
-          "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerAccounts",
-          "name": "CustomerAccounts",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 7
-        },
-        {
-          "matched": "called on AmountOfMoney",
-          "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
-          "name": "AmountOfMoney",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
-          "step": 8
-        },
-        {
+          "call": "new DepositRefused",
+          "calledFrom": "refuseUnlessOneCustomersOwnAccounts",
           "matched": "builds one",
           "moduleId": "io.dataroots.savingstreak.deposits.DepositRefused",
           "name": "DepositRefused",
           "package": "io.dataroots.savingstreak.deposits",
           "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
-          "step": 9
+          "step": 5
         },
         {
+          "call": "AmountOfMoney.whyItIsNotOne",
+          "calledFrom": "refuseUnlessAnAmountOfMoney",
+          "matched": "called on AmountOfMoney",
+          "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
+          "name": "AmountOfMoney",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
+          "step": 6
+        },
+        {
+          "call": "new Deposit",
+          "calledFrom": "deposit",
+          "matched": "builds one: annotated with Entity",
+          "moduleId": "io.dataroots.savingstreak.deposits.Deposit",
+          "name": "Deposit",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
+          "step": 7
+        },
+        {
+          "call": "deposits.save",
+          "calledFrom": "deposit",
+          "matched": "called through the field deposits, which holds a DepositRepository",
+          "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
+          "name": "DepositRepository",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
+          "step": 8
+        },
+        {
+          "call": "points.creditBasePointsFor",
+          "calledFrom": "deposit",
           "matched": "called through the field points, which holds a PointsService",
           "moduleId": "io.dataroots.savingstreak.points.PointsService",
           "name": "PointsService",
           "package": "io.dataroots.savingstreak.points",
           "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
+          "step": 9
+        },
+        {
+          "call": "PointsCredit.baseAccrualFor",
+          "calledFrom": "creditBasePointsFor",
+          "matched": "called on PointsCredit",
+          "moduleId": "io.dataroots.savingstreak.points.PointsCredit",
+          "name": "PointsCredit",
+          "package": "io.dataroots.savingstreak.points",
+          "reachedFrom": "io.dataroots.savingstreak.points.PointsService",
           "step": 10
         },
         {
+          "call": "credits.save",
+          "calledFrom": "creditBasePointsFor",
           "matched": "called through the field credits, which holds a PointsCreditRepository",
           "moduleId": "io.dataroots.savingstreak.points.PointsCreditRepository",
           "name": "PointsCreditRepository",
@@ -99,28 +121,14 @@
           "step": 11
         },
         {
-          "matched": "called on PointsCredit",
-          "moduleId": "io.dataroots.savingstreak.points.PointsCredit",
-          "name": "PointsCredit",
-          "package": "io.dataroots.savingstreak.points",
-          "reachedFrom": "io.dataroots.savingstreak.points.PointsService",
-          "step": 12
-        },
-        {
+          "call": "new RecordedDeposit",
+          "calledFrom": "deposit",
           "matched": "builds one",
           "moduleId": "io.dataroots.savingstreak.deposits.RecordedDeposit",
           "name": "RecordedDeposit",
           "package": "io.dataroots.savingstreak.deposits",
           "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
-          "step": 13
-        },
-        {
-          "matched": "builds one: annotated with Entity",
-          "moduleId": "io.dataroots.savingstreak.deposits.Deposit",
-          "name": "Deposit",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.DepositsService",
-          "step": 14
+          "step": 12
         }
       ],
       "resolved": true
@@ -133,9 +141,11 @@
         "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalsService"
       },
       "flow": "a withdrawal, and the deposits it draws down",
-      "modules": 15,
+      "modules": 13,
       "path": [
         {
+          "call": null,
+          "calledFrom": null,
           "matched": "the flow is entered here, by calling withdraw",
           "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalsService",
           "name": "WithdrawalsService",
@@ -144,86 +154,108 @@
           "step": 1
         },
         {
-          "matched": "called through the field deposits, which holds a DepositRepository",
-          "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
-          "name": "DepositRepository",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 2
-        },
-        {
-          "matched": "called through the field allocations, which holds a WithdrawalAllocationRepository",
-          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
-          "name": "WithdrawalAllocationRepository",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 3
-        },
-        {
-          "matched": "called through the field withdrawals, which holds a WithdrawalRepository",
-          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
-          "name": "WithdrawalRepository",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 4
-        },
-        {
-          "matched": "called on AccountsService",
+          "call": "accounts.pairingFor",
+          "calledFrom": "refuseUnlessOneCustomersOwnAccounts",
+          "matched": "called through the field accounts, which holds a AccountsService",
           "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
           "name": "AccountsService",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 5
+          "step": 2
         },
         {
-          "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
-          "name": "CurrentAccountRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 6
-        },
-        {
-          "matched": "called through the field customers, which holds a CustomerRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerRepository",
-          "name": "CustomerRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 7
-        },
-        {
+          "call": "savingsAccounts.findHolderIdById",
+          "calledFrom": "pairingFor",
           "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
           "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
           "name": "SavingsAccountRepository",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 8
+          "step": 3
         },
         {
-          "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerAccounts",
-          "name": "CustomerAccounts",
+          "call": "currentAccounts.findHolderIdById",
+          "calledFrom": "pairingFor",
+          "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
+          "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
+          "name": "CurrentAccountRepository",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 9
+          "step": 4
         },
         {
+          "call": "new WithdrawalRefused",
+          "calledFrom": "refuseUnlessOneCustomersOwnAccounts",
+          "matched": "builds one",
+          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
+          "name": "WithdrawalRefused",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "step": 5
+        },
+        {
+          "call": "AmountOfMoney.whyItIsNotOne",
+          "calledFrom": "refuseUnlessAnAmountOfMoney",
           "matched": "called on AmountOfMoney",
           "moduleId": "io.dataroots.savingstreak.deposits.AmountOfMoney",
           "name": "AmountOfMoney",
           "package": "io.dataroots.savingstreak.deposits",
           "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "step": 6
+        },
+        {
+          "call": "deposits.findBySavingsAccountIdOrderByDepositedAtAscIdAsc",
+          "calledFrom": "withdraw",
+          "matched": "called through the field deposits, which holds a DepositRepository",
+          "moduleId": "io.dataroots.savingstreak.deposits.DepositRepository",
+          "name": "DepositRepository",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "step": 7
+        },
+        {
+          "call": "new Withdrawal",
+          "calledFrom": "withdraw",
+          "matched": "builds one: annotated with Entity",
+          "moduleId": "io.dataroots.savingstreak.deposits.Withdrawal",
+          "name": "Withdrawal",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "step": 8
+        },
+        {
+          "call": "withdrawals.save",
+          "calledFrom": "withdraw",
+          "matched": "called through the field withdrawals, which holds a WithdrawalRepository",
+          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
+          "name": "WithdrawalRepository",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+          "step": 9
+        },
+        {
+          "call": "new WithdrawalAllocation",
+          "calledFrom": "withdraw",
+          "matched": "builds one: annotated with Entity",
+          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
+          "name": "WithdrawalAllocation",
+          "package": "io.dataroots.savingstreak.deposits",
+          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
           "step": 10
         },
         {
-          "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
-          "name": "RecordedWithdrawal",
+          "call": "allocations.saveAll",
+          "calledFrom": "withdraw",
+          "matched": "called through the field allocations, which holds a WithdrawalAllocationRepository",
+          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
+          "name": "WithdrawalAllocationRepository",
           "package": "io.dataroots.savingstreak.deposits",
           "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
           "step": 11
         },
         {
+          "call": "new RecordedWithdrawalAllocation",
+          "calledFrom": "recorded",
           "matched": "builds one",
           "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
           "name": "RecordedWithdrawalAllocation",
@@ -232,28 +264,14 @@
           "step": 12
         },
         {
+          "call": "new RecordedWithdrawal",
+          "calledFrom": "recorded",
           "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
-          "name": "WithdrawalRefused",
+          "moduleId": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
+          "name": "RecordedWithdrawal",
           "package": "io.dataroots.savingstreak.deposits",
           "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
           "step": 13
-        },
-        {
-          "matched": "builds one: annotated with Entity",
-          "moduleId": "io.dataroots.savingstreak.deposits.Withdrawal",
-          "name": "Withdrawal",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 14
-        },
-        {
-          "matched": "builds one: annotated with Entity",
-          "moduleId": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
-          "name": "WithdrawalAllocation",
-          "package": "io.dataroots.savingstreak.deposits",
-          "reachedFrom": "io.dataroots.savingstreak.deposits.WithdrawalsService",
-          "step": 15
         }
       ],
       "resolved": true
@@ -266,9 +284,11 @@
         "moduleId": "io.dataroots.savingstreak.rewards.RewardsService"
       },
       "flow": "a reward claimed",
-      "modules": 14,
+      "modules": 9,
       "path": [
         {
+          "call": null,
+          "calledFrom": null,
           "matched": "the flow is entered here, by calling claim",
           "moduleId": "io.dataroots.savingstreak.rewards.RewardsService",
           "name": "RewardsService",
@@ -277,108 +297,84 @@
           "step": 1
         },
         {
-          "matched": "called through the field redemptions, which holds a RedemptionRepository",
-          "moduleId": "io.dataroots.savingstreak.rewards.RedemptionRepository",
-          "name": "RedemptionRepository",
-          "package": "io.dataroots.savingstreak.rewards",
-          "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 2
-        },
-        {
-          "matched": "called on AccountsService",
+          "call": "accounts.savingsAccountExists",
+          "calledFrom": "claim",
+          "matched": "called through the field accounts, which holds a AccountsService",
           "moduleId": "io.dataroots.savingstreak.accounts.AccountsService",
           "name": "AccountsService",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 3
+          "step": 2
         },
         {
-          "matched": "called through the field currentAccounts, which holds a CurrentAccountRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
-          "name": "CurrentAccountRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 4
-        },
-        {
-          "matched": "called through the field customers, which holds a CustomerRepository",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerRepository",
-          "name": "CustomerRepository",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 5
-        },
-        {
+          "call": "savingsAccounts.existsById",
+          "calledFrom": "savingsAccountExists",
           "matched": "called through the field savingsAccounts, which holds a SavingsAccountRepository",
           "moduleId": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
           "name": "SavingsAccountRepository",
           "package": "io.dataroots.savingstreak.accounts",
           "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 6
+          "step": 3
         },
         {
-          "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.accounts.CustomerAccounts",
-          "name": "CustomerAccounts",
-          "package": "io.dataroots.savingstreak.accounts",
-          "reachedFrom": "io.dataroots.savingstreak.accounts.AccountsService",
-          "step": 7
-        },
-        {
-          "matched": "called through the field points, which holds a PointsService",
-          "moduleId": "io.dataroots.savingstreak.points.PointsService",
-          "name": "PointsService",
-          "package": "io.dataroots.savingstreak.points",
-          "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 8
-        },
-        {
-          "matched": "called through the field credits, which holds a PointsCreditRepository",
-          "moduleId": "io.dataroots.savingstreak.points.PointsCreditRepository",
-          "name": "PointsCreditRepository",
-          "package": "io.dataroots.savingstreak.points",
-          "reachedFrom": "io.dataroots.savingstreak.points.PointsService",
-          "step": 9
-        },
-        {
-          "matched": "called on PointsCredit",
-          "moduleId": "io.dataroots.savingstreak.points.PointsCredit",
-          "name": "PointsCredit",
-          "package": "io.dataroots.savingstreak.points",
-          "reachedFrom": "io.dataroots.savingstreak.points.PointsService",
-          "step": 10
-        },
-        {
-          "matched": "called on Reward",
-          "moduleId": "io.dataroots.savingstreak.rewards.Reward",
-          "name": "Reward",
-          "package": "io.dataroots.savingstreak.rewards",
-          "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 11
-        },
-        {
+          "call": "new RewardRefused",
+          "calledFrom": "claim",
           "matched": "builds one",
           "moduleId": "io.dataroots.savingstreak.rewards.RewardRefused",
           "name": "RewardRefused",
           "package": "io.dataroots.savingstreak.rewards",
           "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 12
+          "step": 4
         },
         {
+          "call": "points.spend",
+          "calledFrom": "claim",
+          "matched": "called through the field points, which holds a PointsService",
+          "moduleId": "io.dataroots.savingstreak.points.PointsService",
+          "name": "PointsService",
+          "package": "io.dataroots.savingstreak.points",
+          "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
+          "step": 5
+        },
+        {
+          "call": "credits.unspentOldestFirst",
+          "calledFrom": "spend",
+          "matched": "called through the field credits, which holds a PointsCreditRepository",
+          "moduleId": "io.dataroots.savingstreak.points.PointsCreditRepository",
+          "name": "PointsCreditRepository",
+          "package": "io.dataroots.savingstreak.points",
+          "reachedFrom": "io.dataroots.savingstreak.points.PointsService",
+          "step": 6
+        },
+        {
+          "call": "Redemption.issue",
+          "calledFrom": "claim",
           "matched": "called on Redemption",
           "moduleId": "io.dataroots.savingstreak.rewards.Redemption",
           "name": "Redemption",
           "package": "io.dataroots.savingstreak.rewards",
           "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
-          "step": 13
+          "step": 7
         },
         {
-          "matched": "builds one",
-          "moduleId": "io.dataroots.savingstreak.rewards.ClaimedReward",
-          "name": "ClaimedReward",
+          "call": "reward.voucherPrefix",
+          "calledFrom": "aVoucherFor",
+          "matched": "called through the field reward, which holds a Reward",
+          "moduleId": "io.dataroots.savingstreak.rewards.Reward",
+          "name": "Reward",
           "package": "io.dataroots.savingstreak.rewards",
           "reachedFrom": "io.dataroots.savingstreak.rewards.Redemption",
-          "step": 14
+          "step": 8
+        },
+        {
+          "call": "redemptions.save",
+          "calledFrom": "claim",
+          "matched": "called through the field redemptions, which holds a RedemptionRepository",
+          "moduleId": "io.dataroots.savingstreak.rewards.RedemptionRepository",
+          "name": "RedemptionRepository",
+          "package": "io.dataroots.savingstreak.rewards",
+          "reachedFrom": "io.dataroots.savingstreak.rewards.RewardsService",
+          "step": 9
         }
       ],
       "resolved": true
@@ -7039,7 +7035,7 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/6",
+  "schema": "module-depth-map/7",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "deletionTest": {

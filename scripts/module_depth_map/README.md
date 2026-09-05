@@ -111,7 +111,12 @@ Run its tests with the standard library's own runner, also from the repository r
   `module-depth-map/4` when every module gained its `callers` and the `deletionTest`
   verdict read off them, and to `module-depth-map/5` when every module gained its
   `findings` and its `interface` gained a `refusals` band with the `refusalCost` and
-  `costWithoutRefusals` the total is split into.
+  `costWithoutRefusals` the total is split into, and to `module-depth-map/6` when the
+  document grew a top-level `flows` list — the business events the configuration asks to
+  be traced, each with the path walked for it or the reason there is none — and to
+  `module-depth-map/7` when that walk became a walk of the calls the entry method makes
+  rather than of the entry module's reach, so every step gained the `calledFrom` and the
+  `call` that put the flow there.
   The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
@@ -631,24 +636,54 @@ events are reachable through modules a single caller holds, so a flow named by i
 alone would be a claim about everything that module does — and a method renamed out from
 under a flow is exactly the drift a flow should fail on rather than quietly survive.
 
-**The path is walked, never written down.** From the entry point the tool follows the same
-fans the cards below are drawn from: depth first, taking each module's reach in the order
-the document holds it, which is the order the card lists it in. A module already entered is
-not entered again — the graph has cycles in it, and a flow is a path through modules rather
-than a transcript of calls — so it keeps the step it was first entered at. The transaction
-a module establishes is reached and is not a step, because a flow passes through modules and
-nothing on the page could be highlighted for it. Every module a flow names is therefore a
-module the graph contains, by construction rather than by care.
+**The path is walked, never written down, and it is walked at method grain.** From the
+entry point the tool reads the calls that method's body makes, in the order Java evaluates
+them, and follows each one into the body it names — then the calls *that* body makes, and
+so on until it runs out of bodies this source holds. A call on the module's own method is
+followed and is not a step of its own, because the flow is already in that module:
+`DepositsService.deposit` does all three of its refusals through private helpers, and a
+walk that read only the public method would report a deposit as reaching nothing at all. A
+module already entered is not entered again — the graph has cycles in it, and a flow is a
+path through modules rather than a transcript of calls — so it keeps the step it was first
+entered at, while the *method* is followed anyway, since `pairingFor` and `withdrawFrom` on
+one module go different places. Every module a flow names is a module the graph contains,
+by construction rather than by care.
 
-**A walk that cannot start ends in no path at all, never in a shorter one.** Three things
+The grain is the whole of it. Walked over the fans instead — which is how this was first
+written, and it was wrong — a flow is its entry module's entire transitive reach:
+`DepositsService.deposit` never goes near the customers table, but
+`AccountsService.accountsOf` does, so a deposit walked that way passed through
+`CustomerRepository` and `CustomerAccounts`, two modules a deposit does not touch, and two
+flows differing only in their method came back byte-identical. The order was wrong for the
+same reason: a fan is sorted by kind and then by name, so `DepositRepository` was numbered
+ahead of the `AccountsService` that a deposit asks first. A fan answers what a module
+coordinates and has to be a set of distinct things, so that no module can raise its depth
+by writing more calls; a set has no order and no idea which method wrote it, and a path
+needs both. So the two readings are separate, and `graph.py` holds them against each other:
+every edge on a path has to be an edge in the fan the same source produced.
+
+**A path is a floor, in the same direction a fan is.** Only names this graph holds are
+followed, so a call into the JDK or into a framework is no step, and neither is a call this
+reading cannot follow to a module: a call on the result of another call (`a.b().c()`), a
+call on a parameter or a local rather than on a field, a method inherited from a type
+outside this source. Nothing about which branch runs is modelled — a refusal a call can
+answer with is on the flow whether or not a given deposit trips it, because this is a
+reading of the source and not a trace of one run. Overloads are read as one: which of two
+same-named methods a call meant is javac's answer and not this tool's, so every method of
+that name is read.
+
+**A walk that cannot be made ends in no path at all, never in a shorter one.** Four things
 can stop it, and each is recorded on the flow, logged as a warning by the run, and printed
 on the page in place of the path:
 
 - no module of that id is in the graph, so there is nowhere for the flow to start;
 - the module is there and presents no method of that name a caller can reach, so nothing
   in it is the call the flow is entered by — the reason names what it does present;
-- the module reaches nothing this graph holds, so the flow passes through the one module it
-  starts at and is not a path through the application.
+- the method is presented and no body is written under it here, so there are no calls to
+  follow: a flow is entered through the module that implements the call, not through one
+  that only promises it;
+- the call reaches no other module this graph holds, so the flow passes through the one
+  module it starts at and is not a path through the application.
 
 A flow half walked is the one output worse than no flow: every module on it is real, the
 path is followable, and the event it claims to trace stopped happening that way some
@@ -656,9 +691,10 @@ commits ago. So the button for such a flow cannot be pressed, and the reason sit
 chooser where the greyed-out button would send a reader looking for it.
 
 Nothing about a flow is worked out while the page is drawn. The path arrives in the graph
-document as a numbered list, each step naming the module it was reached from and the same
-sentence the fan was read with, and the page reads that list — so the highlighting on the
-cards and what a later tool reads out of `module-depth-map.json` are the same facts.
+document as a numbered list, each step naming the module it was reached from, the method
+the call was written in (`calledFrom`), the call as the source wrote it (`call`), and the
+same sentence the fan was read with — and the page reads that list, so the highlighting on
+the cards and what a later tool reads out of `module-depth-map.json` are the same facts.
 
 ## What is drawn but never scored
 

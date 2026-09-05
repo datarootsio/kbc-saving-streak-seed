@@ -1579,17 +1579,38 @@ _SCRIPT = """
       "Each of these is one thing this application does, end to end. Choosing one "
       + "highlights every module it passes through and numbers them in the order it "
       + "passes through them, while everything else fades \u2014 so what one business "
-      + "event sets in motion can be told from what it does not. Clearing the choice puts "
-      + "every module back on an equal footing.");
+      + "event sets in motion can be told from what it does not. Choosing it again, or "
+      + "pressing Clear, puts every module back on an equal footing.");
     add(section, "p", null,
       "No flow is a path anybody wrote down. Each is defined in "
       + document_.scoring.configuration + " by its entry point alone \u2014 one module, "
-      + "and one method a caller calls on it \u2014 and the modules under it are walked "
-      + "out of the same fans drawn on the cards below, depth first, each module's reach "
-      + "in the order the card lists it. So a flow cannot go on describing an application "
-      + "this source no longer holds: where the walk cannot start, the flow is drawn with "
-      + "no path at all rather than with a shorter one, and says which of the three ways "
-      + "it failed.");
+      + "and one method a caller calls on it \u2014 and the path is walked out of the "
+      + "source from there: the calls that method's body makes, in the order Java "
+      + "evaluates them, then the calls each called body makes, until the walk runs out "
+      + "of bodies this source holds. A call on the module's own method is followed and "
+      + "is no step of its own, since the flow is already there; a module called twice "
+      + "keeps the step it was first entered at, since a flow is a path through modules "
+      + "rather than a transcript of calls.");
+    add(section, "p", null,
+      "The grain is the method, and that is the whole of what makes this a flow rather "
+      + "than a claim about a class. Walked over the fans on the cards instead, a flow is "
+      + "its entry module's entire transitive reach, in the order the fan happens to be "
+      + "sorted in, and two flows differing only in the method they name come out "
+      + "identical \u2014 a fan is deliberately a set, so that no module can raise its "
+      + "depth by writing more calls, and a set has neither an order nor any idea which "
+      + "method wrote it.");
+    add(section, "p", null,
+      "A path is a floor, for the same reasons a fan is, and in the same direction. Only "
+      + "names this graph holds are followed, so a call into the JDK or into a framework "
+      + "is no step. Nor is a call this reading cannot follow to a module: a call on the "
+      + "result of another call (a.b().c()), a call on a parameter or a local rather than "
+      + "on a field, a method inherited from a type outside this source. Nothing about "
+      + "which branch runs is modelled either \u2014 a refusal a call can answer with is "
+      + "on the flow whether or not a given deposit trips it, because this is a reading "
+      + "of the source and not a trace of one run. So a flow cannot go on describing an "
+      + "application this source no longer holds: where the walk cannot be made, the flow "
+      + "is drawn with no path at all rather than with a shorter one, and says which of "
+      + "the four ways it failed.");
     if (document_.flows.length === 0) {
       add(section, "p", "none",
         "This configuration names no flow, so there is nothing here to trace.");
@@ -1625,7 +1646,13 @@ _SCRIPT = """
       chooses.setAttribute("aria-pressed", "false");
       chooses.title = flow.because;
       flowButtons.push({flow: flow, button: chooses});
-      chooses.addEventListener("click", function () { chooseFlow(flow, says); });
+      // A toggle, because `aria-pressed` says it is one. Pressing the chosen flow again
+      // used to re-apply the state it already had, so a screen-reader user pressing it to
+      // un-choose was told nothing had changed and had to go and find Clear.
+      chooses.addEventListener("click", function () {
+        if (chooses.getAttribute("aria-pressed") === "true") { clearFlow(says); }
+        else { chooseFlow(flow, says); }
+      });
     });
     var clears = add(add(chooser, "li"), "button", "clear", "Clear");
     clears.setAttribute("type", "button");
@@ -1669,7 +1696,8 @@ _SCRIPT = """
 
   function putTheStepOn(card, step) {
     var badge = add(card, "span", "step", step.step);
-    badge.title = "step " + step.step + " of this flow \u2014 " + step.matched;
+    badge.title = "step " + step.step + " of this flow \u2014 " + step.matched
+      + (step.calledFrom === null ? "" : ", written in " + step.calledFrom);
     // First on the card, so the number sits beside the module's name rather than under
     // whichever part of the shape happened to be drawn last.
     card.insertBefore(badge, card.firstChild);
@@ -1706,7 +1734,8 @@ _SCRIPT = """
       add(item, "span", null,
         " \u2014 " + (step.reachedFrom === null
           ? step.matched
-          : "reached from " + byId[step.reachedFrom].name + ", " + step.matched));
+          : byId[step.reachedFrom].name + "." + step.calledFrom + " writes "
+            + step.call + ", " + step.matched));
     });
   }
 

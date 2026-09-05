@@ -472,16 +472,17 @@ class Flow:
     """One business event, named by the single call a caller makes to enter it.
 
     An entry point and nothing else. The modules a flow passes through are not written
-    here and cannot be: they are walked out of the graph's own reach, which is what makes
-    a flow a reading of the code rather than a second description of it sitting beside
-    the code and going stale against it. The only thing this file decides is where the
-    walk starts.
+    here and cannot be: they are walked out of the calls the source writes, which is what
+    makes a flow a reading of the code rather than a second description of it sitting
+    beside the code and going stale against it. The only thing this file decides is where
+    the walk starts.
 
-    The method is part of the entry point rather than decoration on it. Three of this
-    application's flows are entered through modules a single caller holds, and a flow
-    named by its module alone would be a claim about everything that module does — while
-    a method that has been renamed out from under the flow is exactly the drift a flow is
-    supposed to fail on rather than quietly survive.
+    The method is half of the entry point rather than decoration on it, and it decides the
+    path: `calls_from` below reads that method's body and follows the calls in it, so
+    `deposit` and `depositsInto` on one module are two different flows through two
+    different sets of modules. A flow named by its module alone would be a claim about
+    everything that module does — and a method that has been renamed out from under the
+    flow is exactly the drift a flow is supposed to fail on rather than quietly survive.
     """
 
     def __init__(self, flow, because, module, method):
@@ -795,53 +796,9 @@ class Rules:
             }
 
         inherited = self._inherited_by(module_id, modules, above or {})
-
-        # Every name that means something other than a module here, whatever an import or
-        # the package would otherwise offer for it: a type this module declares inside
-        # itself, a type it inherits from a module above it, and one of its own type
-        # parameters. `class Till<Receipt>` holding a `Receipt held` holds one of
-        # whatever its caller filled the hole with, not the `Receipt` next door — the
-        # tool already knows a type variable is not a type to follow when it counts what
-        # crosses the seam, and forgetting it here drew a line to a card the source names
-        # nowhere.
-        shadowed = (
-            {name.rsplit(".", 1)[-1] for name in nested}
-            | set(declared.type_parameters)
-            | inherited.nested
+        resolve = self._resolves_names_for(
+            declared, module_id, package, imports, modules, nested, inherited
         )
-
-        def resolve(name):
-            # A name written out in full names one thing and nothing else: the module of
-            # that id, if this source tree holds one. `new other.Receipt()` is `other`'s
-            # `Receipt` and never this package's, and cutting the package off to look the
-            # rest up here is how it became this package's — a different module, of a
-            # different kind, with an evidence string a reader could check and find false.
-            if "." in name:
-                return name if name in modules and name != module_id else None
-            # A type this module declares inside itself shadows every name an import or
-            # the package could offer, which is how Java reads it: `Kind.of(x)` written in
-            # a module that nests a `Kind` means that one, not the top-level `Kind` next
-            # door. A nested type is not a module, so the name reaches nothing. A member
-            # type is inherited as surely as a method is, so a `Kind` nested in a module
-            # this one extends shadows the same way, and so does this module's own type
-            # parameter.
-            #
-            # Every nested type is read as shadowing, however deep it sits, though one
-            # declared two levels down is only in scope in part of the body. That drops a
-            # reach the source has rather than inventing one it does not, which is the
-            # direction every reading here is willing to be wrong in.
-            if name in shadowed:
-                log.debug(
-                    "name not followed name=%s in=%s, because a type of that name is "
-                    "declared inside this module or inherited by it, or is one of its "
-                    "type parameters, and none of those is a module",
-                    name, declared.name,
-                )
-                return None
-            for candidate in javasource.candidate_ids(name, package, imports):
-                if candidate in modules and candidate != module_id:
-                    return candidate
-            return None
 
         held = {field.name: field for field in declared.fields}
         for receiver in declared.receivers:
@@ -986,6 +943,214 @@ class Rules:
             "yes" if establishes else "no",
         )
         return {"count": len(entries), "reaches": entries}
+
+    def _resolves_names_for(self, declared, module_id, package, imports, modules,
+                            nested, inherited):
+        """How a name written in this module's body is followed to a module, or to nothing.
+
+        Exactly as the compiler follows it — through what the module declares inside
+        itself, then its own file's imports, then its package — and never by matching
+        simple names across the whole graph, which would hand one module the
+        collaborators of another that happened to share a name.
+
+        Pulled out of `reach_of` so that a flow follows names the same way reach does.
+        Two readings of the same source disagreeing about which module `AccountsService`
+        means would be the one fault this tool cannot afford: a fan drawn from one and a
+        path drawn from the other, and a reader with no way to tell which of the two the
+        page was showing them.
+        """
+        # Every name that means something other than a module here, whatever an import or
+        # the package would otherwise offer for it: a type this module declares inside
+        # itself, a type it inherits from a module above it, and one of its own type
+        # parameters. `class Till<Receipt>` holding a `Receipt held` holds one of
+        # whatever its caller filled the hole with, not the `Receipt` next door — the
+        # tool already knows a type variable is not a type to follow when it counts what
+        # crosses the seam, and forgetting it here drew a line to a card the source names
+        # nowhere.
+        shadowed = (
+            {name.rsplit(".", 1)[-1] for name in nested}
+            | set(declared.type_parameters)
+            | inherited.nested
+        )
+
+        def resolve(name):
+            # A name written out in full names one thing and nothing else: the module of
+            # that id, if this source tree holds one. `new other.Receipt()` is `other`'s
+            # `Receipt` and never this package's, and cutting the package off to look the
+            # rest up here is how it became this package's — a different module, of a
+            # different kind, with an evidence string a reader could check and find false.
+            if "." in name:
+                return name if name in modules and name != module_id else None
+            # A type this module declares inside itself shadows every name an import or
+            # the package could offer, which is how Java reads it: `Kind.of(x)` written in
+            # a module that nests a `Kind` means that one, not the top-level `Kind` next
+            # door. A nested type is not a module, so the name reaches nothing. A member
+            # type is inherited as surely as a method is, so a `Kind` nested in a module
+            # this one extends shadows the same way, and so does this module's own type
+            # parameter.
+            #
+            # Every nested type is read as shadowing, however deep it sits, though one
+            # declared two levels down is only in scope in part of the body. That drops a
+            # reach the source has rather than inventing one it does not, which is the
+            # direction every reading here is willing to be wrong in.
+            if name in shadowed:
+                log.debug(
+                    "name not followed name=%s in=%s, because a type of that name is "
+                    "declared inside this module or inherited by it, or is one of its "
+                    "type parameters, and none of those is a module",
+                    name, declared.name,
+                )
+                return None
+            for candidate in javasource.candidate_ids(name, package, imports):
+                if candidate in modules and candidate != module_id:
+                    return candidate
+            return None
+
+        return resolve
+
+    def calls_from(self, method_name, declared, module_id, package, imports, modules,
+                   nested=(), above=None):
+        """What one named method calls, in the order the source evaluates it.
+
+        The reading a flow is walked out of, and a different reading of the same source
+        from `reach_of` above — deliberately, because the two answer different questions.
+        Reach answers "what does this module coordinate on its caller's behalf", is taken
+        over the whole type, and is a set: a module that writes the same call ten more
+        times coordinates nothing new, which is the property depth rests on. A flow
+        answers "where does *this call* go, and in what order", which needs the method
+        that wrote each call site and needs them kept in order. Read off reach instead, a
+        flow becomes the entry module's whole transitive reach — a claim about everything
+        that class does rather than about the event — and its order becomes the order the
+        cards happen to be sorted in.
+
+        Every call site is answered as one of three things, and the third is why this is a
+        walk rather than a lookup:
+
+        - a call that lands on a module this graph holds, with the method it named, so the
+          walk can read that method next;
+        - a call on this module's *own* method, which is not a step — a flow passes
+          through modules, and the module is already on it — but is followed, because
+          `deposit` does its work through three private helpers and a flow that stopped at
+          the public method would show a deposit reaching nothing at all;
+        - a call this graph cannot follow, which is dropped. `clock.instant()`,
+          `log.debug(...)`, a call on the result of another call, a method inherited from
+          a framework class: each of them names something outside this source tree or
+          something only javac could resolve, and inventing a step for it would put a
+          module on a flow that the source does not.
+
+        Overloads are read as one. Which of two same-named methods a call meant is settled
+        by the arguments and their types, which is javac's work and not this file's, so
+        every method of that name is read and their call sites are concatenated in the
+        order they were declared. That can walk a flow through a module only the other
+        overload reaches; the alternative is guessing at an arity, and a guessed arity is
+        a whole branch of a flow invented or lost.
+        """
+        found = [
+            method for method in declared.methods
+            if method.name == method_name and method.has_a_body
+        ]
+        if not found:
+            return []
+        inherited = self._inherited_by(module_id, modules, above or {})
+        resolve = self._resolves_names_for(
+            declared, module_id, package, imports, modules, nested, inherited
+        )
+        held = {field.name: field for field in declared.fields}
+        # What a bare call can mean here. A method this module writes is followed into;
+        # a name the body declares somewhere else — a nested type's constructor, a local
+        # class's method — is followed nowhere, exactly as `reach_of` declines to read it
+        # as a static import; and anything left over is looked for among the static
+        # imports, which is the one remaining way a name with nothing in front of it can
+        # reach another module.
+        writes = {method.name for method in declared.methods}
+        declares = (
+            set(declared.declares)
+            | {declared.name}
+            | {name.rsplit(".", 1)[-1] for name in nested}
+            | inherited.declares
+        )
+        statically = {}
+        for imported in imports:
+            if imported.member is not None and imported.member not in statically:
+                statically[imported.member] = imported.type
+
+        calls = []
+
+        def landing(target, call, method, matched):
+            calls.append(
+                {
+                    "moduleId": target,
+                    "call": call,
+                    "method": method,
+                    "matched": matched,
+                    "own": False,
+                }
+            )
+
+        for method in found:
+            for site in method.calls:
+                if site.builds:
+                    target = resolve(site.name)
+                    if target is None:
+                        continue
+                    evidence = self.reached.persistent_record.matches(modules[target])
+                    landing(
+                        target,
+                        "new " + site.name,
+                        None,
+                        "builds one: %s" % evidence if evidence is not None else "builds one",
+                    )
+                    continue
+                if site.receiver is None:
+                    if site.name in writes:
+                        calls.append({"own": True, "method": site.name, "call": site.name})
+                        continue
+                    if site.name in declares or inherited.opaque:
+                        # The same floor `reach_of` keeps: a name this body declares is
+                        # not a call to the import that shares its spelling, and a module
+                        # built on a type this graph does not hold has a body of
+                        # declarations nobody here can read.
+                        continue
+                    from_ = statically.get(site.name)
+                    target = resolve(from_) if from_ is not None else None
+                    if target is not None:
+                        landing(
+                            target,
+                            site.name,
+                            site.name,
+                            "calls %s, imported statically from it" % site.name,
+                        )
+                    continue
+                written = site.receiver + "." + site.name
+                if site.receiver in held:
+                    # Every name the field's type is spelled with, for the reason
+                    # `reach_of` reads them all: a module keeps a collaborator in
+                    # whatever shape it needs it in, and `List<AScheduledJob>` is held to
+                    # reach the jobs rather than to drive a collection.
+                    holds = held[site.receiver].written
+                    for name in javasource.written_names_in(holds):
+                        target = resolve(name)
+                        if target is not None:
+                            landing(
+                                target,
+                                written,
+                                site.name,
+                                "called through the field %s, which holds a %s"
+                                % (site.receiver, holds),
+                            )
+                    continue
+                target = resolve(site.receiver)
+                if target is not None:
+                    landing(target, written, site.name, "called on %s" % site.receiver)
+        log.debug(
+            "calls read module=%s method=%s sites=%d modules=%d ownMethods=%d",
+            module_id,
+            method_name,
+            sum(len(method.calls) for method in found),
+            sum(1 for call in calls if not call["own"]),
+            sum(1 for call in calls if call["own"]),
+        )
+        return calls
 
     def _inherited_by(self, module_id, modules, above, seen=None):
         """What a module is handed by the types it is built on, and whether all of it was read.
