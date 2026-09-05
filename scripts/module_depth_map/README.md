@@ -532,6 +532,33 @@ takes the focus before the panel opens, because that is the note the browser mak
 where to hand focus back to: without it, a click on the body of a card focuses nothing,
 and closing the panel drops the keyboard on a hidden element.
 
+Three smaller things about the panel that are easier to get wrong than to notice:
+
+- **It opens at the top, every time.** The scrolling body outlives every open — it is
+  emptied and refilled rather than rebuilt — and a browser keeps the scroll offset of an
+  element it has hidden, so the place a reader left one module's panel would otherwise be
+  where the next module's panel opens. The heading is sticky, so nothing about that looks
+  wrong: a reader would be reading the second module's findings believing they were at the
+  top of its interface. `openBehind` sets `scrollTop` back to 0 once the panel is open,
+  because an element with no layout box has no scroll position to move.
+- **A click on the backdrop closes it; a drag that merely ends there does not.** A click's
+  target is the nearest common ancestor of where the pointer went down and where it came
+  up, so a selection dragged out of the panel and released beside it reports the dialog
+  itself — and this panel is full of caller ids and method signatures a reader will want
+  to copy. The press and the release are read separately, and both have to have landed on
+  the backdrop, which is the same rule the browser's own light dismiss uses.
+- **A cost of 0 is caveated wherever it is printed.** The card and the panel say
+  "nothing this bar counts, which is not the same as nothing to learn" from one string,
+  because the panel is where a reader goes to check the card and so is the last place that
+  should make the stronger claim.
+
+Where there is no modal dialog to open — a browser old enough that `<dialog>` is an unknown
+element — the panel falls back to setting and clearing the `open` attribute, and the
+stylesheet carries the `dialog.behind:not([open]) { display: none; }` rule that a browser
+knowing `<dialog>` would have supplied itself. Without it the fallback has nothing tying
+the attribute to whether the panel is on the page, and the empty shell would sit in the
+page from load with no close ever taking it away.
+
 ## What is drawn but never scored
 
 Three kinds of thing are shallow by construction, and ranking them beside the modules that

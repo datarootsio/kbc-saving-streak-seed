@@ -237,6 +237,11 @@ dialog.behind {
   width: min(46rem, calc(100vw - 2rem));
   max-width: none;
 }
+/* What a browser's own stylesheet says about a dialog it knows, said here for one it does
+   not. Where there is no modal dialog, `<dialog>` is an unknown element and the `open`
+   attribute the script falls back to means nothing to it: without this rule the empty
+   panel shell sits in the page from load and no close ever removes it. */
+dialog.behind:not([open]) { display: none; }
 dialog.behind::backdrop { background: rgba(12, 13, 15, .6); }
 .behindBody { max-height: calc(100vh - 4rem); overflow: auto; padding: 0 1.1rem 1.3rem; }
 .behindHead {
@@ -969,6 +974,16 @@ _SCRIPT = """
     });
   }
 
+  // A zero read on its own says a caller has nothing to learn here, which is a stronger
+  // claim than this bar ever makes. A module whose only member is a constructor reads
+  // zero: a caller writing `new` against it has that constructor and every type crossing
+  // it to learn, and a bar counts none of it. One string, because a zero is printed in
+  // two places — the card, and the panel that opens from it — and a caveat the card
+  // carries while the panel drops it is worse than no caveat at all: the panel is where
+  // a reader goes to check the card, so it is the last place that should claim more.
+  var NOT_THE_SAME_AS_NOTHING_TO_LEARN =
+    " — nothing this bar counts, which is not the same as nothing to learn";
+
   // Branching on the fact that carries the exclusion, not on the absent cost that
   // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
   // would throw for a module that had one without the other, and the renderer is one
@@ -998,13 +1013,10 @@ _SCRIPT = """
         " \u2014 but these counts come to " + added
         + ", so this page is counting something the score did not"));
     } else if (module.interface.cost === 0) {
-      // A zero read on its own says a caller has nothing to learn here, which is a
-      // stronger claim than this bar ever makes. A module whose only member is a
-      // constructor reads zero: a caller writing `new` against it has that constructor
-      // and every type crossing it to learn, and a bar counts none of it. Nothing else
-      // on the card tells that zero from a module that declares nothing at all.
-      reading.appendChild(document.createTextNode(
-        " \u2014 nothing this bar counts, which is not the same as nothing to learn"));
+      // Nothing else on the card tells that zero from a module that declares nothing
+      // at all, so the caveat is said here rather than left to be inferred.
+      reading.appendChild(
+        document.createTextNode(NOT_THE_SAME_AS_NOTHING_TO_LEARN));
     }
   }
 
@@ -1043,9 +1055,20 @@ _SCRIPT = """
 
   panel.addEventListener("close", restoreFocus);
   // A click on the backdrop lands on the dialog itself and never on anything inside it,
-  // which is the only way to tell the two apart.
-  panel.addEventListener("click", function (event) {
-    if (event.target === panel) { shutBehind(); }
+  // which is the only way to tell the two apart. Where the click came up is not enough
+  // on its own, though: a click's target is the nearest common ancestor of where the
+  // pointer went down and where it came up, so a selection dragged from inside the panel
+  // and released past its edge reports the dialog as well. This panel is full of
+  // fully-qualified caller ids and method signatures a reader will want to copy, and
+  // closing there takes the selection with it. So the press and the release are read
+  // separately and both have to have landed on the backdrop — which is the same rule the
+  // browser's own light dismiss uses, and it also leaves a press that began on the
+  // backdrop and ended inside the panel alone, the way a button ignores a release
+  // dragged off it.
+  var pressedOn = null;
+  panel.addEventListener("mousedown", function (event) { pressedOn = event.target; });
+  panel.addEventListener("mouseup", function (event) {
+    if (event.target === panel && pressedOn === panel) { shutBehind(); }
   });
   // Escape closes a modal dialog without this, and closing a closed one does nothing, so
   // this costs nothing there. It is for the fallback below: a panel opened as an ordinary
@@ -1070,6 +1093,14 @@ _SCRIPT = """
       openedFrom = from;
       panel.setAttribute("open", "open");
     }
+    // Open at the top, every time. `behindBody` outlives every open — it is emptied and
+    // refilled, never rebuilt — and a browser keeps the scroll offset of an element it
+    // has hidden, so without this the place a reader left one module's panel is where the
+    // next module's panel opens, with the whole interface section scrolled off above the
+    // fold. The sticky heading is what makes it worth a line: the panel does not look
+    // wrong, it is just showing the wrong part of itself. Set once the panel is open,
+    // because an element with no layout box has no scroll position to move.
+    behindBody.scrollTop = 0;
     behindBody.focus();
   }
 
@@ -1117,11 +1148,18 @@ _SCRIPT = """
       add(part, "p", "because",
         module.excludedBy.matched + ". " + because[module.excludedBy.rule]);
     } else {
-      add(part, "p", null,
+      var split = add(part, "p", null,
         "interface cost " + module.interface.cost + " — "
         + module.interface.costWithoutRefusals + " of it is what a caller must learn "
         + "besides the refusals, and " + module.interface.refusalCost + " of it is the "
         + "refusals it can answer with");
+      // The same caveat the card carries, in the same words, because this is where a
+      // reader comes to check that card. Splitting a zero into two zeroes says how the
+      // bar got there and still not what it left out.
+      if (module.interface.cost === 0) {
+        split.appendChild(
+          document.createTextNode(NOT_THE_SAME_AS_NOTHING_TO_LEARN));
+      }
       add(part, "p", null,
         "reach " + module.depth.reach + " over interface cost " + module.depth.interfaceCost
         + (module.depth.leverage === null

@@ -35,6 +35,11 @@ A_PERSISTENT_RECORD = (
 )
 A_DATA_CARRIER = "public record Line(long cents, String what) {}"
 
+# Scored, and priced at nothing: no method a caller can reach, so every term the bar
+# counts is zero. A caller still has `new Gate()` to learn, which is the whole reason a
+# naked zero needs a sentence beside it.
+A_MODULE_THE_BAR_PRICES_AT_NOTHING = "public class Gate {\n    public Gate() {}\n}"
+
 # Deep: four things coordinated behind one method, and a refusal it documents and keeps.
 A_MODULE_WORTH_OPENING = """import java.math.BigDecimal;
 
@@ -129,6 +134,7 @@ class BehindTheShapeTest(SourceTreeTest):
             ("Receipt", A_PERSISTENT_RECORD),
             ("Line", A_DATA_CARRIER),
             ("Barrier", A_MODULE_WITH_A_FINDING),
+            ("Gate", A_MODULE_THE_BAR_PRICES_AT_NOTHING),
             ("Shop", A_CALLER),
             ("Market", ANOTHER_CALLER),
         ):
@@ -148,6 +154,10 @@ class BehindTheShapeTest(SourceTreeTest):
     def panel(self):
         """Every function the panel is drawn by, as one piece of source."""
         return "\n".join(self.body(name) for name in PANEL)
+
+    def script(self):
+        """The renderer: everything past the script element the graph document sits in."""
+        return self.rendered[self.rendered.index("</script>"):]
 
     def card(self):
         """The loop that draws one card per module."""
@@ -204,6 +214,121 @@ class ClickingAModuleOpensWhatStandsBehindItTest(BehindTheShapeTest):
 
         self.assertIn("Click any module", script)
         self.assertIn("press Enter", script)
+
+
+class EveryPanelOpensAtTheTopOfItselfTest(BehindTheShapeTest):
+    """One module's panel must never open where the reader left the last one.
+
+    `behindBody` outlives every open — it is emptied and refilled rather than rebuilt —
+    and a browser keeps the scroll offset of an element it has hidden. The sticky heading
+    is what makes this worth a test rather than a shrug: the panel does not look wrong,
+    so a reader clicking through modules reads the second one's findings believing they
+    are at the top of its interface.
+    """
+
+    def test_the_body_is_scrolled_back_to_the_top_every_time_a_panel_opens(self):
+        opening = self.body("openBehind")
+
+        self.assertIn("behindBody.scrollTop = 0;", opening)
+
+    def test_the_top_is_taken_once_the_panel_is_open_and_has_a_scroll_to_move(self):
+        """An element with no layout box has no scroll position, so order is the fix."""
+        opening = self.body("openBehind")
+
+        self.assertLess(
+            opening.index("panel.showModal()"),
+            opening.index("behindBody.scrollTop = 0;"),
+        )
+
+
+class WhatCountsAsAClickOnTheBackdropTest(BehindTheShapeTest):
+    """Both ends of the gesture, because a drag out of the panel reports the dialog too.
+
+    A click's target is the nearest common ancestor of where the pointer went down and
+    where it came up. Selecting a caller id inside the panel and releasing past its edge
+    makes that ancestor the dialog itself, so a handler reading only the click would close
+    the panel and take the reader's selection with it. Reading the press and the release
+    separately is what tells a dismissal from a drag that merely ended somewhere else.
+    """
+
+    def test_the_press_and_the_release_both_have_to_have_landed_on_the_backdrop(self):
+        script = self.script()
+
+        self.assertIn(
+            'panel.addEventListener("mousedown", function (event) '
+            "{ pressedOn = event.target; });",
+            script,
+        )
+        self.assertIn(
+            'panel.addEventListener("mouseup", function (event) {\n'
+            "    if (event.target === panel && pressedOn === panel) { shutBehind(); }",
+            script,
+        )
+
+    def test_no_click_closes_the_panel_by_where_it_came_up_alone(self):
+        """The whole bug is a handler that reads one end of the gesture and acts on it."""
+        script = self.script()
+
+        self.assertNotIn("if (event.target === panel) { shutBehind(); }", script)
+        self.assertNotIn('panel.addEventListener("click"', script)
+
+
+class ThePanelWithoutAModalDialogToOpenItInTest(BehindTheShapeTest):
+    """The fallback branch has to be able to do what its comment says it does.
+
+    Where `showModal` is missing, `<dialog>` is an unknown element: the `open` attribute
+    the fallback sets and clears means nothing to the browser's own stylesheet, so without
+    a rule of ours the empty panel shell renders in the page flow from load and no close
+    ever takes it away.
+    """
+
+    def test_a_panel_that_is_not_open_is_not_on_the_page(self):
+        self.assertIn("dialog.behind:not([open]) { display: none; }", self.rendered)
+
+    def test_the_fallback_opens_and_closes_by_the_attribute_that_rule_reads(self):
+        self.assertIn('panel.setAttribute("open", "open");', self.body("openBehind"))
+        self.assertIn('panel.removeAttribute("open");', self.body("shutBehind"))
+
+
+class AZeroIsCaveatedWhereverItIsPrintedTest(BehindTheShapeTest):
+    """The card's caveat, in the panel a reader opens to check the card.
+
+    A cost of 0 means nothing this bar counts, which is not the same as nothing to learn.
+    The card said so and the panel did not, which put the stronger claim in the place
+    billed as where a reader checks the weaker one.
+    """
+
+    def test_the_card_and_the_panel_say_it_from_one_string(self):
+        """Two copies is how one of them comes to be edited and the other left behind."""
+        script = self.script()
+
+        self.assertEqual(
+            1, script.count("nothing this bar counts, which is not the same as"))
+        self.assertIn("NOT_THE_SAME_AS_NOTHING_TO_LEARN", self.body("drawInterface"))
+        self.assertIn(
+            "NOT_THE_SAME_AS_NOTHING_TO_LEARN", self.body("drawBehindInterface"))
+
+    def test_both_say_it_on_the_same_condition(self):
+        for drawn in (self.body("drawInterface"), self.body("drawBehindInterface")):
+            self.assertLess(
+                drawn.index("module.interface.cost === 0"),
+                drawn.index("NOT_THE_SAME_AS_NOTHING_TO_LEARN"),
+            )
+
+    def test_the_fixture_holds_a_module_the_bar_prices_at_nothing(self):
+        """Without one, the branch above is a sentence no document could reach."""
+        gate = self.modules["Gate"]
+
+        self.assertIsNone(gate["excludedBy"])
+        self.assertEqual(0, gate["interface"]["cost"])
+        self.assertEqual([], gate["interface"]["methods"])
+
+    def test_the_caveat_is_not_said_of_a_module_no_rule_scored(self):
+        """A never-scored module has no zero on it to caveat: it has a rule instead."""
+        branch = self.body("drawBehindInterface")
+        excluded = branch[branch.index("if (module.excludedBy) {"):branch.index("} else {")]
+
+        self.assertNotIn("NOT_THE_SAME_AS_NOTHING_TO_LEARN", excluded)
 
 
 class ThePanelIsReadStraightOffTheDocumentTest(BehindTheShapeTest):
