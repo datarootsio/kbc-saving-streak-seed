@@ -63,11 +63,15 @@ log = logging.getLogger("module_depth_map.scoring")
 # It moved to /3 when they gained a `deletionTest`: a /2 file draws the line between a
 # pass-through and a module that earns its keep nowhere at all, and a verdict rendered
 # from a threshold nobody wrote is the one thing a mechanical test may not hand anybody.
-SCHEMA = "module-depth-map-scoring/3"
+# It moved to /4 when they gained a `refusals` section and the `refusal` weight beside the
+# others: a /3 file prices a refusal at nothing and names neither disagreement a refusal
+# can be in, so every module would read as costing a caller less than it does and every
+# stale `@throws` in the source would go unreported under rules nobody wrote.
+SCHEMA = "module-depth-map-scoring/4"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
-WEIGHTS = ("method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows")
+WEIGHTS = ("method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows", "refusal")
 VISIBILITIES = ("public", "protected", "package-private", "private")
 
 # What a reached thing can be, and in what order two readings of one thing settle. A
@@ -392,11 +396,40 @@ class DeletionTest:
         return max(self.never_below, self.per_method * methods)
 
 
+class Refusals:
+    """What a refusal is worth to a caller, and what the two disagreements are called.
+
+    A refusal is interface: a caller who does not know a module can answer with
+    `WithdrawalRefused` has not learned the module. So it is priced with everything else a
+    caller must learn — and then reported as a band of its own, because a module whose
+    interface is wide because it is honest about how it can fail should be distinguishable
+    from one that is merely wide. Folded into a single number it is not, and a module is
+    then paid for saying nothing about its failure modes.
+
+    Both findings are named and argued for in the file rather than here, for the same
+    reason the deletion test's verdicts are: a machine's finding is worth exactly as much
+    as the rule a reader can point at behind it.
+    """
+
+    def __init__(self, because, documented_never_raised, raised_never_documented):
+        self.because = because
+        self.documented_never_raised = documented_never_raised
+        self.raised_never_documented = raised_never_documented
+
+
+class Finding:
+    """One disagreement the file names, and the sentence it is argued for."""
+
+    def __init__(self, finding, because):
+        self.finding = finding
+        self.because = because
+
+
 class Rules:
     """The scoring rules one configuration file holds, ready to be applied to a module."""
 
     def __init__(self, path, weights, reachable_from_outside, already_known, exclusions,
-                 reached, deletion_test):
+                 reached, deletion_test, refusals):
         self.path = path
         self.weights = weights
         self.reachable_from_outside = reachable_from_outside
@@ -404,6 +437,7 @@ class Rules:
         self.exclusions = exclusions
         self.reached = reached
         self.deletion_test = deletion_test
+        self.refusals = refusals
 
     def excluded_by(self, declared):
         """The first rule that says this module is never scored, or None if it is scored.
@@ -430,25 +464,38 @@ class Rules:
     def interface_of(self, declared, scored):
         """Everything a caller must learn to use this module, and what that costs.
 
-        The methods and the types are recorded whether or not the module is scored — an
-        excluded module is drawn with its interface visible, so a reader can see what the
-        rule decided not to measure — but the cost of an unscored one is absent rather
-        than zero, because it was never counted, not counted to nothing. Absent all the
-        way down: a per-method cost published under a module whose own cost is `null` is
-        a score for a module the same document says has none, and an agent reading the
-        graph could add those parts up into a number nobody ever decided to give it.
+        The methods, the types and the refusals are recorded whether or not the module is
+        scored — an excluded module is drawn with its interface visible, so a reader can
+        see what the rule decided not to measure — but the cost of an unscored one is
+        absent rather than zero, because it was never counted, not counted to nothing.
+        Absent all the way down: a per-method cost published under a module whose own cost
+        is `null` is a score for a module the same document says has none, and an agent
+        reading the graph could add those parts up into a number nobody ever decided to
+        give it.
+
+        The refusals are counted into `cost` and reported beside it as `refusalCost`, with
+        the rest of the total as `costWithoutRefusals`. Both, rather than either: a refusal
+        is something a caller must learn, so leaving it out of the total would pay a module
+        for saying nothing about how it fails — and folding it in without saying how much
+        of the total it is would make an honestly-wide interface indistinguishable from a
+        merely wide one, which is the whole reason the band exists.
         """
         methods = sorted(
             (method for method in declared.methods if method.visibility in self.reachable_from_outside),
             key=lambda method: (method.name, method.parameters),
         )
         crossing = self._types_crossing_the_seam(methods, declared.type_parameters)
+        refusals = self._refusals_of(declared, methods)
         cost = None
+        refusal_cost = None
+        without_refusals = None
         if scored:
-            cost = sum(self._cost_of(method) for method in methods) + sum(
+            without_refusals = sum(self._cost_of(method) for method in methods) + sum(
                 self.weights["typeToLearn" if type_["mustBeLearned"] else "typeEveryCallerAlreadyKnows"]
                 for type_ in crossing
             )
+            refusal_cost = self.weights["refusal"] * len(refusals)
+            cost = without_refusals + refusal_cost
         # Logged for a module that is never scored too, and that is the case worth having
         # it for: the page shows such a module the name of the rule and nothing else, so
         # this is the only place a reader can check that the rule declined something real
@@ -456,13 +503,15 @@ class Rules:
         # this branch were on records and enums, which the committed rules never price.
         log.debug(
             "interface read name=%s methods=%d parameters=%d typesToLearn=%d "
-            "typesEveryCallerAlreadyKnows=%d cost=%s",
+            "typesEveryCallerAlreadyKnows=%d refusals=%d cost=%s refusalCost=%s",
             declared.name,
             len(methods),
             sum(len(method.parameters) for method in methods),
             sum(1 for type_ in crossing if type_["mustBeLearned"]),
             sum(1 for type_ in crossing if not type_["mustBeLearned"]),
+            len(refusals),
             cost if scored else "none, never scored",
+            refusal_cost if scored else "none, never scored",
         )
         return {
             "methods": [
@@ -471,13 +520,90 @@ class Rules:
                     "visibility": method.visibility,
                     "parameters": list(method.parameters),
                     "returns": method.returns,
+                    "documentedRefusals": list(method.documented_refusals),
                     "cost": self._cost_of(method) if scored else None,
                 }
                 for method in methods
             ],
             "typesCrossingTheSeam": crossing,
+            "refusals": refusals,
+            "refusalCost": refusal_cost,
+            "costWithoutRefusals": without_refusals,
             "cost": cost,
         }
+
+    def _refusals_of(self, declared, methods):
+        """Every refusal this module can answer with, and which side of the seam named it.
+
+        The union of the two sides on purpose. A refusal the documentation promises is one
+        a caller writes a `catch` for whether or not the code can still raise it, and a
+        refusal the code raises is one they meet whether or not anybody wrote it down — so
+        both are things a caller must learn, and both are priced. Which side named it is
+        carried on the entry rather than resolved into a single answer here, because that
+        is what a disagreement is made of, and because the page and the findings below both
+        read it.
+
+        Documented is read off the methods a caller can reach, and off nothing else: a
+        `@throws` on a private helper documents that helper to whoever maintains the
+        module, not the module to whoever calls it.
+        """
+        documented_by = {}
+        for method in methods:
+            for name in method.documented_refusals:
+                documented_by.setdefault(name, []).append(method.name)
+        names = sorted(set(documented_by) | set(declared.raises))
+        return [
+            {
+                "name": name,
+                "documented": name in documented_by,
+                "documentedBy": sorted(set(documented_by.get(name, ()))),
+                "raised": name in declared.raises,
+            }
+            for name in names
+        ]
+
+    def findings_of(self, name, refusals):
+        """Where this module's documentation and its implementation disagree, both sides named.
+
+        Two disagreements, one in each direction, and each finding carries the whole of
+        both sides: the refusal, whether the documentation promises it and which methods
+        promise it, and whether the implementation raises it. A finding that named only the
+        side it was unhappy with would be a machine saying "wrong" without saying against
+        what.
+
+        Read for every module, scored or not. A finding is not a score: it is two things in
+        the source disagreeing, and a rule that declines to *price* a record has said
+        nothing about whether that record's javadoc tells the truth.
+        """
+        findings = []
+        for refusal in refusals:
+            if refusal["documented"] and not refusal["raised"]:
+                named = self.refusals.documented_never_raised
+            elif refusal["raised"] and not refusal["documented"]:
+                named = self.refusals.raised_never_documented
+            else:
+                continue
+            findings.append(
+                {
+                    "finding": named.finding,
+                    "because": named.because,
+                    "refusal": refusal["name"],
+                    "documented": refusal["documented"],
+                    "documentedBy": list(refusal["documentedBy"]),
+                    "raised": refusal["raised"],
+                }
+            )
+            log.debug(
+                "refusals disagree module=%s refusal=%s finding=%s documented=%s "
+                "documentedBy=%s raised=%s",
+                name,
+                refusal["name"],
+                named.finding,
+                refusal["documented"],
+                ",".join(refusal["documentedBy"]) or "nothing a caller can reach",
+                refusal["raised"],
+            )
+        return findings
 
     def reach_of(self, declared, module_id, package, imports, modules, nested=(), above=None):
         """Everything this module coordinates on its caller's behalf, one entry apiece.
@@ -961,7 +1087,7 @@ def load(path=None):
         )
     _only(
         document,
-        ("schema", "interfaceCost", "reach", "deletionTest", "exclusions"),
+        ("schema", "interfaceCost", "refusals", "reach", "deletionTest", "exclusions"),
         "the configuration",
     )
 
@@ -1011,12 +1137,13 @@ def load(path=None):
         may_be_empty=True,
     )
 
+    refusals = _refusals(document.get("refusals"))
     reached = _reach(document.get("reach"))
     deletion_test = _deletion_test(document.get("deletionTest"))
     exclusions = _exclusions(document.get("exclusions"))
     rules = Rules(
         path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached,
-        deletion_test,
+        deletion_test, refusals,
     )
     log.debug(
         "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
@@ -1042,7 +1169,52 @@ def load(path=None):
         deletion_test.never_below,
         deletion_test.callers_at_least,
     )
+    log.debug(
+        "refusal rules read weight=%d findings=%s,%s",
+        weights["refusal"],
+        refusals.documented_never_raised.finding,
+        refusals.raised_never_documented.finding,
+    )
     return rules
+
+
+def _refusals(entry):
+    """What a refusal costs a caller to learn, and what each disagreement is called.
+
+    Required rather than defaulted, like everything else here. A missing section would not
+    read as "say nothing about refusals": it would read as two findings with no words on
+    them, reported against modules whose authors could not go and read the rule that named
+    them.
+    """
+    _an_object(entry, "refusals")
+    _only(entry, ("because", "documentedNeverRaised", "raisedNeverDocumented"), "refusals")
+    because = _a_sentence(entry, "refusals")
+
+    findings = {}
+    for name in ("documentedNeverRaised", "raisedNeverDocumented"):
+        where = "refusals.%s" % name
+        answer = entry.get(name)
+        _an_object(answer, where)
+        _only(answer, ("finding", "because"), where)
+        if not isinstance(answer.get("finding"), str) or not answer["finding"].strip():
+            raise ConfigurationRefused(
+                "%s.finding is %r, and a finding with nothing written on it is one no "
+                "reader could act on" % (where, answer.get("finding"))
+            )
+        findings[name] = Finding(answer["finding"], _a_sentence(answer, where))
+
+    if findings["documentedNeverRaised"].finding == findings["raisedNeverDocumented"].finding:
+        raise ConfigurationRefused(
+            "refusals.raisedNeverDocumented.finding is %r, which the other finding is "
+            "already called: a module given one of them could not be told from the other, "
+            "and the two say opposite things about the same refusal"
+            % findings["raisedNeverDocumented"].finding
+        )
+    return Refusals(
+        because,
+        documented_never_raised=findings["documentedNeverRaised"],
+        raised_never_documented=findings["raisedNeverDocumented"],
+    )
 
 
 def _deletion_test(entry):

@@ -289,9 +289,9 @@ class WhatEachMethodCostsIsSaidPerMethodTest(SourceOfKnownShapeTest):
         self.assertEqual(
             [
                 {"name": "open", "visibility": "public", "parameters": [], "returns": "void",
-                 "cost": 1},
+                 "documentedRefusals": [], "cost": 1},
                 {"name": "ring", "visibility": "public", "parameters": ["long", "int"],
-                 "returns": "void", "cost": 3},
+                 "returns": "void", "documentedRefusals": [], "cost": 3},
             ],
             module["interface"]["methods"],
         )
@@ -515,25 +515,38 @@ class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
         ("Receipt", "public record Receipt(long cents) {}"),
     )
 
+    A_REFUSAL = (
+        ("Gate", "public class Gate {\n"
+                 "    /** @throws Shut if it is shut */\n"
+                 "    public void go() { throw new Shut(); }\n}"),
+    )
+
     def test_a_bar_is_drawn_from_its_own_modules_cost_and_the_scale_in_the_document(self):
-        """One width is set on this page, and both halves of it come out of the document."""
+        """One width is set on this page, and every part of it comes out of the document.
+
+        One expression still, now applied to each band of a bar in turn rather than to a
+        bar as a whole. That is what keeps the check possible at all: two expressions
+        would be two things to read out of the file and two chances for one of them to
+        be a constant nobody noticed.
+        """
         _, rendered = self.rendered(*self.A_FEW_COSTS)
 
         widths = self._A_WIDTH_IS_SET.findall(rendered)
 
         self.assertEqual(1, len(widths), widths)
-        self.assertIn("module.interface.cost", widths[0])
+        self.assertIn("part.cost", widths[0])
         self.assertIn("widest", widths[0])
         self.assertIn("var widest = document_.scoring.widestInterface;", rendered)
+        self.assertIn("cost: module.interface.costWithoutRefusals", rendered)
+        self.assertIn("cost: module.interface.refusalCost", rendered)
 
-    def test_the_width_the_page_works_out_is_the_cost_as_a_share_of_the_scale(self):
-        """The page's own expression, worked out here for every bar the fixture draws.
+    def _drawn(self, rendered, modules, band):
+        """The width the page's own expression works out for one band of every scored bar.
 
         The expression is taken out of the rendered file rather than written again in
         this test, because a formula written twice agrees with itself: what is checked is
         the arithmetic a browser would do, over the document the page carries.
         """
-        modules, rendered = self.rendered(*self.A_FEW_COSTS)
         widest = self.document["scoring"]["widestInterface"]
         shape = self._A_SHARE_OF_THE_SCALE.match(
             self._A_WIDTH_IS_SET.findall(rendered)[0].strip()
@@ -547,23 +560,54 @@ class EveryBarIsDrawnOnOneScaleTest(SourceOfKnownShapeTest):
         for name, module in modules.items():
             if module["excludedBy"] is not None:
                 continue
-            reached = {"module": AsJavaScriptReadsIt(module), "widest": widest}
+            reached = {
+                "part": AsJavaScriptReadsIt({"cost": module["interface"][band]}),
+                "widest": widest,
+            }
             half = "then" if eval(shape.group("when"), {}, reached) else "otherwise"
             drawn[name] = eval(shape.group(half), {}, reached)
+        return drawn
 
-        self.assertEqual(["Shelf", "Till"], sorted(drawn))
-        self.assertEqual(100.0, drawn["Till"])
+    def test_the_width_the_page_works_out_is_the_cost_as_a_share_of_the_scale(self):
+        """Every bar the fixture draws, band by band, against the one scale in the document."""
+        modules, rendered = self.rendered(*self.A_FEW_COSTS)
+        widest = self.document["scoring"]["widestInterface"]
+
+        learned = self._drawn(rendered, modules, "costWithoutRefusals")
+        refused = self._drawn(rendered, modules, "refusalCost")
+
+        self.assertEqual(["Shelf", "Till"], sorted(learned))
+        self.assertEqual(100.0, learned["Till"] + refused["Till"])
         self.assertAlmostEqual(
-            100.0 * modules["Shelf"]["interface"]["cost"] / widest, drawn["Shelf"]
+            100.0 * modules["Shelf"]["interface"]["cost"] / widest,
+            learned["Shelf"] + refused["Shelf"],
         )
+
+    def test_the_two_bands_of_a_bar_come_to_the_bar(self):
+        """A bar split into bands that do not add up to it is two claims on one card."""
+        modules, rendered = self.rendered(*self.A_FEW_COSTS, *self.A_REFUSAL)
+        widest = self.document["scoring"]["widestInterface"]
+
+        learned = self._drawn(rendered, modules, "costWithoutRefusals")
+        refused = self._drawn(rendered, modules, "refusalCost")
+
+        self.assertGreater(refused["Gate"], 0)
+        for name, module in modules.items():
+            if module["excludedBy"] is not None:
+                continue
+            self.assertAlmostEqual(
+                100.0 * module["interface"]["cost"] / widest,
+                learned[name] + refused[name],
+                msg=name,
+            )
 
     def test_the_page_divides_by_nothing_when_no_module_was_scored_at_all(self):
         """A page of nothing but data carriers reaches the same expression with widest 0."""
-        modules, rendered = self.rendered(("Receipt", "public record Receipt(long cents) {}"))
+        _, rendered = self.rendered(("Receipt", "public record Receipt(long cents) {}"))
         shape = self._A_SHARE_OF_THE_SCALE.match(
             self._A_WIDTH_IS_SET.findall(rendered)[0].strip()
         )
-        reached = {"module": AsJavaScriptReadsIt(modules["Receipt"]), "widest": 0}
+        reached = {"part": AsJavaScriptReadsIt({"cost": 0}), "widest": 0}
 
         self.assertFalse(eval(shape.group("when"), {}, reached))
         self.assertEqual(0, eval(shape.group("otherwise"), {}, reached))
@@ -872,6 +916,7 @@ class ACostCanBeAddedUpFromThePartsDrawnUnderItTest(SourceTreeTest):
                 "typeEveryCallerAlreadyKnows": sum(
                     1 for type_ in crossing if not type_["mustBeLearned"]
                 ),
+                "refusal": len(interface["refusals"]),
             }
             self.assertEqual(sorted(weights), sorted(counted), name)
             self.assertEqual(

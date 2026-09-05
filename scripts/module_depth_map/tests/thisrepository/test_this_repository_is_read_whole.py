@@ -136,7 +136,22 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
                     weights["typeToLearn" if t["mustBeLearned"]
                             else "typeEveryCallerAlreadyKnows"]
                     for t in module["interface"]["typesCrossingTheSeam"]
-                ),
+                )
+                + weights["refusal"] * len(module["interface"]["refusals"]),
+                module["id"],
+            )
+            # The band is reported apart from the rest of the cost as well as counted
+            # into it, and a band that did not come out of the same total would be two
+            # numbers for one bar.
+            self.assertEqual(
+                weights["refusal"] * len(module["interface"]["refusals"]),
+                module["interface"]["refusalCost"],
+                module["id"],
+            )
+            self.assertEqual(
+                cost,
+                module["interface"]["costWithoutRefusals"]
+                + module["interface"]["refusalCost"],
                 module["id"],
             )
 

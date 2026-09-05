@@ -24,8 +24,10 @@ log = logging.getLogger("module_depth_map.graph")
 # and the `deletionTest` verdict read off them: a reader of any older shape looking for
 # what it was promised finds none of them. The tool refuses a *configuration* whose schema
 # it does not know, so versioning what it writes as well is the same promise kept in the
-# other direction.
-SCHEMA = "module-depth-map/4"
+# other direction. It moved to /5 when every module gained its `findings` and its
+# `interface` gained a `refusals` band with the `refusalCost` and `costWithoutRefusals`
+# the total is split into.
+SCHEMA = "module-depth-map/5"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -239,6 +241,7 @@ def build(roots, rules):
     modules.sort(key=lambda module: (module["package"], module["name"]))
     unparsed.sort(key=lambda entry: (entry["root"], entry["path"]))
     _refuse_duplicate_ids(modules)
+    _check_the_refusals(modules, rules)
     _measure_depth(read, rules)
     _run_the_deletion_test(modules, rules)
 
@@ -299,6 +302,16 @@ def build(roots, rules):
             furthest["depth"]["interfaceCost"],
             furthest["depth"]["leverage"],
         )
+    log.info(
+        "refusals checked read=%d modulesWithFindings=%d findings=%d",
+        document["scoring"]["refusals"]["refusalsRead"],
+        document["scoring"]["refusals"]["modulesWithFindings"],
+        sum(
+            entry["findings"] for entry in document["scoring"]["refusals"]["findingsByKind"]
+        ),
+    )
+    for entry in document["scoring"]["refusals"]["findingsByKind"]:
+        log.info("refusal finding=%s findings=%d", entry["finding"], entry["findings"])
     for entry in document["scoring"]["deletionTest"]["modulesByVerdict"]:
         log.info(
             "deletion test verdict=%s modules=%d", entry["verdict"], entry["modules"]
@@ -342,6 +355,37 @@ def build(roots, rules):
             shallowest["depth"]["interfaceCost"],
         )
     return document
+
+
+def _check_the_refusals(modules, rules):
+    """Hold every module's documented refusals against the ones it raises, and say so.
+
+    Read for every module, scored or not: a rule that declines to price a record has said
+    nothing about whether that record's javadoc tells the truth, and a stale `@throws` is
+    a stale `@throws` wherever it is written.
+
+    Logged at INFO one line per disagreement, because that is the finding. A run that
+    produced it should not need the page to be opened before anybody knows, and the line
+    carries both sides so that it can be acted on without the graph being read either.
+    """
+    for module in modules:
+        module["findings"] = rules.findings_of(module["id"], module["interface"]["refusals"])
+        for finding in module["findings"]:
+            log.info(
+                "refusal finding module=%s finding=%s refusal=%s documentedBy=%s raised=%s",
+                module["id"],
+                finding["finding"],
+                finding["refusal"],
+                ",".join(finding["documentedBy"]) or "nothing a caller can reach",
+                finding["raised"],
+            )
+        log.debug(
+            "refusals read module=%s refusals=%s findings=%d",
+            module["id"],
+            ",".join(refusal["name"] for refusal in module["interface"]["refusals"])
+            or "none this tool can read",
+            len(module["findings"]),
+        )
 
 
 def _run_the_deletion_test(modules, rules):
@@ -508,6 +552,41 @@ def _scoring(rules, modules):
                     rules.deletion_test.pass_through,
                     rules.deletion_test.earns_its_keep,
                     rules.deletion_test.no_finding,
+                )
+            ],
+        },
+        # The refusal band's own rule, and what holding the two sides against each other
+        # turned up, carried in the document the findings were rendered into. The counts
+        # are of findings rather than of modules, because one module can be in both
+        # disagreements at once — this repository's `ScheduledJobs` was, on two different
+        # refusals — and a count of modules would hide one of them behind the other.
+        "refusals": {
+            "because": rules.refusals.because,
+            "documentedNeverRaised": {
+                "finding": rules.refusals.documented_never_raised.finding,
+                "because": rules.refusals.documented_never_raised.because,
+            },
+            "raisedNeverDocumented": {
+                "finding": rules.refusals.raised_never_documented.finding,
+                "because": rules.refusals.raised_never_documented.because,
+            },
+            "refusalsRead": sum(
+                len(module["interface"]["refusals"]) for module in modules
+            ),
+            "modulesWithFindings": sum(1 for module in modules if module["findings"]),
+            "findingsByKind": [
+                {
+                    "finding": named.finding,
+                    "findings": sum(
+                        1
+                        for module in modules
+                        for finding in module["findings"]
+                        if finding["finding"] == named.finding
+                    ),
+                }
+                for named in (
+                    rules.refusals.documented_never_raised,
+                    rules.refusals.raised_never_documented,
                 )
             ],
         },

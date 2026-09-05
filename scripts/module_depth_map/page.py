@@ -29,6 +29,7 @@ _STYLE = """
   --adapter: #7a5195;
   --record: #1f7a5a;
   --transaction: #a05a1f;
+  --refusal: #8a6d1f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -44,6 +45,7 @@ _STYLE = """
     --adapter: #c39ae0;
     --record: #6ec8a4;
     --transaction: #e0a86e;
+    --refusal: #d9be6e;
   }
 }
 * { box-sizing: border-box; }
@@ -110,14 +112,24 @@ section.package { margin: 2rem 0 0; }
   color: var(--ink-soft);
 }
 .module .shape { margin: .5rem 0 .35rem; }
-.module .bar {
+/* Written unqualified, because the same bar is drawn twice: under every module, and once
+   more as the swatch in the key that says which band is which. Scoped to `.module` it was
+   drawn in the key with no height and no ground, which renders as nothing at all — a key
+   with two labels and no colours beside them. */
+.bar {
   height: .5rem;
   background: var(--edge);
   border-radius: .25rem;
   overflow: hidden;
+  /* Centred as one run of bands rather than one centred block, so that the refusal band
+     sits against the rest of the bar it is part of. Left as `margin: 0 auto` on each
+     band, the two stacked and only the second was visible. */
+  display: flex;
+  justify-content: center;
 }
-.module .bar span { display: block; height: 100%; margin: 0 auto; background: var(--accent); }
-.module .bar.unscored { background: none; border: 1px dashed var(--edge); }
+.bar span { display: block; flex: none; height: 100%; background: var(--accent); }
+.bar .refuse { background: var(--refusal); }
+.bar.unscored { background: none; border: 1px dashed var(--edge); }
 .module .fan { display: block; width: 100%; }
 .fan line { stroke: var(--accent); stroke-width: 1.1; }
 .fan circle { fill: var(--accent); }
@@ -138,6 +150,23 @@ section.package { margin: 2rem 0 0; }
   font-variant-numeric: tabular-nums;
 }
 .module .verdict strong { color: var(--ink); font-weight: 650; }
+/* The refusals a module can answer with, in the band's own ink, so that the names under
+   the bar and the coloured stretch of the bar itself read as one statement. */
+.module .refusals { margin: .2rem 0 0; font-size: .8rem; color: var(--ink-soft); }
+.module .refusals .refusal { color: var(--refusal); font-weight: 650; }
+.module .refusals .refusal.found { color: var(--alarm-ink); }
+/* A disagreement between what a module documents and what it raises. Under its own rule,
+   like the verdict, because it is a finding rather than a measurement — and in alarm ink
+   on the finding's own words only, so the card is not washed in a colour that would read
+   as a ranking of the module. */
+.module .finding {
+  margin: .45rem 0 0;
+  padding-top: .4rem;
+  border-top: 1px solid var(--edge);
+  font-size: .8rem;
+  color: var(--ink-soft);
+}
+.module .finding strong { color: var(--alarm-ink); font-weight: 650; }
 /* The one verdict that is a finding. Marked on the word rather than on the whole card:
    the shape above it is the argument, and a card washed in a colour would be read as a
    ranking of the module rather than as an answer about deleting it. */
@@ -145,6 +174,11 @@ section.package { margin: 2rem 0 0; }
 .key { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin: .6rem 0 0; padding: 0; list-style: none; }
 .key li { display: flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--ink-soft); }
 .key svg { flex: none; }
+/* The swatch for a band on a bar, sized here rather than in the renderer: the one width
+   that page works out per module is the one a reader has to be able to check against the
+   document, and a fixed swatch beside it would be a second thing to read past. */
+.key .bar { flex: none; width: 24px; }
+.key .bar span { width: 100%; }
 /* The element as well as the class, because the interface bar of a module nobody scored
    carries `unscored` too: written `.module .unscored` this rule reached the bar and set a
    margin, a font size and an italic on a strip of dashed border, where nothing meant it
@@ -297,6 +331,60 @@ _SCRIPT = """
     + " modules are drawn but never scored, each by a named rule in "
     + document_.scoring.configuration + ". They are shallow by construction, and ranking "
     + "them beside the modules that are not would bury the finding.");
+  var band = add(root, "section", "rules");
+  add(band, "h2", null, "What the band on each bar measures");
+  add(band, "p", null, document_.scoring.refusals.because);
+  add(band, "p", null,
+    "So each bar is drawn in two bands: what a caller must learn that is not a refusal, "
+    + "and the refusals, at " + document_.scoring.weights.refusal + " apiece. The two "
+    + "come to the bar's whole width, and the graph carries them apart as "
+    + "costWithoutRefusals and refusalCost as well as together as cost \u2014 so a module "
+    + "with a wide bar and a wide band is wide for a reason a reader can see, and one "
+    + "with a wide bar and no band at all is wide for some other reason. "
+    + document_.scoring.refusals.refusalsRead + " are read across this page.");
+  var bands = add(band, "ul", "key");
+  [
+    {of: "learn", says: "what a caller must learn besides the refusals"},
+    {of: "refuse", says: "the refusals it can answer with"}
+  ].forEach(function (part) {
+    var item = add(bands, "li");
+    add(add(item, "div", "bar"), "span", part.of);
+    add(item, "span", null, part.says);
+  });
+  add(band, "p", null,
+    "A refusal is read from the source's own words on both sides and guessed at on "
+    + "neither: what a module documents is the @throws written over a method a caller can "
+    + "reach, and what it raises is what its body throws. Where the two disagree the card "
+    + "says so, naming the refusal and both sides of it:");
+  var disagreements = add(band, "ul");
+  [
+    document_.scoring.refusals.documentedNeverRaised,
+    document_.scoring.refusals.raisedNeverDocumented
+  ].forEach(function (named_) {
+    var item = add(disagreements, "li");
+    add(item, "strong", null, named_.finding);
+    add(item, "span", null, " \u2014 " + named_.because);
+  });
+  var findingsCounted = [];
+  document_.scoring.refusals.findingsByKind.forEach(function (entry) {
+    findingsCounted.push(entry.finding + ": " + entry.findings);
+  });
+  add(band, "p", null,
+    "On this page \u2014 " + findingsCounted.join(", ") + ", across "
+    + count(document_.scoring.refusals.modulesWithFindings, "module", "modules") + ". A "
+    + "module can be in both disagreements at once, on two different refusals, which is "
+    + "why those are counts of findings rather than of modules.");
+  add(band, "p", null,
+    "What this band leaves out is a floor in the same direction as everything else here. "
+    + "A refusal thrown by a name rather than by a type \u2014 throw thrown, throw "
+    + "somethingElse.build() \u2014 needs a type this tool never resolves, so it is not "
+    + "read and not guessed at; a refusal one module raises by calling another is the "
+    + "second module's, drawn there; and a prose sentence about when something fails is "
+    + "part of the interface and is measured nowhere. So a band at nothing says only that "
+    + "there was nothing here to read, and a documented but never raised finding can be "
+    + "a spelling this tool cannot follow rather than a promise the code broke. Both "
+    + "sides are printed on the card for exactly that reason.");
+
   var fans = add(root, "section", "rules");
   add(fans, "h2", null, "What the fans measure");
   add(fans, "p", null,
@@ -495,6 +583,12 @@ _SCRIPT = """
       one: "type every caller already knows",
       many: "types every caller already knows",
       of: function (interface_) { return crossing(interface_, false); }
+    },
+    {
+      weight: "refusal",
+      one: "refusal",
+      many: "refusals",
+      of: function (interface_) { return interface_.refusals.length; }
     }
   ];
 
@@ -511,7 +605,7 @@ _SCRIPT = """
 
   // The order the counts read in, which is not the order the document happens to list
   // the weights in. A weight with no place here goes last rather than nowhere.
-  var reads = ["method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows"];
+  var reads = ["method", "parameter", "typeToLearn", "typeEveryCallerAlreadyKnows", "refusal"];
   function place(weight) {
     var at = reads.indexOf(weight);
     return at < 0 ? reads.length : at;
@@ -558,10 +652,37 @@ _SCRIPT = """
     if (excluded) {
       track.title = "never scored \u2014 " + excluded.rule;
     } else {
-      track.title = "interface cost " + module.interface.cost;
-      add(track, "span").style.width = (widest > 0 ? 100 * module.interface.cost / widest : 0) + "%";
+      track.title = "interface cost " + module.interface.cost + ", of which "
+        + module.interface.refusalCost + " is refusals";
+      bandsOf(module).forEach(function (part) {
+        var drawn = add(track, "span", part.band);
+        drawn.title = part.says;
+        drawn.style.width = (widest > 0 ? 100 * part.cost / widest : 0) + "%";
+      });
     }
     drawFan(shape, module);
+  }
+
+  // The two bands one bar is drawn in, each with the number out of the document it is
+  // drawn from. Refusals are the second and not the first, so that the band a reader is
+  // looking for is always at the same end of every bar on the page — and both are drawn
+  // to the one scale above, so a band is comparable across cards the way a bar is.
+  function bandsOf(module) {
+    return [
+      {
+        band: "learn",
+        cost: module.interface.costWithoutRefusals,
+        says: module.interface.costWithoutRefusals
+          + " of this interface is what a caller must learn besides the refusals"
+      },
+      {
+        band: "refuse",
+        cost: module.interface.refusalCost,
+        says: module.interface.refusalCost + " of this interface is "
+          + count(module.interface.refusals.length, "refusal", "refusals")
+          + " it can answer with"
+      }
+    ];
   }
 
   // One line from under the middle of the bar out to each thing the module coordinates,
@@ -668,6 +789,46 @@ _SCRIPT = """
     }
   }
 
+  // The refusals this module can answer with, named under the shape that drew their band,
+  // and each of them coloured by whether the two sides of it agree. Drawn for a module no
+  // rule scores too: the names are facts about the source rather than a score, and the
+  // band above them is the only thing on such a card that is absent.
+  function drawRefusals(item, module) {
+    var refusals = module.interface.refusals;
+    if (refusals.length === 0) { return; }
+    var disagreeing = {};
+    module.findings.forEach(function (finding) { disagreeing[finding.refusal] = finding; });
+    var line = add(item, "p", "refusals",
+      "refuses with " + refusals.length + ": ");
+    refusals.forEach(function (refusal, index) {
+      if (index > 0) { line.appendChild(document.createTextNode(", ")); }
+      var finding = disagreeing[refusal.name];
+      var named_ = add(line, "span", finding ? "refusal found" : "refusal", refusal.name);
+      named_.title = finding ? finding.finding + " \u2014 " + finding.because
+        : "documented by " + refusal.documentedBy.join(", ") + ", and raised by this module";
+    });
+  }
+
+  // A disagreement, with both sides of it in the sentence rather than only the side the
+  // finding is unhappy with: which methods promise the refusal, and whether anything in
+  // the module throws it. A machine saying "wrong" without saying against what is not a
+  // finding anybody can check.
+  function drawFindings(item, module) {
+    module.findings.forEach(function (finding) {
+      var line = add(item, "p", "finding");
+      add(line, "strong", null, finding.finding);
+      add(line, "span", null, " \u2014 " + finding.refusal + " is "
+        + (finding.documented
+          ? "documented by " + finding.documentedBy.join(", ")
+          : "documented by no method a caller can reach")
+        + ", and "
+        + (finding.raised
+          ? "raised in this module's body"
+          : "raised nowhere this tool can read in it"));
+      line.title = finding.because;
+    });
+  }
+
   // Branching on the fact that carries the exclusion, not on the absent cost that
   // follows from it. Reading the rule off `excludedBy` after deciding on `cost === null`
   // would throw for a module that had one without the other, and the renderer is one
@@ -723,8 +884,10 @@ _SCRIPT = """
       add(item, "div", "kind", module.kind);
       drawShape(item, module);
       drawInterface(item, module);
+      drawRefusals(item, module);
       drawReach(item, module);
       drawVerdict(item, module);
+      drawFindings(item, module);
       if (module.nested.length > 0) {
         add(item, "p", "nested", "nested: " + module.nested.join(", "));
       }

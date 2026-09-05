@@ -45,6 +45,7 @@ it. So it is logged instead: `grep "member not read as a method"` at DEBUG lists
 member declined, its line, and why, and that list is short enough to read.
 """
 
+import bisect
 import logging
 import re
 
@@ -174,6 +175,39 @@ DECLARES_NO_TYPE = ("package-info.java", "module-info.java")
 # method and no types at all.
 NOTHING_RETURNED = "void"
 
+# A refusal the implementation actually raises: `throw new WithdrawalRefused(...)`. Read
+# over the module's whole body, nested types and all, because that whole body is the
+# module — `DepositsService.deposit` documents a `DepositRefused` that three of its own
+# private helpers are the ones to throw, and a reading taken method by method would call
+# that a disagreement when it is the module keeping its word.
+#
+# `throw thrown;` is not one of them and cannot be: the name of a variable says nothing
+# about the type it holds, and following it would mean reading Java the way javac does.
+# So what is read here is a floor on what a module raises, in the same direction every
+# other floor in this tool leans.
+_THROWN = re.compile(r"(?<![\w.$])throw[ \t\r\n]+new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
+
+# A refusal thrown through a method of this module's own: `throw refusing(reason)`. The
+# name is followed to a declaration in the same file and to nothing else — a bare call is
+# the one spelling whose declaration is guaranteed to be here to read.
+_THROWN_THROUGH = re.compile(r"(?<![\w.$])throw[ \t\r\n]+([A-Za-z_$][\w$]*)[ \t\r\n]*\(")
+
+# A refusal the documentation promises, as Java's own syntax for saying so. The tag has
+# to stand where a javadoc *block* tag stands: at the start of a line, or after one of the
+# asterisks a block is written down the side with — which is also the `**` a one-line
+# `/** @throws Shut ... */` opens with. Written any looser it would read the
+# `{@link IllegalStateException}` an explanation is built out of as a second promise, and
+# a module would be reported as documenting a refusal it had only mentioned. Written any
+# tighter it reads no one-line javadoc at all, which is how a good many of them are
+# written.
+#
+# `@exception` is Java's own synonym for `@throws` and is read as one: leaving it out
+# would report a module as undocumented on the strength of which of two spellings its
+# author chose, which is a finding about a keyboard.
+_DOCUMENTED_REFUSAL = re.compile(
+    r"(?:^|[\n*])[ \t]*@(?:throws|exception)[ \t]+([A-Za-z_$][\w$.]*)", re.M
+)
+
 _KINDS = {
     "class": "class",
     "interface": "interface",
@@ -206,16 +240,23 @@ class Method:
     `type_parameters` is the exception: the names this method's own `<T>` introduces are
     holes the caller fills with a type they already hold, so they are recorded here for a
     rule outside this file to tell apart from the types it has to go and read.
+
+    `documented_refusals` is what the javadoc immediately above the method promises it can
+    answer with, by simple name and in the order it was written. Read rather than guessed
+    at: nothing here infers a refusal from a name that ends in "Refused", from a `throws`
+    clause the compiler would have forced, or from anything but the source's own
+    `@throws`.
     """
 
     def __init__(self, name, visibility, parameters, returns, type_parameters=(),
-                 annotations=()):
+                 annotations=(), documented_refusals=()):
         self.name = name
         self.visibility = visibility
         self.parameters = tuple(parameters)
         self.returns = returns
         self.type_parameters = tuple(type_parameters)
         self.annotations = tuple(annotations)
+        self.documented_refusals = tuple(documented_refusals)
 
 
 class Field:
@@ -271,11 +312,16 @@ class DeclaredType:
     counts of *names*, never of lines: writing the same call ten more times adds nothing
     to any of them. All five are taken over the whole body, nested types included, since
     that whole body is the module.
+
+    `raises` is the sixth and is read the same way: the refusals this module's body throws,
+    by simple name, over that whole body. It is the implementation's half of a refusal, and
+    the half a `@throws` on a method is checked against.
     """
 
     def __init__(self, name, kind, depth, ends_at, owner, qualified,
                  annotations=(), supertypes=(), methods=(), type_parameters=(),
-                 fields=(), receivers=(), constructed=(), called=(), declares=()):
+                 fields=(), receivers=(), constructed=(), called=(), declares=(),
+                 raises=()):
         self.name = name
         self.kind = kind
         self.depth = depth
@@ -291,6 +337,7 @@ class DeclaredType:
         self.constructed = tuple(constructed)
         self.called = tuple(called)
         self.declares = tuple(declares)
+        self.raises = tuple(raises)
 
 
 class ParsedFile:
@@ -330,6 +377,11 @@ class ParsedFile:
 
 
 def masked_source(text):
+    """The masked text on its own, for a caller with no interest in where the javadoc was."""
+    return _masked(text)[0]
+
+
+def _masked(text):
     """The same text with everything that must not be read as source blanked out.
 
     Three things are blanked, and offsets are preserved through all of them: the contents
@@ -356,8 +408,15 @@ def masked_source(text):
     Blanking it is what a reader would never see: the declarations after the opener would
     be gone from the page with no warning, and even the keyword cross-check below cannot
     miss them, because there is nothing left in the masked text to count.
+
+    Where each javadoc block sat is reported alongside, because one thing in this file does
+    have to be read out of a comment: what a module documents itself as refusing. It is
+    answered here rather than by a second scan over the source, so that "what is a comment"
+    is decided in exactly one place — a second scanner would have its own idea of whether
+    the `/**` inside a string literal opened one.
     """
     out = []
+    documentation = []
     i = 0
     n = len(text)
     # One entry per annotation argument list still open, holding how deeply the brackets
@@ -382,6 +441,8 @@ def masked_source(text):
                 raise ParseFailure(_never_closed("block comment", text, opened))
             out.append("  ")
             i += 2
+            if text[opened:opened + 3] == "/**":
+                documentation.append((opened, i))
         elif text[i:i + 3] == '"""':
             opened = i
             out.append("   ")
@@ -431,7 +492,7 @@ def masked_source(text):
         else:
             out.append(ch)
             i += 1
-    return "".join(out)
+    return "".join(out), documentation
 
 
 def _marks_a_declaration(text, position):
@@ -523,7 +584,8 @@ def _body_starts_at(offsets, position, depth):
 
 def parse(text, path):
     """What this Java file contains, or a ParseFailure naming why it could not be read."""
-    masked = masked_source(text)
+    masked, documentation = _masked(text)
+    documented = _refusals_documented_in(text, documentation)
     lines = len(text.splitlines())
 
     depths, final_depth, closed_too_many_at = _brace_depths(masked)
@@ -535,7 +597,7 @@ def parse(text, path):
     if final_depth != 0:
         raise ParseFailure("braces do not balance: %d unclosed at end of file" % final_depth)
 
-    types = _declared_types(masked, depths)
+    types = _declared_types(masked, depths, documented)
     package = _PACKAGE.search(masked)
     imports = _imports_in(masked)
 
@@ -560,6 +622,61 @@ def parse(text, path):
     return ParsedFile(package.group(1), types, lines, imports)
 
 
+def _refusals_documented_in(text, documentation):
+    """The refusals each javadoc block promises, and the offset each block ends at.
+
+    Tied to where it ends because that is how a block is tied to what it documents: the
+    member it belongs to is the next thing written after it. Keying by the member instead
+    would mean deciding here what a member is, which is the one thing this function has no
+    business knowing.
+
+    A block promising nothing is left out rather than carried as an empty entry, so that
+    "this member documents no refusal" and "this member has no javadoc" are the same
+    answer — which they are. Emitted in the order the blocks were written, which is the
+    order `documentation` arrives in, so that the search below can be a walk backwards
+    through the file rather than a guess at which block is nearest.
+    """
+    documented = []
+    for opened, ends_at in documentation:
+        names = _DOCUMENTED_REFUSAL.findall(text[opened:ends_at])
+        if names:
+            documented.append((ends_at, tuple(_simple(name) for name in names)))
+    return documented
+
+
+def _documented_before(masked, at, documented):
+    """The refusals the javadoc immediately above this offset promises, if there is one.
+
+    Immediately means that nothing but whitespace and other comments stands between the
+    block's `*/` and the first thing the member writes — annotations included, since
+    `@Transactional` is written under the javadoc rather than over it, and a walk that
+    stopped at one would find no documentation on the very methods this repository
+    documents best.
+
+    The nearest block above is the only one asked, so a javadoc two members up documents
+    that member rather than this one. It is looked for by offset rather than by walking
+    back over whitespace, because a comment is *blanked* in the masked text: walking back
+    over "whitespace" would step straight over the block being looked for and land on
+    whatever came before it.
+    """
+    at_or_before = bisect.bisect_right(documented, (at, ()))
+    if not at_or_before:
+        return ()
+    ends_at, names = documented[at_or_before - 1]
+    return names if not masked[ends_at:at].strip() else ()
+
+
+def _simple(written):
+    """A type by the name it is matched on: the last part of it, however it was qualified.
+
+    `@throws java.lang.IllegalArgumentException` and `throw new IllegalArgumentException`
+    are one refusal written two ways, and a comparison that told them apart would report a
+    disagreement about a package prefix. Simple names are also the only names every rule in
+    this tool matches on, for the same reason: they are what the parser records.
+    """
+    return written.rpartition(".")[2]
+
+
 def _imports_in(masked):
     """Every import this file wrote, as the type it names and the member it may call.
 
@@ -582,7 +699,7 @@ def _imports_in(masked):
     return tuple(imports)
 
 
-def _declared_types(masked, depths):
+def _declared_types(masked, depths, documented):
     """Every type declared in the masked text, or a ParseFailure if one cannot be placed.
 
     Two things are established here, and both are about not losing a module quietly. The
@@ -633,6 +750,14 @@ def _declared_types(masked, depths):
         # components. Everything a caller learns about this type without opening it.
         header = masked[match.end(2):body_starts_at]
         owner = open_types[0] if open_types else None
+        # Only for a module — a type declared inside one is named on it rather than
+        # scored, so reading its members would be work nothing asks for.
+        methods = () if owner is not None else _methods_of(
+            masked, kind, header, body_starts_at, body_ends_at, line, documented
+        )
+        reached = {} if owner is not None else _reached_in(
+            masked[body_starts_at:body_ends_at], methods
+        )
         declared = DeclaredType(
             name=match.group(2),
             kind=kind,
@@ -645,14 +770,10 @@ def _declared_types(masked, depths):
             annotations=_annotations_before(masked, start),
             supertypes=_supertypes_in(header),
             type_parameters=_type_parameters_in(header),
-            # Only for a module — a type declared inside one is named on it rather than
-            # scored, so reading its members would be work nothing asks for.
-            methods=() if owner is not None
-            else _methods_of(masked, kind, header, body_starts_at, body_ends_at, line),
+            methods=methods,
             fields=() if owner is not None
             else _fields_of(masked, kind, header, body_starts_at, body_ends_at, line),
-            **({} if owner is not None
-               else _reached_in(masked[body_starts_at:body_ends_at])),
+            **reached,
         )
         types.append(declared)
         open_types.append(declared)
@@ -771,7 +892,7 @@ def _supertypes_in(header):
     return tuple(found)
 
 
-def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
+def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, documented):
     """Every method this type offers, including the ones a record never writes down.
 
     A record's components compile to an accessor apiece, and a caller learns each of them
@@ -794,7 +915,9 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line):
     """
     written_here = []
     for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
-        method = _method_in(member, kind, _line_of(masked, at))
+        method = _method_in(
+            member, kind, _line_of(masked, at), _documented_before(masked, at, documented)
+        )
         if method is not None:
             written_here.append(method)
     if kind != "record":
@@ -960,10 +1083,10 @@ def _declares_several_names(text):
     return False
 
 
-def _reached_in(body):
+def _reached_in(body, methods):
     """What this module's implementation reaches for, by name and never by volume.
 
-    Four readings, each a set of names rather than a count of occurrences, which is the
+    Five readings, each a set of names rather than a count of occurrences, which is the
     whole point: a module that writes the same call ten more times reaches for nothing
     new, and a measure built on these cannot be moved by adding lines.
 
@@ -980,6 +1103,15 @@ def _reached_in(body):
       the type it came from. `this.of(1)` is therefore not one: it calls a method this
       module has, declared or inherited, which is the one thing a static import of that
       name cannot be.
+    - `raises`: the refusals thrown in it, by simple name — `WithdrawalRefused` for a
+      `throw new WithdrawalRefused(kind, reason)`, wherever in the body it was written.
+      A refusal thrown through a method the module itself declares — `throw refusing(why)`
+      — is that method's declared return type, which is the one spelling of a throw that
+      can be followed without reading Java the way javac does: the declaration is in this
+      file, and its return type is already read. Following it is not a nicety. This
+      repository writes exactly that spelling in two modules, and left unfollowed it
+      reports both of them as documenting a refusal they never raise — a machine crying
+      wolf about the two seams it was built to check.
     - `declares`: the names in that same shape that this body *declares* rather than
       calls — every method, constructor and nested record header in it, however deep,
       the ones inside a nested class and an anonymous class included. It is read
@@ -1024,7 +1156,31 @@ def _reached_in(body):
         "constructed": sorted(_constructed_in(plain)),
         "called": sorted(set(called)),
         "declares": sorted(set(declares)),
+        "raises": sorted(_raised_in(body, methods)),
     }
+
+
+def _raised_in(body, methods):
+    """Every refusal this body throws, by simple name, in the two spellings that can be read.
+
+    `throw new X(...)` says the type outright. `throw x(...)`, where `x` is a method this
+    module declares, says it through a declaration this file has already read, so the
+    refusal is that method's return type. Any other spelling — a throw of a variable, of a
+    field, of a call on something else — names a type only javac could resolve, and is not
+    guessed at: what is counted here is a floor on what a module raises, which is the
+    direction every other reading in this file errs in.
+    """
+    raised = {_simple(found.group(1)) for found in _THROWN.finditer(body)}
+    returns = {
+        method.name: _simple(method.returns)
+        for method in methods
+        if not method.type_parameters
+    }
+    for found in _THROWN_THROUGH.finditer(body):
+        through = returns.get(found.group(1))
+        if through is not None and through != NOTHING_RETURNED:
+            raised.add(through)
+    return raised
 
 
 def _receivers_in(plain):
@@ -1184,7 +1340,7 @@ def _after_enum_constants(masked, start, body_ends_at):
     return body_ends_at
 
 
-def _method_in(member, holder_kind, line):
+def _method_in(member, holder_kind, line, documented_refusals=()):
     """The method this member declares, or None when the member is not one.
 
     Fields, initialisers, enum constants, nested types and constructors all arrive here
@@ -1246,6 +1402,7 @@ def _method_in(member, holder_kind, line):
         returns,
         _type_parameters_in(rest),
         _annotations_on(member),
+        documented_refusals,
     )
 
 

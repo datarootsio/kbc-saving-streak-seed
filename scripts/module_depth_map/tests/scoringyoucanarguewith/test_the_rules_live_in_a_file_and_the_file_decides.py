@@ -523,8 +523,16 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
         Reading the unknown keys first refused it with "names X, which this tool does not
         read", which sends its author to delete a key their own tool needs. The schema is
         the field that says which of the two is behind, so it is the field read first.
+
+        The later schema is worked out from the one this tool reads rather than written
+        down, because a literal one version ahead stops being one the moment the schema
+        moves: written as "/4" this test went red for the wrong reason on the very commit
+        that took the tool to /4.
         """
-        reason = self.refusal_for(schema="module-depth-map-scoring/4", somethingNew={})
+        family, _, version = scoring.SCHEMA.rpartition("/")
+        later = "%s/%d" % (family, int(version) + 1)
+
+        reason = self.refusal_for(schema=later, somethingNew={})
 
         self.assertIn("schema", reason)
         self.assertIn(scoring.SCHEMA, reason)

@@ -67,7 +67,8 @@ Run its tests with the standard library's own runner, also from the repository r
   records — short enough to read and check.
 - **The rules that score a module live in a file, not in the analyser.** `scoring.json`
   beside this file holds the interface-cost weights, every exclusion rule, what makes a
-  reached thing an adapter or a record, and where the deletion test draws its line. Change a
+  reached thing an adapter or a record, where the deletion test draws its line, and what
+  each disagreement between a documented refusal and a raised one is called. Change a
   weight or a rule there, run the tool again, and the output moves; nothing in the analyser
   is edited, and no rule name or weight is written into it to fall back on. Every name a
   rule matches on is a **simple** name — `SpringBootApplication`, `JpaRepository`, `List` —
@@ -108,7 +109,10 @@ Run its tests with the standard library's own runner, also from the repository r
   top-level `scoring` object and gave every module an `interface` and an `excludedBy`, and
   to `module-depth-map/3` when every module gained a `reach` and a `depth`, and to
   `module-depth-map/4` when every module gained its `callers` and the `deletionTest`
-  verdict read off them. The page checks it before drawing, and says so rather than drawing half a document, because
+  verdict read off them, and to `module-depth-map/5` when every module gained its
+  `findings` and its `interface` gained a `refusals` band with the `refusalCost` and
+  `costWithoutRefusals` the total is split into.
+  The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
@@ -123,9 +127,10 @@ declared inside another are listed on the module that holds them rather than bec
 modules of their own, each named by where it sits inside that module — `Body.Kind`, not a
 second `Kind` a reader cannot tell from the first.
 
-Each module is drawn as a bar whose width is what its interface costs a caller, over a fan
-with one line out to each thing it coordinates on that caller's behalf, and under both a
-verdict on what deleting it would do — read off the fan, the bar and the number of modules
+Each module is drawn as a bar whose width is what its interface costs a caller — in two
+bands, the refusals it can answer with and everything else — over a fan with one line out
+to each thing it coordinates on that caller's behalf, and under both a verdict on what
+deleting it would do — read off the fan, the bar and the number of modules
 that go through it. Nothing is ranked, and nothing is proposed for change.
 
 ## What an interface costs
@@ -152,6 +157,10 @@ Everything a caller has to learn before they can use a module correctly:
   and `List` are one; a type variable — the `T` in `<T> T first(List<T> of)` — is a hole
   the caller fills rather than a type anybody learns, and is not counted; and `void` is
   not a type at all, so a method that hands nothing back puts nothing across the seam.
+
+- **each refusal it can answer with**, at `refusal` apiece. These are the band described
+  in its own section below: counted into the cost like everything else, and reported apart
+  from it as well.
 
 Every bar is drawn against one number, `scoring.widestInterface` in the graph, so two of
 them can be compared by eye.
@@ -184,6 +193,62 @@ the page has no term for arrives as a term saying so rather than as part of a to
 nothing under it. The counts are checked against the cost they are printed under, and a
 breakdown that does not come to it says so on the card: a number a reader is invited to
 argue with has to be one they can add up.
+
+## Refusals, and the band they are drawn in
+
+A refusal a module can answer with is something a caller has to know before they call it:
+it decides what they write around the call. So it is interface, and it is priced with the
+rest of the interface. It is also carried as a **band of its own** — `refusalCost` beside
+`costWithoutRefusals`, both adding up to `cost`, and a second colour on the bar — because
+a module whose interface is wide *because it is honest about how it can fail* should be
+distinguishable from one that is merely wide. Folded into a single number the two are
+identical, and a module is then paid for saying nothing about its failure modes.
+
+Each refusal is read from the source's own words on both sides, and guessed at on neither:
+
+- **documented** is the `@throws` (or `@exception`) written in the javadoc over a method a
+  caller can reach. A refusal named in prose, or inside a `{@link}`, is prose; a tag in an
+  ordinary `/* */` block is a note to whoever edits the file; and a `@throws` over a
+  private helper documents the helper rather than the seam. A javadoc documents the member
+  written under it, annotations and all — `@Transactional` sits between the two — and not
+  the member after that one.
+- **raised** is what the module's body throws, over that whole body, nested types
+  included. Two spellings are read: `throw new X(...)`, and `throw f(...)` where `f` is a
+  method this module declares, which is a throw of whatever `f` hands back. That second
+  one is not a nicety — `ClockService` and `ScheduledJobs` both write `throw refusing(why)`,
+  and left unfollowed each is reported as promising a refusal it never raises.
+
+Names are matched simply, so `@throws java.lang.IllegalArgumentException` and
+`throw new IllegalArgumentException` are one refusal rather than a disagreement about a
+package prefix. Both sides are read as a union: a refusal only the documentation promises
+is one a caller writes a `catch` for, and one only the body throws is one they meet anyway.
+
+Where the two sides disagree the graph carries a **finding** on the module, naming both of
+them — the refusal, which methods document it, and whether anything raises it. There are
+two, named and argued for in `scoring.json` like every other rule here: **documented but
+never raised**, and **raised but never documented**. A module whose documentation and
+implementation agree carries no finding at all, and every finding is logged at INFO with
+both sides, so the disagreement does not need the page to be opened. Findings are read for
+every module, scored or not: a rule that declines to *price* a record has said nothing
+about whether that record's javadoc tells the truth.
+
+On this repository that turns up six, all in the same direction: `Deposit`,
+`WithdrawalsService`, `ScheduledJobs` and the three controllers each throw something no
+method a caller can reach documents. Every seam that *is* documented keeps its word —
+`AccountsService`, `ClockService`, `DepositsService`, `PointsService`, `RewardsService`,
+and `ScheduledJobs` on its own two — so the other direction is not demonstrated on this
+source at all, and the fixtures in `tests/refusalsastheirownband` are where it is
+established.
+
+What the band leaves out is a floor in the same direction as everything else here, and the
+page says so rather than implying the count is complete. A refusal thrown by a name rather
+than by a type — `throw thrown`, `throw somethingElse.build()` — needs a type this tool
+never resolves, so it is not read and not guessed at. A refusal one module raises by
+calling another is the second module's, and is drawn there. And a prose sentence about
+when something fails is part of the interface and is measured nowhere. So a band at
+nothing says only that there was nothing here to read, and a *documented but never raised*
+finding can be a spelling this tool cannot follow rather than a promise the code broke —
+which is why both sides are printed on the card.
 
 ## What a module reaches, and what depth is
 

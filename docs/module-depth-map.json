@@ -21,12 +21,15 @@
         "matched": "annotated with SpringBootApplication",
         "rule": "entry point"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.SavingStreakApplication",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "main",
             "parameters": [
               "String[]"
@@ -35,6 +38,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -76,10 +81,14 @@
         "matched": "kind is enum",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.AccountPairing",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "enum",
@@ -114,17 +123,20 @@
         "verdict": "pass-through"
       },
       "depth": {
-        "interfaceCost": 30,
-        "leverage": 0.17,
+        "interfaceCost": 32,
+        "leverage": 0.16,
         "reach": 5
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.AccountsService",
       "interface": {
-        "cost": 30,
+        "cost": 32,
+        "costWithoutRefusals": 30,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "accountsOf",
             "parameters": [
               "long"
@@ -134,6 +146,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "balanceOfCurrentAccount",
             "parameters": [
               "long"
@@ -143,6 +156,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "customerIdentifiedBy",
             "parameters": [
               "String"
@@ -152,6 +166,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "customers",
             "parameters": [],
             "returns": "List<Customer>",
@@ -159,6 +174,7 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "depositInto",
             "parameters": [
               "long",
@@ -169,6 +185,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "noSuchCurrentAccount",
             "parameters": [
               "long"
@@ -178,6 +195,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "noSuchSavingsAccount",
             "parameters": [
               "long"
@@ -187,6 +205,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "ownerNameOfSavingsAccount",
             "parameters": [
               "long"
@@ -196,6 +215,7 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "pairingFor",
             "parameters": [
               "long",
@@ -206,6 +226,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "savingsAccountExists",
             "parameters": [
               "long"
@@ -215,6 +236,9 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [
+              "IllegalArgumentException"
+            ],
             "name": "withdrawFrom",
             "parameters": [
               "long",
@@ -222,6 +246,17 @@
             ],
             "returns": "boolean",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": true,
+            "documentedBy": [
+              "withdrawFrom"
+            ],
+            "name": "IllegalArgumentException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -327,12 +362,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.CurrentAccount",
       "interface": {
         "cost": 7,
+        "costWithoutRefusals": 7,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "deposit",
             "parameters": [
               "BigDecimal"
@@ -342,6 +380,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getBalance",
             "parameters": [],
             "returns": "BigDecimal",
@@ -349,6 +388,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getIban",
             "parameters": [],
             "returns": "String",
@@ -356,6 +396,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getId",
             "parameters": [],
             "returns": "Long",
@@ -363,6 +404,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "withdraw",
             "parameters": [
               "BigDecimal"
@@ -371,6 +413,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -427,12 +471,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.CurrentAccountRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findByCustomerId",
             "parameters": [
               "Long"
@@ -442,6 +489,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findHolderIdById",
             "parameters": [
               "long"
@@ -450,6 +498,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -506,12 +556,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.Customer",
       "interface": {
         "cost": 3,
+        "costWithoutRefusals": 3,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getContactDetails",
             "parameters": [],
             "returns": "String",
@@ -519,6 +572,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getId",
             "parameters": [],
             "returns": "Long",
@@ -526,12 +580,15 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getName",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -579,12 +636,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.CustomerAccounts",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "currentAccounts",
             "parameters": [],
             "returns": "List<CurrentAccount>",
@@ -592,12 +652,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "savingsAccounts",
             "parameters": [],
             "returns": "List<SavingsAccount>",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -650,12 +713,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.CustomerRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findByContactDetailsIgnoreCase",
             "parameters": [
               "String"
@@ -664,6 +730,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -710,12 +778,15 @@
         "reach": 7
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.DemoData",
       "interface": {
         "cost": 2,
+        "costWithoutRefusals": 2,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "run",
             "parameters": [
               "String"
@@ -724,6 +795,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -807,18 +880,23 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.SavingsAccount",
       "interface": {
         "cost": 1,
+        "costWithoutRefusals": 1,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getId",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -863,12 +941,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.accounts.SavingsAccountRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findByCustomerId",
             "parameters": [
               "Long"
@@ -878,6 +959,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findHolderIdById",
             "parameters": [
               "long"
@@ -887,6 +969,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findOwnerNameById",
             "parameters": [
               "long"
@@ -895,6 +978,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -953,12 +1038,15 @@
         "reach": 1
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockConfiguration",
       "interface": {
         "cost": 10,
+        "costWithoutRefusals": 10,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "applicationClock",
             "parameters": [],
             "returns": "Clock",
@@ -966,6 +1054,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "movableApplicationClock",
             "parameters": [],
             "returns": "MovableClock",
@@ -973,6 +1062,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "theClockInUse",
             "parameters": [
               "Clock"
@@ -981,6 +1071,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -1040,18 +1132,23 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockOffset",
       "interface": {
         "cost": 1,
+        "costWithoutRefusals": 1,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getMovedForwardByDays",
             "parameters": [],
             "returns": "long",
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -1096,10 +1193,14 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockOffsetRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "interface",
@@ -1133,18 +1234,23 @@
         "reach": 2
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockOnStartUp",
       "interface": {
         "cost": 1,
+        "costWithoutRefusals": 1,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "afterSingletonsInstantiated",
             "parameters": [],
             "returns": "void",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -1193,10 +1299,14 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockRefused",
       "interface": {
         "cost": 0,
+        "costWithoutRefusals": 0,
         "methods": [],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -1227,17 +1337,22 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 5,
-        "leverage": 1.0,
+        "interfaceCost": 7,
+        "leverage": 0.71,
         "reach": 5
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.ClockService",
       "interface": {
-        "cost": 5,
+        "cost": 7,
+        "costWithoutRefusals": 5,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [
+              "ClockRefused"
+            ],
             "name": "advanceBy",
             "parameters": [
               "long"
@@ -1247,10 +1362,22 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "howFarItHasMoved",
             "parameters": [],
             "returns": "HowFarTheClockHasMoved",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": true,
+            "documentedBy": [
+              "advanceBy"
+            ],
+            "name": "ClockRefused",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -1331,12 +1458,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.HowFarTheClockHasMoved",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "movedForwardByDays",
             "parameters": [],
             "returns": "long",
@@ -1344,12 +1474,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "now",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -1396,12 +1529,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.clock.MovableClock",
       "interface": {
         "cost": 8,
+        "costWithoutRefusals": 8,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getZone",
             "parameters": [],
             "returns": "ZoneId",
@@ -1409,6 +1545,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "instant",
             "parameters": [],
             "returns": "Instant",
@@ -1416,6 +1553,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "moveForwardTo",
             "parameters": [
               "long"
@@ -1425,6 +1563,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "movedForwardByDays",
             "parameters": [],
             "returns": "long",
@@ -1432,6 +1571,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "toString",
             "parameters": [],
             "returns": "String",
@@ -1439,6 +1579,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "withZone",
             "parameters": [
               "ZoneId"
@@ -1447,6 +1588,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -1504,12 +1647,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.AmountOfMoney",
       "interface": {
         "cost": 5,
+        "costWithoutRefusals": 5,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "asMoney",
             "parameters": [
               "BigDecimal"
@@ -1519,6 +1665,7 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "whyItIsNotOne",
             "parameters": [
               "String",
@@ -1528,6 +1675,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -1571,17 +1720,29 @@
         "verdict": "no finding"
       },
       "depth": {
-        "interfaceCost": 6,
+        "interfaceCost": 8,
         "leverage": 0.0,
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "IllegalArgumentException"
+        }
+      ],
       "id": "io.dataroots.savingstreak.deposits.Deposit",
       "interface": {
-        "cost": 6,
+        "cost": 8,
+        "costWithoutRefusals": 6,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getAmount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -1589,6 +1750,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getDepositedAt",
             "parameters": [],
             "returns": "Instant",
@@ -1596,6 +1758,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getId",
             "parameters": [],
             "returns": "Long",
@@ -1603,6 +1766,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getRemainingAmount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -1610,12 +1774,22 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "reduceBy",
             "parameters": [
               "BigDecimal"
             ],
             "returns": "void",
             "visibility": "package-private"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "IllegalArgumentException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -1666,18 +1840,23 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.DepositRefused",
       "interface": {
         "cost": 3,
+        "costWithoutRefusals": 3,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "kind",
             "parameters": [],
             "returns": "Kind",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -1725,12 +1904,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.DepositRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findBySavingsAccountId",
             "parameters": [
               "long"
@@ -1740,6 +1922,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findBySavingsAccountIdOrderByDepositedAtAscIdAsc",
             "parameters": [
               "long"
@@ -1749,6 +1932,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findBySavingsAccountIdOrderByDepositedAtDescIdDesc",
             "parameters": [
               "long"
@@ -1758,12 +1942,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "giveEveryDepositWhatRemainsOfIt",
             "parameters": [],
             "returns": "int",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -1821,18 +2008,23 @@
         "reach": 1
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.DepositsOnStartUp",
       "interface": {
         "cost": 1,
+        "costWithoutRefusals": 1,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "afterSingletonsInstantiated",
             "parameters": [],
             "returns": "void",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -1871,17 +2063,22 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 10,
-        "leverage": 0.8,
+        "interfaceCost": 12,
+        "leverage": 0.67,
         "reach": 8
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.DepositsService",
       "interface": {
-        "cost": 10,
+        "cost": 12,
+        "costWithoutRefusals": 10,
         "methods": [
           {
             "cost": 4,
+            "documentedRefusals": [
+              "DepositRefused"
+            ],
             "name": "deposit",
             "parameters": [
               "long",
@@ -1893,6 +2090,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "depositsInto",
             "parameters": [
               "long"
@@ -1902,12 +2100,24 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "moneyBalanceOf",
             "parameters": [
               "long"
             ],
             "returns": "BigDecimal",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": true,
+            "documentedBy": [
+              "deposit"
+            ],
+            "name": "DepositRefused",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -2014,12 +2224,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.RecordedDeposit",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -2027,6 +2240,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "depositedAt",
             "parameters": [],
             "returns": "Instant",
@@ -2034,6 +2248,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -2041,12 +2256,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "pointsEarned",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2102,12 +2320,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawal",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "allocations",
             "parameters": [],
             "returns": "List<RecordedWithdrawalAllocation>",
@@ -2115,6 +2336,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -2122,6 +2344,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -2129,6 +2352,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "long",
@@ -2136,12 +2360,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "withdrawnAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2205,12 +2432,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.RecordedWithdrawalAllocation",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -2218,12 +2448,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "depositId",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2268,12 +2501,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.Withdrawal",
       "interface": {
         "cost": 4,
+        "costWithoutRefusals": 4,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getAmount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -2281,6 +2517,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getDestinationCurrentAccountId",
             "parameters": [],
             "returns": "long",
@@ -2288,6 +2525,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getId",
             "parameters": [],
             "returns": "Long",
@@ -2295,12 +2533,15 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getWithdrawnAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2353,12 +2594,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocation",
       "interface": {
         "cost": 2,
+        "costWithoutRefusals": 2,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getAmount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -2366,12 +2610,15 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getDepositId",
             "parameters": [],
             "returns": "long",
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2419,12 +2666,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.WithdrawalAllocationRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findByWithdrawalIdOrderByIdAsc",
             "parameters": [
               "long"
@@ -2433,6 +2683,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2481,18 +2733,23 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.WithdrawalRefused",
       "interface": {
         "cost": 3,
+        "costWithoutRefusals": 3,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "kind",
             "parameters": [],
             "returns": "Kind",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -2538,12 +2795,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.deposits.WithdrawalRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findBySavingsAccountIdOrderByWithdrawnAtDescIdDesc",
             "parameters": [
               "long"
@@ -2552,6 +2812,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2595,17 +2857,29 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 8,
-        "leverage": 1.38,
+        "interfaceCost": 10,
+        "leverage": 1.1,
         "reach": 11
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "WithdrawalRefused"
+        }
+      ],
       "id": "io.dataroots.savingstreak.deposits.WithdrawalsService",
       "interface": {
-        "cost": 8,
+        "cost": 10,
+        "costWithoutRefusals": 8,
         "methods": [
           {
             "cost": 4,
+            "documentedRefusals": [],
             "name": "withdraw",
             "parameters": [
               "long",
@@ -2617,12 +2891,22 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "withdrawalsFrom",
             "parameters": [
               "long"
             ],
             "returns": "List<RecordedWithdrawal>",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "WithdrawalRefused",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -2747,12 +3031,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.jobs.AJobThatRan",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
@@ -2760,6 +3047,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "name",
             "parameters": [],
             "returns": "String",
@@ -2767,6 +3055,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "ranAt",
             "parameters": [],
             "returns": "Instant",
@@ -2774,12 +3063,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "tookMillis",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2831,12 +3123,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.jobs.AScheduledJob",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
@@ -2844,6 +3139,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "name",
             "parameters": [],
             "returns": "String",
@@ -2851,12 +3147,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "schedule",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -2897,10 +3196,14 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.jobs.JobFailed",
       "interface": {
         "cost": 0,
+        "costWithoutRefusals": 0,
         "methods": [],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -2936,10 +3239,14 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.jobs.JobRefused",
       "interface": {
         "cost": 0,
+        "costWithoutRefusals": 0,
         "methods": [],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -2970,17 +3277,32 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 8,
-        "leverage": 0.5,
+        "interfaceCost": 14,
+        "leverage": 0.29,
         "reach": 4
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "IllegalStateException"
+        }
+      ],
       "id": "io.dataroots.savingstreak.jobs.ScheduledJobs",
       "interface": {
-        "cost": 8,
+        "cost": 14,
+        "costWithoutRefusals": 8,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [
+              "JobRefused",
+              "JobFailed"
+            ],
             "name": "runNow",
             "parameters": [
               "String"
@@ -2990,6 +3312,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "sayWhichJobsAreScheduled",
             "parameters": [],
             "returns": "void",
@@ -2997,10 +3320,36 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "whatCanBeRun",
             "parameters": [],
             "returns": "List<AScheduledJob>",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 6,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "IllegalStateException",
+            "raised": true
+          },
+          {
+            "documented": true,
+            "documentedBy": [
+              "runNow"
+            ],
+            "name": "JobFailed",
+            "raised": true
+          },
+          {
+            "documented": true,
+            "documentedBy": [
+              "runNow"
+            ],
+            "name": "JobRefused",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -3080,10 +3429,14 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.jobs.SchedulingIsOn",
       "interface": {
         "cost": 0,
+        "costWithoutRefusals": 0,
         "methods": [],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "class",
@@ -3119,12 +3472,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.points.PointsCredit",
       "interface": {
         "cost": 10,
+        "costWithoutRefusals": 10,
         "methods": [
           {
             "cost": 5,
+            "documentedRefusals": [],
             "name": "baseAccrualFor",
             "parameters": [
               "long",
@@ -3137,6 +3493,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "getRemainingPoints",
             "parameters": [],
             "returns": "long",
@@ -3144,6 +3501,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "take",
             "parameters": [
               "long"
@@ -3152,6 +3510,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -3203,12 +3563,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.points.PointsCreditRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "earnedBy",
             "parameters": [
               "PointsReason",
@@ -3219,6 +3582,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "remainingPointsOf",
             "parameters": [
               "long"
@@ -3228,6 +3592,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "unspentOldestFirst",
             "parameters": [
               "long"
@@ -3236,6 +3601,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -3303,10 +3670,14 @@
         "matched": "kind is enum",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.points.PointsReason",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": []
       },
       "kind": "enum",
@@ -3340,17 +3711,20 @@
         "verdict": "pass-through"
       },
       "depth": {
-        "interfaceCost": 12,
-        "leverage": 0.25,
+        "interfaceCost": 14,
+        "leverage": 0.21,
         "reach": 3
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.points.PointsService",
       "interface": {
-        "cost": 12,
+        "cost": 14,
+        "costWithoutRefusals": 12,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "balanceOf",
             "parameters": [
               "long"
@@ -3360,6 +3734,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "basePointsEarnedBy",
             "parameters": [
               "Collection<Long>"
@@ -3369,6 +3744,7 @@
           },
           {
             "cost": 5,
+            "documentedRefusals": [],
             "name": "creditBasePointsFor",
             "parameters": [
               "long",
@@ -3381,6 +3757,9 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [
+              "IllegalArgumentException"
+            ],
             "name": "spend",
             "parameters": [
               "long",
@@ -3388,6 +3767,17 @@
             ],
             "returns": "boolean",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": true,
+            "documentedBy": [
+              "spend"
+            ],
+            "name": "IllegalArgumentException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -3476,12 +3866,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.ClaimedReward",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "claimedAt",
             "parameters": [],
             "returns": "Instant",
@@ -3489,6 +3882,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -3496,6 +3890,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "pointsSpent",
             "parameters": [],
             "returns": "long",
@@ -3503,6 +3898,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "reward",
             "parameters": [],
             "returns": "Reward",
@@ -3510,12 +3906,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "voucherCode",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -3572,12 +3971,15 @@
         "reach": 2
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.Redemption",
       "interface": {
         "cost": 12,
+        "costWithoutRefusals": 12,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "asClaimed",
             "parameters": [],
             "returns": "ClaimedReward",
@@ -3585,6 +3987,7 @@
           },
           {
             "cost": 5,
+            "documentedRefusals": [],
             "name": "issue",
             "parameters": [
               "long",
@@ -3596,6 +3999,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -3668,12 +4073,15 @@
         "matched": "kind is interface, extends or implements JpaRepository",
         "rule": "generated repository"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.RedemptionRepository",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "findBySavingsAccountIdOrderByClaimedAtDescIdDesc",
             "parameters": [
               "long"
@@ -3682,6 +4090,8 @@
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -3735,12 +4145,15 @@
         "matched": "kind is enum",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.Reward",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "code",
             "parameters": [],
             "returns": "String",
@@ -3748,6 +4161,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "costInPoints",
             "parameters": [],
             "returns": "long",
@@ -3755,6 +4169,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "description",
             "parameters": [],
             "returns": "String",
@@ -3762,6 +4177,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "title",
             "parameters": [],
             "returns": "String",
@@ -3769,12 +4185,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "voucherPrefix",
             "parameters": [],
             "returns": "String",
             "visibility": "package-private"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -3819,18 +4238,23 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.RewardRefused",
       "interface": {
         "cost": 3,
+        "costWithoutRefusals": 3,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "kind",
             "parameters": [],
             "returns": "Kind",
             "visibility": "public"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -3869,17 +4293,20 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 10,
-        "leverage": 0.7,
+        "interfaceCost": 12,
+        "leverage": 0.58,
         "reach": 7
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.rewards.RewardsService",
       "interface": {
-        "cost": 10,
+        "cost": 12,
+        "costWithoutRefusals": 10,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "catalogue",
             "parameters": [],
             "returns": "List<Reward>",
@@ -3887,6 +4314,9 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [
+              "RewardRefused"
+            ],
             "name": "claim",
             "parameters": [
               "long",
@@ -3897,12 +4327,24 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "claimedIn",
             "parameters": [
               "long"
             ],
             "returns": "List<ClaimedReward>",
             "visibility": "public"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": true,
+            "documentedBy": [
+              "claim"
+            ],
+            "name": "RewardRefused",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -4001,18 +4443,23 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.AdvanceClockRequest",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "days",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -4054,18 +4501,23 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.ClaimRequest",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "reward",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -4109,12 +4561,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.ClaimedRewardResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "claimedAt",
             "parameters": [],
             "returns": "Instant",
@@ -4122,6 +4577,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "code",
             "parameters": [],
             "returns": "String",
@@ -4129,6 +4585,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -4136,6 +4593,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "ClaimedReward"
@@ -4145,6 +4603,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "pointsSpent",
             "parameters": [],
             "returns": "long",
@@ -4152,6 +4611,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "title",
             "parameters": [],
             "returns": "String",
@@ -4159,12 +4619,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "voucherCode",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -4228,12 +4691,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.ClockResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "movedForwardByDays",
             "parameters": [],
             "returns": "long",
@@ -4241,6 +4707,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "now",
             "parameters": [],
             "returns": "Instant",
@@ -4248,6 +4715,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "HowFarTheClockHasMoved"
@@ -4256,6 +4724,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -4311,12 +4781,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.CustomerAccountsResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "currentAccounts",
             "parameters": [],
             "returns": "List<CurrentAccountResponse>",
@@ -4324,12 +4797,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "savingsAccounts",
             "parameters": [],
             "returns": "List<SavingsAccountResponse>",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -4374,17 +4850,29 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 11,
-        "leverage": 0.36,
+        "interfaceCost": 13,
+        "leverage": 0.31,
         "reach": 4
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "ResponseStatusException"
+        }
+      ],
       "id": "io.dataroots.savingstreak.web.CustomerController",
       "interface": {
-        "cost": 11,
+        "cost": 13,
+        "costWithoutRefusals": 11,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "accountsOf",
             "parameters": [
               "long"
@@ -4394,6 +4882,7 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "customers",
             "parameters": [],
             "returns": "List<CustomerResponse>",
@@ -4401,12 +4890,22 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "signIn",
             "parameters": [
               "SignInRequest"
             ],
             "returns": "CustomerResponse",
             "visibility": "package-private"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "ResponseStatusException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -4491,12 +4990,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.CustomerResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "contactDetails",
             "parameters": [],
             "returns": "String",
@@ -4504,6 +5006,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -4511,6 +5014,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "name",
             "parameters": [],
             "returns": "String",
@@ -4518,6 +5022,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "Customer"
@@ -4526,6 +5031,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -4579,12 +5086,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.DepositRequest",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "String",
@@ -4592,12 +5102,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "fromCurrentAccountId",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -4645,12 +5158,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.DepositResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -4658,6 +5174,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "depositedAt",
             "parameters": [],
             "returns": "Instant",
@@ -4665,6 +5182,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -4672,6 +5190,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "RecordedDeposit"
@@ -4681,12 +5200,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "pointsEarned",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -4740,17 +5262,29 @@
         "verdict": "no finding"
       },
       "depth": {
-        "interfaceCost": 7,
-        "leverage": 0.29,
+        "interfaceCost": 9,
+        "leverage": 0.22,
         "reach": 2
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "ResponseStatusException"
+        }
+      ],
       "id": "io.dataroots.savingstreak.web.DevelopmentClockController",
       "interface": {
-        "cost": 7,
+        "cost": 9,
+        "costWithoutRefusals": 7,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "advance",
             "parameters": [
               "AdvanceClockRequest"
@@ -4760,10 +5294,20 @@
           },
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "where",
             "parameters": [],
             "returns": "ClockResponse",
             "visibility": "package-private"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "ResponseStatusException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -4821,12 +5365,15 @@
         "reach": 2
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.DevelopmentJobsController",
       "interface": {
         "cost": 7,
+        "costWithoutRefusals": 7,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "jobs",
             "parameters": [],
             "returns": "List<ScheduledJobResponse>",
@@ -4834,6 +5381,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "run",
             "parameters": [
               "String"
@@ -4842,6 +5390,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -4910,12 +5460,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.JobRunResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
@@ -4923,6 +5476,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "name",
             "parameters": [],
             "returns": "String",
@@ -4930,6 +5484,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "AJobThatRan"
@@ -4939,6 +5494,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "ranAt",
             "parameters": [],
             "returns": "Instant",
@@ -4946,12 +5502,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "tookMillis",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -5006,12 +5565,15 @@
         "reach": 0
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.RefusalsAsHttp",
       "interface": {
         "cost": 28,
+        "costWithoutRefusals": 28,
         "methods": [
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "clockRefused",
             "parameters": [
               "ClockRefused"
@@ -5021,6 +5583,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "depositRefused",
             "parameters": [
               "DepositRefused"
@@ -5030,6 +5593,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "jobFailed",
             "parameters": [
               "JobFailed"
@@ -5039,6 +5603,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "jobRefused",
             "parameters": [
               "JobRefused"
@@ -5048,6 +5613,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "rewardRefused",
             "parameters": [
               "RewardRefused"
@@ -5057,6 +5623,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "withdrawalRefused",
             "parameters": [
               "WithdrawalRefused"
@@ -5065,6 +5632,8 @@
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -5131,18 +5700,23 @@
         "reach": 1
       },
       "excludedBy": null,
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.RewardController",
       "interface": {
         "cost": 3,
+        "costWithoutRefusals": 3,
         "methods": [
           {
             "cost": 1,
+            "documentedRefusals": [],
             "name": "catalogue",
             "parameters": [],
             "returns": "List<RewardResponse>",
             "visibility": "package-private"
           }
         ],
+        "refusalCost": 0,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -5195,12 +5769,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.RewardResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "code",
             "parameters": [],
             "returns": "String",
@@ -5208,6 +5785,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "costInPoints",
             "parameters": [],
             "returns": "long",
@@ -5215,6 +5793,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "description",
             "parameters": [],
             "returns": "String",
@@ -5222,6 +5801,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "Reward"
@@ -5231,12 +5811,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "title",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -5282,17 +5865,29 @@
         "verdict": "earns its keep"
       },
       "depth": {
-        "interfaceCost": 31,
-        "leverage": 0.32,
+        "interfaceCost": 33,
+        "leverage": 0.3,
         "reach": 10
       },
       "excludedBy": null,
+      "findings": [
+        {
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+          "documented": false,
+          "documentedBy": [],
+          "finding": "raised but never documented",
+          "raised": true,
+          "refusal": "ResponseStatusException"
+        }
+      ],
       "id": "io.dataroots.savingstreak.web.SavingsAccountController",
       "interface": {
-        "cost": 31,
+        "cost": 33,
+        "costWithoutRefusals": 31,
         "methods": [
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "claim",
             "parameters": [
               "long",
@@ -5303,6 +5898,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "claimedOutOf",
             "parameters": [
               "long"
@@ -5312,6 +5908,7 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "deposit",
             "parameters": [
               "long",
@@ -5322,6 +5919,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "depositsInto",
             "parameters": [
               "long"
@@ -5331,6 +5929,7 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "savingsAccount",
             "parameters": [
               "long"
@@ -5340,6 +5939,7 @@
           },
           {
             "cost": 3,
+            "documentedRefusals": [],
             "name": "withdraw",
             "parameters": [
               "long",
@@ -5350,12 +5950,22 @@
           },
           {
             "cost": 2,
+            "documentedRefusals": [],
             "name": "withdrawalsFrom",
             "parameters": [
               "long"
             ],
             "returns": "List<WithdrawalResponse>",
             "visibility": "package-private"
+          }
+        ],
+        "refusalCost": 2,
+        "refusals": [
+          {
+            "documented": false,
+            "documentedBy": [],
+            "name": "ResponseStatusException",
+            "raised": true
           }
         ],
         "typesCrossingTheSeam": [
@@ -5494,12 +6104,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.SavingsAccountResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "customerName",
             "parameters": [],
             "returns": "String",
@@ -5507,6 +6120,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -5514,6 +6128,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "moneyBalance",
             "parameters": [],
             "returns": "BigDecimal",
@@ -5521,12 +6136,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "pointsBalance",
             "parameters": [],
             "returns": "long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -5580,12 +6198,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.ScheduledJobResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "definedBy",
             "parameters": [],
             "returns": "String",
@@ -5593,6 +6214,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "name",
             "parameters": [],
             "returns": "String",
@@ -5600,6 +6222,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "AScheduledJob"
@@ -5609,12 +6232,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "schedule",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": true,
@@ -5664,18 +6290,23 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.SignInRequest",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "contactDetails",
             "parameters": [],
             "returns": "String",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -5717,12 +6348,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.WithdrawalRequest",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "String",
@@ -5730,12 +6364,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "Long",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -5783,12 +6420,15 @@
         "matched": "kind is record",
         "rule": "data carrier"
       },
+      "findings": [],
       "id": "io.dataroots.savingstreak.web.WithdrawalResponse",
       "interface": {
         "cost": null,
+        "costWithoutRefusals": null,
         "methods": [
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "allocations",
             "parameters": [],
             "returns": "List<RecordedWithdrawalAllocation>",
@@ -5796,6 +6436,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "amount",
             "parameters": [],
             "returns": "BigDecimal",
@@ -5803,6 +6444,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "id",
             "parameters": [],
             "returns": "Long",
@@ -5810,6 +6452,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "of",
             "parameters": [
               "RecordedWithdrawal"
@@ -5819,6 +6462,7 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "toCurrentAccountId",
             "parameters": [],
             "returns": "long",
@@ -5826,12 +6470,15 @@
           },
           {
             "cost": null,
+            "documentedRefusals": [],
             "name": "withdrawnAt",
             "parameters": [],
             "returns": "Instant",
             "visibility": "public"
           }
         ],
+        "refusalCost": null,
+        "refusals": [],
         "typesCrossingTheSeam": [
           {
             "mustBeLearned": false,
@@ -5994,7 +6641,7 @@
       "name": "io.dataroots.savingstreak.web"
     }
   ],
-  "schema": "module-depth-map/4",
+  "schema": "module-depth-map/5",
   "scoring": {
     "configuration": "scripts/module_depth_map/scoring.json",
     "deletionTest": {
@@ -6062,6 +6709,29 @@
       "protected",
       "public"
     ],
+    "refusals": {
+      "because": "A refusal a module can answer with is something its caller has to know before they call it: it decides what they write around the call, and a caller who does not know about it has not learned the module. So it is priced like a type crossing the seam, because that is what learning one amounts to. It is then reported as a band of its own, so that a module whose interface is wide because it is honest about how it can fail can be told apart from one that is merely wide. Folded into a single number the two are identical, and a module is paid for saying nothing about its failure modes.",
+      "documentedNeverRaised": {
+        "because": "The module's own documentation promises a refusal that nothing in its implementation can throw. Whoever reads the seam writes a catch for something that will never arrive, and whatever the module does refuse for arrives under some other name. Either the documentation is stale or the code lost a check, and which of the two it is is a question for a person; that there is a disagreement is a question for a machine.",
+        "finding": "documented but never raised"
+      },
+      "findingsByKind": [
+        {
+          "finding": "documented but never raised",
+          "findings": 0
+        },
+        {
+          "finding": "raised but never documented",
+          "findings": 6
+        }
+      ],
+      "modulesWithFindings": 6,
+      "raisedNeverDocumented": {
+        "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
+        "finding": "raised but never documented"
+      },
+      "refusalsRead": 13
+    },
     "typesEveryCallerAlreadyKnows": [
       "BigDecimal",
       "BigInteger",
@@ -6107,10 +6777,11 @@
     "weights": {
       "method": 1,
       "parameter": 1,
+      "refusal": 2,
       "typeEveryCallerAlreadyKnows": 0,
       "typeToLearn": 2
     },
-    "widestInterface": 31,
+    "widestInterface": 33,
     "widestReach": 11
   },
   "source": {
