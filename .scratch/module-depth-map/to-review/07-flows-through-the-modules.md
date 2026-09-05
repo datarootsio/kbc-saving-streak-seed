@@ -11,12 +11,12 @@ flow that stops matching the code is a flow that fails rather than one that quie
 
 **Blocked by:** 03 (Reach, and the fan).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] A deposit, a withdrawal with the deposits it draws down, and a reward claim are each available as a flow
-- [ ] Choosing a flow highlights every module it passes through, in the order it passes through them
-- [ ] Flows are derived from the call graph rather than listed by hand
-- [ ] Each flow is defined by its entry point in the checked-in configuration file, not by a hardcoded path through the modules
-- [ ] A flow whose path can no longer be resolved fails loudly rather than rendering a shorter path
-- [ ] Every module named in a flow is a module the graph contains
-- [ ] Clearing the selection returns the page to showing all modules equally
+- [x] A deposit, a withdrawal with the deposits it draws down, and a reward claim are each available as a flow
+- [x] Choosing a flow highlights every module it passes through, in the order it passes through them
+- [x] Flows are derived from the call graph rather than listed by hand
+- [x] Each flow is defined by its entry point in the checked-in configuration file, not by a hardcoded path through the modules
+- [x] A flow whose path can no longer be resolved fails loudly rather than rendering a shorter path
+- [x] Every module named in a flow is a module the graph contains
+- [x] Clearing the selection returns the page to showing all modules equally
