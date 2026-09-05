@@ -9,7 +9,7 @@ what a reader sees in the panel and what a later tool reads from the graph are t
 
 **Blocked by:** 04 (The deletion test) and 05 (Refusals as their own band).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] Clicking any module opens a panel about that module, and closing it returns to the full picture
 - [x] The panel lists each method reachable from outside, with the cost each one puts on a caller
