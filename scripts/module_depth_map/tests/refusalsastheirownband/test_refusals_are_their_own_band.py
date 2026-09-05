@@ -97,6 +97,55 @@ TWO_HELPERS_THAT_AGREE = (
     "    private Shut refusing(String why, long id) { return new Shut(why); }\n}"
 )
 
+# One statement in two spellings. `this.` is a prefix a writer may put on a call to a
+# method of their own and nothing else, so both of these throw a `Shut` and both modules
+# keep their word. Read differently they do not even disagree quietly: the count of throws
+# this tool could not name is module-wide, so the unread spelling withdraws the *documented
+# but never raised* check from every refusal in the module that writes it.
+THROWS_THROUGH_A_HELPER = (
+    "public class Bolt {\n"
+    "\n"
+    "    /** @throws Shut if it is shut */\n"
+    "    public void go(long id) {\n"
+    "        if (id < 0) { throw refusing(\"shut\"); }\n"
+    "    }\n"
+    "\n"
+    "    private Shut refusing(String reason) { return new Shut(reason); }\n}"
+)
+THROWS_THROUGH_THE_SAME_HELPER_ON_THIS = THROWS_THROUGH_A_HELPER.replace(
+    "class Bolt {", "class Bolted {"
+).replace("throw refusing(", "throw this.refusing(")
+
+# A stale promise on one method, and on another a throw through a helper written with the
+# prefix. The two have nothing to do with each other, which is the point: while the
+# qualified throw read as a type only javac could resolve, it bought the stale promise
+# beside it an alibi, and the one finding this whole feature exists to make went unmade.
+A_STALE_PROMISE_BESIDE_A_QUALIFIED_THROW = (
+    "public class Hidden {\n"
+    "\n"
+    "    /** @throws Shut if it is shut */\n"
+    "    public void stale() { }\n"
+    "\n"
+    "    /** @throws Locked if it is locked */\n"
+    "    public void other() { throw this.locking(\"locked\"); }\n"
+    "\n"
+    "    private Locked locking(String reason) { return new Locked(reason); }\n}"
+)
+
+# An enum's constructor. Java makes it private whether or not the word is written, and
+# allows no other access modifier on it, so no caller can reach what it promises.
+AN_ENUM_WHOSE_CONSTRUCTOR_PROMISES = (
+    "public enum Colour {\n"
+    "    RED(\"r\"), BLUE(\"b\");\n"
+    "\n"
+    "    private final String code;\n"
+    "\n"
+    "    /** @throws Shut if the code is empty */\n"
+    "    Colour(String code) { this.code = code; }\n"
+    "\n"
+    "    public String code() { return code; }\n}"
+)
+
 # The commonest validation idiom in Java: a constructor that refuses, documented on the
 # constructor because that is the member a caller of `new Built(-1)` meets.
 A_CONSTRUCTOR_THAT_REFUSES = (
@@ -286,6 +335,30 @@ class EveryRefusalAModuleCanAnswerWithIsPartOfItsInterfaceTest(SourceOfKnownShap
 
         self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Latch"]))
         self.assertEqual([], modules["Latch"]["findings"])
+
+    def test_a_call_on_this_is_the_same_call_and_gives_the_same_answer(self):
+        """`throw this.refusing(why)` and `throw refusing(why)` are one statement.
+
+        Both spellings in one tree, so the assertion is that they agree rather than that
+        either is right on its own. `this.` says the call is on this object, which is what
+        a bare call to a method the module declares already means; nothing else about the
+        throw is different, and the reading may not be either.
+        """
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Bolt", THROWS_THROUGH_A_HELPER),
+            ("Bolted", THROWS_THROUGH_THE_SAME_HELPER_ON_THIS),
+        )
+
+        self.assertEqual(
+            self.refusals_of(modules["Bolt"]), self.refusals_of(modules["Bolted"])
+        )
+        self.assertEqual(
+            self.checked_of(modules["Bolt"]), self.checked_of(modules["Bolted"])
+        )
+        self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Bolted"]))
+        self.assertEqual({"Shut": True}, self.checked_of(modules["Bolted"]))
+        self.assertEqual([], modules["Bolted"]["findings"])
 
     def test_the_refusals_are_emitted_in_a_stable_sorted_order(self):
         modules = self.modules(
@@ -866,6 +939,31 @@ class ARefusalOnlyOneSideOfWhichCouldBeReadTest(SourceOfKnownShapeTest):
             ["Locked"], [f["refusal"] for f in modules["Gates"]["findings"]]
         )
 
+    def test_a_spelling_this_tool_can_read_buys_the_module_no_alibi(self):
+        """A qualified throw is not an unreadable one, and withdraws nothing.
+
+        The count of throws that could not be named is module-wide on purpose — a body
+        read in part cannot be argued from — which is exactly why what goes into it has to
+        be only the throws this tool genuinely cannot name. `throw this.locking(reason)` is
+        not one of them, and while it was counted as one, the stale `@throws Shut` on the
+        method beside it went unreported.
+        """
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Locked", ANOTHER_REFUSAL),
+            ("Hidden", A_STALE_PROMISE_BESIDE_A_QUALIFIED_THROW),
+        )
+
+        self.assertEqual(
+            {"Shut": (True, False), "Locked": (True, True)},
+            self.refusals_of(modules["Hidden"]),
+        )
+        self.assertEqual({"Shut": True, "Locked": True}, self.checked_of(modules["Hidden"]))
+        self.assertEqual(
+            [(self.the_rule()["documentedNeverRaised"]["finding"], "Shut")],
+            [(f["finding"], f["refusal"]) for f in modules["Hidden"]["findings"]],
+        )
+
     def test_the_document_counts_the_refusals_it_never_checked(self):
         """Three denominators, and this is the honest one: neither finding nor agreement."""
         self.modules(
@@ -952,6 +1050,36 @@ class WhatAConstructorSaysAboutHowAModuleRefusesTest(SourceOfKnownShapeTest):
 
         self.assertEqual({"Locked": (True, True)}, self.refusals_of(modules["Coin"]))
         self.assertEqual([], modules["Coin"]["findings"])
+
+    def test_an_enum_constructor_with_no_modifier_promises_nobody_anything(self):
+        """Java makes it private (JLS 8.8.3), so no caller can reach what it says.
+
+        Read as package-private it was a documenter, and what a maintainer wrote for
+        another maintainer was priced onto the module's interface and argued about.
+        """
+        modules = self.modules(
+            ("Shut", A_REFUSAL), ("Colour", AN_ENUM_WHOSE_CONSTRUCTOR_PROMISES)
+        )
+
+        self.assertEqual([], modules["Colour"]["interface"]["refusals"])
+        self.assertEqual([], modules["Colour"]["findings"])
+
+    def test_an_enums_own_methods_are_reachable_as_they_were_before(self):
+        """The rule is about constructors: an enum's method with no modifier is still one."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Colour", "public enum Colour {\n"
+                       "    RED, BLUE;\n"
+                       "\n"
+                       "    /** @throws Shut if it is shut */\n"
+                       "    void go(long id) {}\n}"),
+        )
+
+        self.assertEqual({"Shut": (True, False)}, self.refusals_of(modules["Colour"]))
+        self.assertEqual(
+            [(self.the_rule()["documentedNeverRaised"]["finding"], "Shut")],
+            [(f["finding"], f["refusal"]) for f in modules["Colour"]["findings"]],
+        )
 
     def test_a_method_named_after_its_module_is_not_its_constructor(self):
         """`public Coin coin()` writes the type's name twice and constructs nothing."""

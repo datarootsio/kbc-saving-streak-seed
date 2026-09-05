@@ -197,10 +197,23 @@ _A_THROW = re.compile(r"(?<![\w.$])throw(?![\w$])")
 # other floor in this tool leans.
 _THROWN = re.compile(r"[ \t\r\n]+new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
 
-# A refusal thrown through a method of this module's own: `throw refusing(reason)`. The
-# name is followed to a declaration in the same file and to nothing else — a bare call is
-# the one spelling whose declaration is guaranteed to be here to read.
-_THROWN_THROUGH = re.compile(r"[ \t\r\n]+([A-Za-z_$][\w$]*)[ \t\r\n]*\(")
+# A refusal thrown through a method of this module's own: `throw refusing(reason)`, and
+# `throw this.refusing(reason)`, which is the same call wearing the prefix Java lets a
+# writer put on it. The name is followed to a declaration in the same file and to nothing
+# else — a call on `this`, spelled either way, is the one shape whose declaration is
+# guaranteed to be here to read.
+#
+# The `this.` is written into this pattern rather than taken off the body first, because
+# the two readings of a body want different text: `called` has to see `this.of(1)` as
+# written, or a module calling its own `of` is credited with reaching whatever a static
+# import of that name came from. Stripping it for one reading and not the other, in one
+# place, is what keeps the two apart while `throw refusing(why)` and
+# `throw this.refusing(why)` give the same answer — and they have to, because a whole
+# module's promises go unchecked on the strength of a single throw this file could not
+# name.
+_THROWN_THROUGH = re.compile(
+    r"[ \t\r\n]+(?:this[ \t\r\n]*\.[ \t\r\n]*)?([A-Za-z_$][\w$]*)[ \t\r\n]*\("
+)
 
 # A refusal the documentation promises, as Java's own syntax for saying so. The tag has
 # to stand where a javadoc *block* tag stands: at the start of a line, or after one of the
@@ -1262,7 +1275,12 @@ def _raised_in(body, methods):
 
     `throw new X(...)` says the type outright. `throw x(...)`, where `x` is a method this
     module declares, says it through a declaration this file has already read, so the
-    refusal is that method's return type. Any other spelling — a throw of a variable, of a
+    refusal is that method's return type. `throw this.x(...)` is that same call: `this.` is
+    a prefix a writer may put on a call to their own method and nothing more, so the two
+    spellings are read as one. They have to be, and not only for tidiness — the count
+    below is module-wide, so one spelling read as unreadable withdraws the *documented but
+    never raised* check from every refusal in the module, on the strength of a throw this
+    file can name perfectly well. Any other spelling — a throw of a variable, of a
     field, of a call on something else — names a type only javac could resolve, and is not
     guessed at: what is counted here is a floor on what a module raises, which is the
     direction every other reading in this file errs in.
@@ -1595,7 +1613,9 @@ def _constructor_in(member, holder_kind, holder_name, documented_refusals=()):
     if name is None or name.group(1) != holder_name or signature[:name.start()].strip():
         return None
     return Constructor(
-        holder_name, _visibility(modifiers, holder_kind), documented_refusals
+        holder_name,
+        _visibility(modifiers, holder_kind, of_a_constructor=True),
+        documented_refusals,
     )
 
 
@@ -1760,16 +1780,25 @@ def _modifiers_in(before):
         rest = rest[word.end():].lstrip()
 
 
-def _visibility(modifiers, holder_kind):
+def _visibility(modifiers, holder_kind, of_a_constructor=False):
     """How far outside this type the member can be reached from.
 
     An interface's members carry no access modifier and are public anyway, which is the
     one place where saying nothing means the widest thing rather than the narrowest.
+
+    An enum's constructor written without one is the opposite: the JLS makes it private,
+    and no other access modifier is even legal on it, so nobody outside the enum can reach
+    it. Reading it as package-private put what such a constructor promises on the module's
+    interface and let a `@throws` on it carry a finding — a machine arguing about a promise
+    made to nobody, which is the rule `_documenters_of` already states from the other side:
+    a constructor a caller cannot reach is a note to whoever maintains the module.
     """
     for access in _ACCESS:
         if access in modifiers:
             return access
-    return "public" if holder_kind in ("interface", "annotation") else "package-private"
+    if holder_kind in ("interface", "annotation"):
+        return "public"
+    return "private" if of_a_constructor and holder_kind == "enum" else "package-private"
 
 
 def _without_type_parameters(rest):

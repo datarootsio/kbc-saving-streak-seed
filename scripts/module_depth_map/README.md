@@ -204,14 +204,25 @@ a module whose interface is wide *because it is honest about how it can fail* sh
 distinguishable from one that is merely wide. Folded into a single number the two are
 identical, and a module is then paid for saying nothing about its failure modes.
 
+A refusal is charged `refusal` flat, whatever it is called, and it is *not* run through
+`typesEveryCallerAlreadyKnows` the way a type crossing the seam is. That list is about
+types a caller already holds: `List` handed back costs nothing because they know `List`
+already. Knowing that `IllegalStateException` exists is not knowing that *this module*
+answers with one, and that second thing is what the band counts — so a well-known refusal
+costs the same as an invented one. `scoring.json` says so where the weight is argued for,
+rather than borrowing the seam-type rule it does not follow.
+
 Each refusal is read from the source's own words on both sides, and guessed at on neither:
 
 - **documented** is the `@throws` (or `@exception`) written in the javadoc over a *member*
   a caller can reach — a method, or a constructor. A refusal named in prose, or inside a
   `{@link}`, is prose; a tag in an ordinary `/* */` block is a note to whoever edits the
   file; and a `@throws` over a private helper or a private constructor documents that,
-  rather than the seam. A javadoc documents the member written under it, annotations and
-  all — `@Transactional` sits between the two — and not the member after that one.
+  rather than the seam. An enum's constructor written with no access modifier is one of
+  those private ones: the JLS makes it private and allows nothing else there, so what it
+  promises is a note to whoever maintains the enum. A javadoc documents the member written
+  under it, annotations and all — `@Transactional` sits between the two — and not the
+  member after that one.
 - **raised** is what the module's body throws, over that whole body, nested types and
   constructors included. Two spellings are read: `throw new X(...)`, and `throw f(...)`
   where `f` is a method this module declares, which is a throw of whatever `f` hands back.
@@ -223,6 +234,12 @@ Each refusal is read from the source's own words on both sides, and guessed at o
   principle, because this reads the masked source, where a literal has been blanked — so
   `refusing("shut")` and `refusing()` are the same characters by the time the reading gets
   to them, and an arity read off them would be a guess.
+
+`throw this.f(...)` is `throw f(...)`. The prefix is one a writer may put on a call to
+their own method and nothing else, and reading the two spellings differently would be
+worse than untidy: the count of throws this tool could not name is module-wide, so a
+single unread throw withdraws the *documented but never raised* check from every refusal
+in that module. One keystroke would then have switched a module's promises off.
 
 A constructor is read on **both** sides or it would be read on one. Its body is part of the
 module's body, so `throw new IllegalArgumentException(...)` inside it is already counted as
