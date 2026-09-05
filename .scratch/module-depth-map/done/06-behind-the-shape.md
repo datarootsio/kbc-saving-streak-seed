@@ -9,7 +9,7 @@ what a reader sees in the panel and what a later tool reads from the graph are t
 
 **Blocked by:** 04 (The deletion test) and 05 (Refusals as their own band).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] Clicking any module opens a panel about that module, and closing it returns to the full picture
 - [x] The panel lists each method reachable from outside, with the cost each one puts on a caller
@@ -434,3 +434,149 @@ back.
   saying why — only Spring's `ExceptionHandlerExceptionResolver` recorded it, and there is no
   `log.warn` anywhere under `deposits/` except in `WithdrawalsService`. That is pre-existing backend
   code outside this branch's diff.
+
+
+## Verified - attempt 4
+
+Reviewed `ticket/05-refusals-as-their-own-band..ticket/06-behind-the-shape` (`427b338`, `4caf8d8`
+on top of `80223ef`, `53e34e6`, `b6798db`). **All three attempt-3 blocking points are fixed**, I
+reproduced each from its original scenario, and I exercised all nine acceptance criteria myself
+rather than taking the previous reviews' word for them. **Status: done.**
+
+The branch touches no Java and no TypeScript — `git diff --name-only` is `docs/module-depth-map.html`,
+`scripts/module_depth_map/{README.md,page.py}` and its tests — so the `io.dataroots.savingstreak`
+logging rule has no new surface. I drove the running app anyway to confirm nothing regressed.
+
+### The three attempt-3 blocking points, reproduced from their original scenarios
+
+Chromium, `docs/module-depth-map.html` over `file://`, viewport 1280x700, Playwright sync API.
+
+1. **Double-click on a module name.** `page.mouse.dblclick` on the `AccountsService` name button
+   (x=384.8 y=167.9 w=235.4 h=24.8): `dialog.behind.open` is **`False`** and `String(getSelection())`
+   is **`'AccountsService'`** — the whole word, the page left alone. Screenshot with the selection
+   visible: `.scratch/module-depth-map/logs/06-behind-the-shape.review.4.dblclick-name.png`.
+   Triple-click on the card body: **shut**, selection `'refuses with 1: IllegalArgumentException\n\n'`,
+   and `dialog.contains(...commonAncestorContainer)` is `False` — the selection is the card's own text,
+   not the panel's. The attempt-3 edge case, `SavingStreakApplication` in the leftmost column (name
+   button x=109.8): **shut**, selection `'SavingStreakApplication'`.
+   A second click 300 ms after the first, delivered as click 2 of one gesture: **shut**, selection
+   `'AccountsService'`.
+2. **Ctrl+click on the backdrop.** `DepositsService` panel open, `.behindBody` at x=273 y=32 w=734
+   h=636; Ctrl+click at (bodyBox.x-40, bodyBox.y+120): **`open` is `True`**. Right-click on the
+   backdrop: **open**. Ctrl+click inside: **open**. A plain left click on the backdrop still closes it
+   and returns focus to the card's name.
+3. **The comment and the README.** `page.py:1437-1442` now says the selection branch catches "a drag of
+   a pixel or two across a word … Taking a *whole* word out of a card is the double-click, and that one
+   no single click can recognise; it is waited out below"; `scripts/module_depth_map/README.md:563-573`
+   says the same in prose. Both are now true of the code. The README's fallback paragraph also
+   correctly claims both halves, and I confirmed the specificity claim in the browser: `dialog.behind`
+   computes `display: none` closed and `display: block` open.
+
+### Every acceptance criterion, exercised
+
+I drove **all 71 module panels twice** — once by mouse, once by keyboard — and cross-checked every
+printed value against `docs/module-depth-map.json` in the same pass. **Zero problems** on either run.
+
+- **Clicking opens a panel, closing returns to the full picture.** All 71 by mouse, each with the
+  *previous* panel deliberately left scrolled to its bottom: every one opened on the right module at
+  `scrollTop=0` with exactly one `dialog[open]` and focus on `.behindBody`; `bad=[]`. Escape closes and
+  returns focus to the originating name; Tab from the body reaches `Close` and Enter on it closes and
+  returns focus too.
+- **Methods with their cost:** every `interface.methods[].name` and its `costs N` present on all 71.
+- **Everything it reaches, named:** every `reach.reaches[].name` present, with its kind
+  (`ADAPTER`/`MODULE`/`TRANSACTION`/`RECORD`), matched clause and fully-qualified module id.
+- **Every module that calls it:** every `callers.moduleIds` entry present.
+- **Deletion-test verdict and its numbers:** the verdict word, all three of `deletionTest.{reach,
+  callers,methods}`, and the `because` paragraph, on all 35 scored modules.
+- **Findings, or plainly none:** the 6 modules the graph carries findings for (`Deposit`,
+  `WithdrawalsService`, `ScheduledJobs`, `CustomerController`, `DevelopmentClockController`,
+  `SavingsAccountController`) print every string value of the finding; the other 65 print "There is no
+  finding against this module."
+- **An excluded module names the rule, not a score:** all 36 never-scored panels print the rule, the
+  matched clause and the rule's reason, and **not one** prints `interface cost` or `per unit of
+  interface`. Screenshot: `…review.4.panel-excluded.png` (`DepositRepository`: "never scored —
+  generated repository / kind is interface, extends or implements JpaRepository …").
+- **Nothing computed at render time:** every value matched the document. I also stripped comments from
+  `drawBehind`…`drawBehindFindings` and scanned the region: the only non-string `+` is the string
+  concatenation of `module.depth.interfaceCost` with the leverage clause, all seven `.length` uses are
+  `=== 0` emptiness tests, and there is no `Math.` call at all.
+- **Reachable and readable by keyboard:** all 71 opened by Enter on the name button, each at
+  `scrollTop=0`, `aria-labelledby` resolving to the panel's own heading, focus on `.behindBody`, Tab to
+  `Close`, Enter closes, Escape closes, focus back on the originating name every time.
+
+The zero-cost caveat ("nothing this bar counts, which is not the same as nothing to learn") is on the
+panel for exactly the four modules the bar prices at 0 — `ClockRefused`, `JobFailed`, `JobRefused`,
+`SchedulingIsOn` — and on no other panel.
+
+### Layout, themes and the browser console
+
+No horizontal overflow on the page or on `.behindBody` at 720, 1024, 1280 or 1440. Read the
+screenshots rather than only capturing them: `…review.4.panel-AccountsService.png`,
+`…review.4.panel-720.png`, `…review.4.panel-excluded.png`, `…review.4.panel-findings.png` and
+`…review.4.panel-DepositsService.dark.png` (dark theme) all render fully styled and legible.
+`console`, `pageerror` and `requestfailed` were subscribed on every one of six driver runs and written
+to `.scratch/module-depth-map/logs/06-behind-the-shape.review.4.browser.log` — the file is **0 lines**.
+
+### Checks
+
+- `bash .scratch/module-depth-map/lab.sh checks …/logs/06-behind-the-shape.review.4.checks.log`
+  **passed**: backend `Tests run: 113, Failures: 0, Errors: 0`, `BUILD SUCCESS`; frontend
+  `tsc --noEmit` clean.
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — **515 tests, OK**.
+  Reading the test diff, nothing was weakened: five assertions were re-pinned to the new source and
+  `test_neither_end_is_left_reading_the_button_on_its_own` now asserts `event.button === PRIMARY_BUTTON`
+  appears nowhere, so the two pointer ends cannot drift apart again.
+- **Determinism:** two fresh runs into separate temp paths are byte-identical to each other **and to
+  the committed `docs/module-depth-map.{json,html}`** (`cmp` on both). The DEBUG run is 581 lines,
+  **0 WARNING, 0 ERROR**, ending `run finished graphBytes=193563 pageBytes=270579 filesParsed=71
+  filesUnparsed=0 modules=71 scored=35 neverScored=36`. The graph document is unchanged by this
+  attempt (`graphBytes=193563`, as in attempt 3), so no panel value moved.
+- **Backend, to confirm no regression:** `POST /api/savings-accounts/1/deposits
+  {"amount":"12.50","fromCurrentAccountId":1}` → 201, and the log carries
+  `i.d.s.deposits.DepositsService : deposit accepted depositId=1 savingsAccountId=1
+  fromCurrentAccountId=1 amount=12.50 pointsEarned=12 depositedAt=2026-09-05T13:29:31.815Z`.
+  A refusal: `POST …/withdrawals {"amount":"99999.00","toCurrentAccountId":1}` → 400, and the log
+  carries `WARN … i.d.s.deposits.WithdrawalsService : withdrawal rejected savingsAccountId=1
+  toCurrentAccountId=1 amount=99999.00 balance=12.50 reason=There is not enough in that savings
+  account to move EUR 99999.00. It holds EUR 12.50.` — the refusal with its reason. 0 ERROR in
+  `…06-behind-the-shape.app.4.backend.log`.
+
+### What a merger should know before merging
+
+None of this blocks the ticket — every criterion above is met and exercised — but the fix for the
+double-click has a cost, and it is deliberate. Recording it so the next reader does not rediscover it
+as a bug.
+
+1. **A card now opens its panel ~500 ms after the click, not under it.** `A_SECOND_CLICK = 500`
+   (`page.py:1409`): a click *schedules* the opening and the press of a second click cancels it, which
+   is the only way a page can tell "open this" from "take this word" without an API for the browser's
+   own double-click interval. Measured: `open` is `False` immediately and at +200 ms, `True` at
+   +700 ms. Enter on the name button still opens with no wait at all (`detail === 0`), so the keyboard
+   path is unaffected. **A driver that clicks a card and reads `dialog.open` synchronously will see
+   `false`** — mine waits 700-900 ms. If a maintainer would rather have the instant open back, it is
+   one constant and one branch, and the double-click bug returns with it.
+2. **Double-clicking the non-text part of a card does nothing at all.** On the fan SVG or the interface
+   bar there is no word to take, so the reader gets neither a panel nor a useful selection: the first
+   click arms the timer, the second `mousedown` cancels it, and the second click hits
+   `if (event.detail > 1) { return; }` (`page.py:1466`). Measured on `AccountsService`'s fan
+   (x=384.8 y=233.5 w=235.4 h=54.1): `open=False`, selection `'32'`; on the bar, `open=False`,
+   selection `'\n'`. A following single click opens it normally, so it is recoverable, not stuck.
+3. **The pending opening is cancelled only by a second press on a card.** `holdTheOpening()` has
+   exactly two callers — `pressedOnACard` and the top of `openWhenNoSecondClickFollows` — so nothing
+   else clears it: not a click elsewhere, not Escape, not a scroll. Reproduced: click the
+   `AccountsService` card, then within 500 ms begin a drag-selection in the page's lede — the modal
+   opens over it and `getSelection()` is `''`. Also reproduced: click a card then press Escape during
+   the wait, and the panel opens anyway. The reader did ask for the panel in each case, so it is late
+   rather than unrequested — which is why it is not the defect attempts 1-3 sent this back for — but a
+   document-level `mousedown`/`keydown` that calls `holdTheOpening()` when the event missed every card
+   would close it.
+4. **`opensAContextMenu` treats `ctrlKey` as a menu request on every platform** (`page.py:1059`), but
+   Ctrl+click means that only on macOS. Measured: Ctrl+click on a card opens nothing, and on
+   Windows/Linux that is an ordinary click a reader would expect to work. The implementer chose one
+   shared rule over platform sniffing and said so; worth a second opinion, not a blocker.
+5. **`drawBehindMethods` still captions `interface.methods` with a count read off
+   `deletionTest.methods`** (`page.py:1204-1206`), including on the 33 never-scored panels whose
+   verdict section says the deletion test gives them no verdict. Attempt 3 recorded this and accepted
+   the implementer's reasoning — the graph carries no count for that list and
+   `test_the_panel_never_counts_anything_it_could_read_instead` forbids `interface.methods.length`.
+   Unchanged, still not blocking; adding a count field to the graph is another ticket.
