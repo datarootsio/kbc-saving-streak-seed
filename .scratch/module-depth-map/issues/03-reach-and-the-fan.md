@@ -14,9 +14,9 @@ numerator.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-review
+**Status:** needs-info
 
-- [x] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
+- [ ] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
 - [x] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
 - [x] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
 - [x] The fan beneath each module is drawn from its reach, with one line per thing reached
@@ -1078,3 +1078,269 @@ A refused deposit of `0` leaves no `io.dataroots.savingstreak` WARN line — onl
 (`SNACK_VOUCHER` with 12 points, 400, "Coffee or snack voucher costs 40 points, and this account
 has 12"). `WithdrawalsService` logs its refusal; `DepositsService` and `RewardsService` do not.
 Pre-existing, untouched here, flagged by all four reviews now.
+
+## Review feedback - attempt 5
+
+All seven of attempt 4's findings are resolved — six fixed, one (the enum constant) named on the
+page, which attempt 4 sanctioned as one of its two acceptable outcomes. I ran every repro verbatim
+myself rather than taking the log's word for it, and each answers what it should. **Do not redo any
+of that work**; the full list of what I re-checked and found good is at the bottom of this section,
+and it is nearly the whole ticket. The committed `docs/module-depth-map.json` is **correct**: I
+verified all 76 reach entries against the source mechanically, and the whole graph is byte-identical
+to a fresh run.
+
+One thing sends it back, and it is small. Attempt 4 sent this ticket back because
+`page.py` claimed "It is the one place a fan can be longer than the source" when there were five.
+Attempt 5 replaced that with a new counted claim — `page.py:338`, mirrored at `README.md:268` and in
+`reach_of`'s docstring (`scoring.py:456`):
+
+    "Three readings go the other way, and they are named here rather than left to be found."
+
+There is a fourth, and it is not one of the three. That is the same falsifiable-counting-claim
+defect, one attempt later.
+
+### 1. A qualified `new` of a nested type is read as a static call on the enclosing module (blocks criterion 1)
+
+`javasource._A_RECEIVER` runs over the same body `_CONSTRUCTED` does, and `new Holder.Row()`
+contains the substring `Holder.Row(`, which is exactly the shape of a static call. So the enclosing
+module goes into the fan with the evidence string `called on Holder` — and no method is called on
+`Holder` anywhere in the file.
+
+Reproduce — two files in a directory, then point the tool at it:
+
+    // shop/Holder.java
+    package shop;
+    public class Holder {
+        public static class Row { public Row() {} }
+        public long tick() { return 1; }
+    }
+
+    // shop/Till.java
+    package shop;
+    public class Till { public Object ring() { return new Holder.Row(); } }
+
+    python3 scripts/module-depth-map.py --source <that dir> --graph /tmp/g.json --page /tmp/p.html
+
+Graph says:
+
+    shop.Till 1 [('module', 'shop.Holder', 'called on Holder')]
+
+and the run logs `DEBUG module_depth_map.scoring reach read name=Till modules=1 adapters=0
+records=0 transaction=no`. Expected reach 0. `Holder.Row` is a nested type, and this tool's own
+stated rule is that a nested type is not a module and reaches nothing — `resolve`'s dotted branch
+(`scoring.py:508`) returns `None` for `Holder.Row`, and `README.md:211-214` says so in as many
+words. The receiver reading then credits the outer name anyway, with a sentence a reader can check
+against the file and find wrong. It is an overstatement, so it is not covered by the "each leaves a
+fan shorter than the source" paragraph, and it is none of the three readings the page undertakes to
+name (no borrowed field name, no enum constant, no type from outside the tree).
+
+It is **not live**: `grep -rn "new [A-Z][A-Za-z0-9_]*\.[A-Z]" backend/src/main/java` returns
+nothing, and `CustomerController` — which does build a nested `SavingsAccountResponse` — writes it
+by simple name after a single-type import, which attempt 4's binding fix handles correctly. So the
+committed page is unaffected. It is one spelling change away on three live nested types
+(`CustomerAccountsResponse.{CurrentAccountResponse,SavingsAccountResponse}`,
+`PointsCreditRepository.EarnedPoints`).
+
+**Two resolutions, both acceptable — please pick one and make the page match it.**
+
+- Refuse an `_A_RECEIVER` match whose receiver is immediately preceded by `new` (the
+  `constructed` reading already has that name and already declines it), and add the negative twin
+  beside the existing qualified-`new` tests in
+  `scripts/module_depth_map/tests/reachandthefan/test_reach_is_the_numerator_of_depth.py`; **or**
+- name it as a fourth overstating reading, exactly the way attempt 3's parameter-shadowing finding
+  and attempt 4's enum constant were named.
+
+**Whichever you pick, stop counting them on the page.** "Three readings go the other way" is the
+third counted claim this branch has made about a regex reader of Java, and the third one a reviewer
+has falsified. Write "Readings that go the other way — the ones known, named here rather than left
+to be found" and list them. That ends this loop permanently and costs nothing a reader values: the
+list is what makes the floor's edge visible, not the number in front of it.
+
+### 2. A multi-declarator field with an initialiser is dropped silently, and the file promises it never is
+
+`javasource._field_in:856` does `before = text.split("=", 1)[0]`, so only the first name survives.
+
+    private Repo a = null, b = null;   ->  fields [('a', 'Repo')], and no log line at all
+    private Repo a, b;                 ->  no field, and DEBUG module_depth_map.javasource member
+                                           not read as a field line=2 reason=nothing before the
+                                           name reads as a type member=private Repo a, b
+
+Verified by parsing both with `javasource.parse`. `_fields_of`'s docstring says of the two ways a
+member can be declined that "Both are logged", and `_field_in`'s says "several names declared at
+once — is declined with a line". The initialised form is neither logged nor read. A later
+`b.save(x)` then falls to the receiver-as-type-name branch, resolves to nothing, and the fan loses
+a collaborator with no trace.
+
+This errs in the safe direction and is not live here. It is the same defect attempt 2 filed as its
+finding 4 (`private int xs[];`), in the file whose whole promise is that nothing is dropped
+silently — so it wants either the missing log line or the second name read.
+
+### 3. A call with explicit type arguments is read as a declaration, and the reason logged for it is false
+
+`javasource._declares_rather_than_calls:997` answers "declaration" when the character in front of
+the name is `>`. A call written with explicit type arguments puts `>` immediately in front of it.
+
+Reproduce:
+
+    // p/Money.java  package p; public class Money { public static long of(long c) { return c; } }
+    // p/M.java      package p;
+    //   import static p.Money.of;
+    //   public class M {
+    //       public long go() {
+    //           java.util.List<String> empty = java.util.List.<String>of();
+    //           return of(1) + empty.size();
+    //       }
+    //   }
+
+    p.M 0 []
+
+with `DEBUG module_depth_map.scoring static import not read as a call name=M member=of
+from=p.Money, because this module's body declares that name itself and a declaration is not a call`.
+`M` declares no `of`. Delete the `<String>` and the same file gives
+`p.M 1 [('module', 'p.Money', 'calls of, imported statically from it')]`, so the type-argument list
+is the whole of the difference.
+
+The page is only understated by this, so it is not a blocker — but the docstring's justification
+("where the two readings are genuinely ambiguous this answers declaration") does not cover it: a
+dotted receiver followed by a type-argument list is unambiguously a call, and the DEBUG line the
+tool prints about it is a false statement about the source. Not triggered by this repository today.
+
+### 4. The borrowed-name reading is described more narrowly than it fires (nit)
+
+`page.py:347` and `README.md:271` both say "a parameter or a local variable that borrows a field's
+name". A `catch` parameter and a **nested class's own field** do it too, and neither reads as
+either of those. Both verified:
+
+    // p/M.java  package p;
+    //   public class M {
+    //       private final Repo repo = null;                 // Repo extends JpaRepository
+    //       static final class Inner {
+    //           private final Other repo = null;
+    //           void go() { repo.ping(); }
+    //       }
+    //       public long size() { return 1; }
+    //   }
+
+    p.M 1 [('adapter', 'p.Repo', 'called through the field repo, which holds a Repo')]
+
+`M` never touches its `Repo`. Same answer for `catch (RuntimeException repo) { repo.getMessage(); }`.
+"a name in an inner scope that borrows a field's name" covers all four.
+
+### Everything I checked myself and found good — do not redo this work
+
+- `./.scratch/module-depth-map/lab.sh checks` → **exit 0**. Backend **113 tests, 0 failures, BUILD
+  SUCCESS**; `npm run typecheck` clean (log:
+  `.scratch/module-depth-map/logs/03-reach-and-the-fan.review.5.checks.log`).
+  `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` → **317 OK**.
+- **All seven of attempt 4's repros, run verbatim.** (1a) static import vs an inherited method →
+  `shop.Desk 0 []`; (1b) the same through `this.of(1)` → `0`; (2) inherited nested type →
+  `shop.Till 0 []`; (3) class type parameter → `0`; (4) `new Receipt[10]` → `0`; (6) `new B(a)` and
+  `B.of(a)` now agree — `ViaConstructor 1 [('module','shop.B','builds one')]` against
+  `ViaFactory 1 [('module','shop.B','called on B')]`; (7) record components →
+  `shop.Basket 1 [('module','shop.Register','called through the field register, which holds a
+  Register')]`. (5), the enum constant, still answers `shop.Desk 1 [… 'calls RED, imported
+  statically from it']` — documented, as permitted.
+- **Supertype resolution probed seven more ways, all correct**: a generic supertype
+  (`extends Base<Long>`), a qualified one (`extends other.Base`), an imported one, a nested one
+  (`extends Holder.Base`), an interface with a `default` method, and a transitively opaque chain all
+  suppress the static-import reading; the control — a supertype declaring no such name — still
+  leaves it read (`shop.Desk 1 [… 'calls of, imported statically from it']`). A supertype cycle
+  (`A extends B`, `B extends A`) is walked once and does not hang.
+- **The `new` counting probed eight more ways, all correct**: `new` inside a `//` comment, a
+  javadoc `{@code}`, a string literal and a text block all reach nothing; `new Receipt[]{ }` and
+  `new Receipt[2][3]` reach nothing; `new B<String>()` and an anonymous subclass `new B(){...}`
+  reach `shop.B`; `new Receipt()` where a single-type import binds `Receipt` to an out-of-tree type
+  reaches nothing.
+- **Every reach entry in the committed graph verifies against the source.** I wrote my own checker
+  that, for all 71 modules, greps the module's own `.java` for what each evidence string claims — a
+  `new X(`, a static-style call `X.m(`, a call through the named field plus that field's declared
+  type, a static import plus a bare call, `@Transactional`. **76 of 76 verify, 0 problems.**
+  The two riskiest by hand: `SavingsAccountController` has no import of the nested
+  `SavingsAccountResponse`, so its line 57 `new SavingsAccountResponse(...)` really does bind to the
+  top-level module it is credited with; `CustomerController` *does* import the nested one, and is
+  correctly credited with nothing for its line 96.
+- **Criterion 6 holds mechanically**: `reach.count == len(reaches)` on all 71, every non-transaction
+  entry has a `moduleId` the graph contains and a non-empty `matched`, and the transaction is the
+  only kind with a null `moduleId`. Finding 1 points a line at a card that *exists*, which is why it
+  is filed against criterion 1 and criterion 6 stays ticked.
+- **No regression on ticket/02.** Compared the committed graph against
+  `ticket/02-what-a-caller-must-learn:docs/module-depth-map.json`: same 71 module ids, **zero**
+  modules with a changed `interface`, **zero** with a changed `excludedBy`. `reach` is new
+  everywhere, which is this ticket.
+- **Determinism.** Two fresh `python3 scripts/module-depth-map.py` runs are byte identical to each
+  other **and** to the committed `docs/module-depth-map.json` and `docs/module-depth-map.html`
+  (`cmp` on all four). No `/Users` path and no timestamp anywhere in either output.
+- **Playwright/chromium over the committed page** (`file://docs/module-depth-map.html`), light and
+  dark, 1024 and 1280: **71 cards each pass, 0 console messages, 0 page errors, 0 failed requests**
+  (`…review.5.browser.log`), `scrollWidth - clientWidth == 0` in all four. Per card, cross-checked
+  against the graph: the count and order of `svg.fan line` and `svg.fan circle` equal
+  `reach.reaches`, each `class` equals the entry's `kind` on both line and circle, each `<title>`
+  equals `kind name — matched`, and the bar carries `unscored` exactly for the excluded modules.
+  **0 mismatches in all four passes.** The card prose was checked too: for all 71, the
+  `reaches N: …` sentence and the leverage figure match the graph.
+- **Attempt 1's clipping stays fixed, measured rather than eyeballed.** Against each circle's *own*
+  computed stroke width, the worst overhang past the viewBox over all 71 cards is **0.0000 user
+  units** — flush by design, since `SHAPE.ink` budgets exactly for it. The new widest fan is
+  `WithdrawalsService` (11 feet, 2.50 … 197.50 in a `0 0 200 46` viewBox); at 4x with the outermost
+  feet cropped and magnified (`…review.5.foot-left.png`, `…review.5.foot-right.png`) both are whole
+  circles clear of the card edge.
+- **Criterion 5 is met and readable without labels**, measured as bar width over its track against
+  fan span over the card: `WithdrawalsService` 25.8% over 97.5% (11 lines), `DemoData` 6.5% over
+  62.0% (7), `DepositsService` 32.3% over 70.9% (8), `CustomerController` 35.5% over 35.5% (4),
+  `AccountsService` 96.8% over 44.3% (5), `RefusalsAsHttp` 90.3% over nothing, `RewardController`
+  9.7% over one centred line. See `…review.5.package-deposits.{light,dark}.png` and
+  `…review.5.card4x-*.png` — the deep/shallow contrast reads at a glance in both themes.
+- **Criteria 2, 3 and 7 are real, not decorative.** `test_a_deep_module_coordinates_several_things_behind_one_method`
+  pins `{"reach": 5, "interfaceCost": 2, "leverage": 2.5}`;
+  `test_a_pass_through_coordinates_one_thing_per_method` pins
+  `{"reach": 2, "interfaceCost": 4, "leverage": 0.5}` with `len(methods) == reach.count`;
+  `test_padding_the_implementation_changes_neither_reach_nor_depth` asserts the padded fixture is
+  more than twice the lines with `reach` and `depth` identical; every module carries `depth` with
+  both terms it was taken from.
+- **Eight mutation checks, each applied to the real tree and reverted, tree left clean** — every one
+  of attempt 5's fixes has a test that reddens without it: array-creation guard disabled → 2 red;
+  `new` of a module not counted → 5; inherited `declares` dropped → 1; record components not read →
+  2; the bare call read over the `this.`-stripped body again → 1; type parameters dropped from
+  `shadowed` → 1; inherited nested dropped → 1; the opaque guard dropped → 1.
+- **Refusals work and say why.** A configuration with `reach` deleted and one still claiming
+  `module-depth-map-scoring/1` both exit **4**, write neither output file (confirmed by removing
+  both paths first), and log `WARNING module_depth_map.cli refused to run: … reach is missing, and
+  it has to be an object. Nothing is scored with a rule nobody wrote`.
+- **The tool logs its own flow.** A full `--log-level DEBUG` run over the repository: 341 lines,
+  **0 WARNING, 0 ERROR**, `INFO module_depth_map.graph graph built roots=backend/src/main/java
+  filesSeen=71 filesParsed=71 filesUnparsed=0 packages=8 modules=71 scored=35 neverScored=36`,
+  `INFO module_depth_map.graph furthest reach module=io.dataroots.savingstreak.deposits.WithdrawalsService
+  reach=11 over interfaceCost=8 leverage=1.38`, `INFO module_depth_map.graph deepest
+  module=io.dataroots.savingstreak.accounts.DemoData leverage=3.5 reach=7 interfaceCost=2`, and each
+  of the nineteen out-of-tree supertypes leaves its own `supertype not read … because this graph
+  holds no module of that name`. No `System.out`/`print()` anywhere in the tool; every module has
+  its own `logging.getLogger("module_depth_map.*")`.
+- **Application smoke test** on the throwaway database (this branch touches no Java and no TS —
+  `git diff --name-only` over the range returns only `docs/`, `scripts/` and `.scratch/`):
+  `POST /api/savings-accounts/1/deposits` 12.50 → **201** with `INFO i.d.s.deposits.DepositsService :
+  deposit accepted depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=12.50 pointsEarned=12`;
+  amount 0 → **400**; withdrawal 9999.00 → **400** with `WARN i.d.s.deposits.WithdrawalsService :
+  withdrawal rejected savingsAccountId=1 toCurrentAccountId=1 amount=9999.00 balance=12.50
+  reason=There is not enough in that savings account to move EUR 9999.00. It holds EUR 12.50.`;
+  `POST …/redemptions` `SNACK_VOUCHER` → **400** ("Coffee or snack voucher costs 40 points, and this
+  account has 12"); `CHARITY_DONATION` → **201** with `INFO i.d.savingstreak.rewards.RewardsService :
+  claim issued redemptionId=1 savingsAccountId=1 reward=CHARITY_DONATION pointsSpent=10`;
+  `GET /api/savings-accounts/9999` → **404**. **0 ERROR lines** in `…app.5.backend.log`. The Vite
+  page at 5173 renders the sign-in card with only Vite's own connect messages and the React DevTools
+  notice (`…review.5.app.browser.log`, `…review.5.app.png`).
+
+### Four things closed in earlier attempts, still not re-litigated
+
+- A data carrier called statically counts as a *module called*. Closed in attempt 1.
+- The transaction is the one fan line with no `moduleId`. Closed in attempt 1.
+- `a.b.C.d()` — a fully-qualified static call — is not followed, and is named on the page and in the
+  README as an omission. Accepted in attempt 2.
+- A type argument inside a field's type counts as reached, and the evidence string for it is true.
+  Closed in attempt 4.
+
+### Still unrelated to this branch, still worth its own ticket
+
+A refused deposit of `0` leaves no `io.dataroots.savingstreak` WARN line — only Spring's
+`ExceptionHandlerExceptionResolver` at DEBUG — and so does a refused reward claim.
+`WithdrawalsService` logs its refusal; `DepositsService` and `RewardsService` do not. Pre-existing,
+untouched here, flagged by all five reviews now.
