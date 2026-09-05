@@ -427,14 +427,22 @@ class Rules:
         line in the fan pointing at something a reader could not click, and would let a
         module's score rise by importing more of the JDK.
 
-        What is left out is left out in the same direction, so reach reads as a floor:
-        a collaborator handed in as a parameter rather than held as a field, and a record
-        this module loads and mutates rather than creates, are coordination this tool
-        cannot see and does not guess at. So are three spellings of a call — one written
-        out in full, one through something itself reached through something else, and a
-        statically imported member whose name the module's own body also declares. The
-        page names all three, because a floor whose edge a reader cannot see is not one
-        they can trust.
+        Almost everything left out is left out in the same direction, so reach reads as a
+        floor: a collaborator handed in as a parameter rather than held as a field, and a
+        record this module loads and mutates rather than creates, are coordination this
+        tool cannot see and does not guess at. So are three spellings of a call — one
+        written out in full, one through something itself reached through something else,
+        and a statically imported member whose name the module's own body also declares.
+
+        One reading errs the other way, and it is the reason this paragraph says "almost".
+        A call is followed through a field by the *name* it is written against, and a
+        parameter or a local can borrow a field's name: `void go(Other repo)` written in a
+        module holding a `Repo repo` puts `repo.ping()` down as a call on the field's type.
+        Telling the two apart means knowing which declaration was in scope where each call
+        was written, which is scope tracking this reading does not do — so it is named on
+        the page instead, beside the three above and marked as the one that can overstate.
+        A floor whose edge a reader cannot see is not one they can trust, and neither is a
+        page that promises a floor while holding one reading that is not.
         """
         reached = {}
 
@@ -487,10 +495,18 @@ class Rules:
                 # collaborator in whatever shape it needs it in: `List<AScheduledJob>` is
                 # held to reach the jobs, and reading only the `List` would report a module
                 # driving a collection and nothing else.
+                #
+                # Spelled as the source spelled them, package or enclosing type and all.
+                # `names_in` answers with the simple name of each, which is what a caller
+                # reading an interface has to learn and the wrong thing entirely here: cut
+                # back that way, `private final other.Receipt receipt` resolved against
+                # this file's own package, and the fan drew a line to `shop.Receipt` under
+                # an evidence string that said in the same breath that the field held an
+                # `other.Receipt` — the page contradicting itself inside one sentence.
                 written = held[receiver].written
                 found = [
                     (name, "called through the field %s, which holds a %s" % (receiver, written))
-                    for name in javasource.names_in(written)
+                    for name in javasource.written_names_in(written)
                 ]
             else:
                 found = [(receiver, "called on %s" % receiver)]
@@ -538,7 +554,13 @@ class Rules:
                     declared.name, imported.member, imported.type,
                 )
                 continue
-            target = resolve(imported.type.rsplit(".", 1)[-1])
+            # `imported.type` is already the whole id of the type the member was imported
+            # from, so it is handed over whole. Cut back to its last word it was resolved
+            # again from scratch — against this file's imports and its package — which is
+            # the mistake `resolve`'s dotted branch exists to prevent: `import static
+            # com.external.Money.of` credited a module in a package this tree does not
+            # even hold to a same-named `shop.Money` sitting next to the caller.
+            target = resolve(imported.type)
             if target is not None:
                 note(target, self._what_is_reached(modules[target]),
                      "calls %s, imported statically from it" % imported.member)

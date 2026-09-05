@@ -921,6 +921,15 @@ def _declares_rather_than_calls(plain, at):
     answers "declaration". That costs a statically imported call going uncounted, which
     leaves a fan shorter than the source. The other answer draws a line to a card the
     module never calls.
+
+    Two declarations do write punctuation in front of themselves and so are read as calls:
+    an enum constant carrying arguments — `RED(1),` — and a constructor with no modifiers
+    on it, which a nested type can have. Neither can reach anything on its own; both can
+    only be followed through the static-import reading, and only when a static import in
+    the same file names a member of that exact spelling. The module's own constructor is
+    already held out there by name; an enum constant of the same name as an imported
+    member is the one shape left, and Java's naming conventions are what make it unlikely
+    rather than anything here.
     """
     before = plain[:at].rstrip()
     if before.endswith(_A_LAMBDA_ARROW):
@@ -1389,24 +1398,46 @@ def candidate_ids(name, package, imports):
     holds and takes the first that is one; a name that matches none of them is a name from
     outside this source tree, and answering it with a guess is how one module would end up
     with another's collaborators for having shared a simple name with it.
+
+    A single-type import does not merely win, it *binds*: `import shop.Holder.Row` makes
+    `Row` mean `Holder`'s `Row` everywhere in the file, and there is no falling back to
+    the package when that is not a module here. Offered as a list to try in order, the
+    fall-back happened anyway — a file importing a nested `SavingsAccountResponse` was
+    credited with calling the top-level one next door, which this repository's own
+    `CustomerController` is one line away from doing — so the binding is answered as the
+    only candidate rather than as the first of several.
+
+    A static import binds nothing of the sort. `import static q.Helper.of` introduces the
+    member `of`, never the name `Helper`, so its holder must not be tried here at all,
+    let alone ahead of the file's own package: read as a single-type import it took
+    `Helper.build()` in package `p` away from `p.Helper` and gave it to `q.Helper`. The
+    member it does introduce is followed where reach reads the imports themselves.
     """
-    found = []
     for imported in imports:
-        if not imported.on_demand and imported.type.rsplit(".", 1)[-1] == name:
-            found.append(imported.type)
-    found.append(package + "." + name if package else name)
+        if imported.member is not None or imported.on_demand:
+            continue
+        if imported.type.rsplit(".", 1)[-1] == name:
+            return [imported.type]
+    found = [package + "." + name if package else name]
     for imported in imports:
         if imported.on_demand:
             found.append(imported.type + "." + name)
     return found
 
 
-def names_in(written):
-    """Every type name inside a type as it was written, generics and arrays taken apart.
+def written_names_in(written):
+    """Every type name inside a type as it was written, qualifiers and all.
 
-    `List<Optional<Customer>>` is `List`, `Optional` and `Customer`, and `java.util.List`
-    is `List`: a package prefix is not a second thing to learn, and a wildcard is not a
-    type at all.
+    `List<Optional<Customer>>` is `List`, `Optional` and `Customer`; `other.Receipt` is
+    `other.Receipt` and `Holder.Row` is `Holder.Row`. Generics and arrays are taken
+    apart, and a wildcard is not a type at all.
+
+    The qualifier is kept because a name is only worth following to a module when it is
+    followed to the one the compiler would pick, and what stands in front of the dot is
+    the whole of that answer: cut back to its last word, a field written
+    `private final other.Receipt receipt` was resolved against this file's own package
+    and the fan drew a line to `shop.Receipt` under an evidence string that said, in the
+    same breath, that the field held an `other.Receipt`.
 
     It lives here rather than beside whatever wants the names, because it is the mirror
     of `_A_TYPE` — the punctuation split on is exactly the punctuation that pattern lets
@@ -1416,10 +1447,22 @@ def names_in(written):
     """
     found = []
     for word in re.split(_INSIDE_A_TYPE, written):
-        simple = word.rstrip(".").split(".")[-1]
-        if simple and simple not in _NOT_A_NAME:
-            found.append(simple)
+        spelled = word.rstrip(".")
+        if spelled and spelled not in _NOT_A_NAME:
+            found.append(spelled)
     return found
+
+
+def names_in(written):
+    """Every type name inside a type as it was written, by the simple name of each.
+
+    `java.util.List` is `List`: for a caller reading an interface, a package prefix is
+    not a second thing to learn. That is the right reading for what crosses a seam and
+    the wrong one for following a name to a module, which is why the two are separate
+    functions rather than one used twice — see `written_names_in`, which this is the
+    unqualified reading of.
+    """
+    return [spelled.split(".")[-1] for spelled in written_names_in(written)]
 
 
 # The punctuation a type is carried in: `_A_TYPE` allows exactly these around the names,

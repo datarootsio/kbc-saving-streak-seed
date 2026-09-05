@@ -129,7 +129,12 @@ section.package { margin: 2rem 0 0; }
 .key { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin: .6rem 0 0; padding: 0; list-style: none; }
 .key li { display: flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--ink-soft); }
 .key svg { flex: none; }
-.module .unscored { margin: .5rem 0 0; font-size: .8rem; color: var(--ink-soft); font-style: italic; }
+/* The element as well as the class, because the interface bar of a module nobody scored
+   carries `unscored` too: written `.module .unscored` this rule reached the bar and set a
+   margin, a font size and an italic on a strip of dashed border, where nothing meant it
+   to. Nothing showed, the margin collapsing against the one above it — which is exactly
+   the kind of collision that shows the first time either rule is touched. */
+.module p.unscored { margin: .5rem 0 0; font-size: .8rem; color: var(--ink-soft); font-style: italic; }
 .module .nested { margin: .4rem 0 0; font-size: .8rem; color: var(--ink-soft); }
 .rules {
   border: 1px solid var(--edge);
@@ -328,6 +333,16 @@ _SCRIPT = """
     + "and a call to a statically imported member whose name the module's own body "
     + "declares, which is read as the declaration it also is. Each leaves a fan shorter "
     + "than the source, which is the direction this page is willing to be wrong in.");
+  add(fans, "p", null,
+    "One reading goes the other way, and it is named here rather than left to be found. "
+    + "A call is followed through a field by the name it is written against, so a "
+    + "parameter or a local variable that borrows a field's name is read against the "
+    + "field's type: void go(Other repo) in a module holding a Repo repo puts repo.ping() "
+    + "down as a call on the Repo. That draws a line to a card the source calls nothing "
+    + "on, and can leave the real one undrawn. Telling a parameter from a field means "
+    + "knowing which declaration was in scope where each call was written, which this "
+    + "reading does not track \u2014 so it is admitted instead. It is the one place a fan "
+    + "can be longer than the source rather than shorter.");
 
   var named = add(rules, "ul");
   var because = {};

@@ -626,6 +626,164 @@ class HowANameIsFollowedToAModuleTest(SourceOfKnownShapeTest):
 
         self.assertEqual([], self.reached(modules["Till"]))
 
+    def test_a_field_written_out_in_full_is_called_through_to_the_module_it_names(self):
+        """A field's type is followed by the whole name the source wrote it with.
+
+        `private final shop.stock.Receipt receipt` holds `shop.stock`'s `Receipt`, and a
+        call through it reaches that one. Read by the simple name at the end — which is
+        the right reading for a type crossing a seam and the wrong one here — the package
+        was thrown away and the name resolved against this file's own, so the fan drew a
+        line to the `Receipt` next door: a different module, of a different kind, under an
+        evidence string that said in the same breath that the field held a
+        `shop.stock.Receipt`.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    private final shop.stock.Receipt receipt;\n"
+                     "    Till(shop.stock.Receipt receipt) { this.receipt = receipt; }\n"
+                     "    public long ring() { return receipt.id(); }\n}"),
+            ("Receipt", A_PERSISTENT_RECORD),
+            Receipt=("shop.stock", A_RECORD_THAT_IS_NOT_PERSISTENT),
+        )
+
+        self.assertEqual([("module", "Receipt")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "shop.stock.Receipt", modules["Till"]["reach"]["reaches"][0]["moduleId"]
+        )
+        self.assertEqual(
+            "called through the field receipt, which holds a shop.stock.Receipt",
+            modules["Till"]["reach"]["reaches"][0]["matched"],
+        )
+
+    def test_a_field_written_out_in_full_moves_its_kind_with_the_module_it_names(self):
+        """The same two files with the persistence moved, and the answer moves with it.
+
+        The kind follows the module the name spells rather than the module next door, so
+        the entry a reader can check — kind, card and evidence — is a statement about the
+        file the name points at.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    private final shop.stock.Receipt receipt;\n"
+                     "    Till(shop.stock.Receipt receipt) { this.receipt = receipt; }\n"
+                     "    public long ring() { return receipt.id(); }\n}"),
+            ("Receipt", A_RECORD_THAT_IS_NOT_PERSISTENT),
+            Receipt=("shop.stock", A_PERSISTENT_RECORD),
+        )
+
+        self.assertEqual([("record", "Receipt")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "shop.stock.Receipt", modules["Till"]["reach"]["reaches"][0]["moduleId"]
+        )
+
+    def test_a_field_typed_by_a_nested_name_is_not_credited_to_the_module_next_door(self):
+        """`Holder.Row` is not `Row`, with no second package anywhere in it.
+
+        The qualifier here names an enclosing type rather than a package, and cutting it
+        off makes the same false statement: a line to a top-level `Row` this module never
+        touches. `Holder.Row` is no module in this graph, so the field reaches nothing.
+        """
+        modules = self.modules(
+            ("Till", "public class Till {\n"
+                     "    private final Holder.Row row;\n"
+                     "    Till(Holder.Row row) { this.row = row; }\n"
+                     "    public long ring() { return row.id(); }\n}"),
+            ("Holder", "public class Holder {\n"
+                       "    public static final class Row {\n"
+                       "        public long id() { return 1; }\n    }\n}"),
+            ("Row", A_PERSISTENT_RECORD.replace("Receipt", "Row")),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_an_import_of_a_nested_type_binds_the_name_it_spells_and_nothing_else(self):
+        """A single-type import binds; it does not merely go first and then give way.
+
+        `import shop.till.Holder.Row` makes `Row` mean `Holder`'s `Row` everywhere in the
+        file, and Java offers no fall-back to the package when that is not a module here.
+        Tried as the first of several candidates it fell through to the top-level `Row`
+        next door — a card this module never calls. This repository's own
+        `CustomerController` imports two nested response types beside a top-level module
+        of one of those names, so the shape is one added line away from being live.
+        """
+        modules = self.modules(
+            ("Till", "import shop.till.Holder.Row;\n\npublic class Till {\n"
+                     "    public long ring() { return Row.of(1); }\n}"),
+            ("Holder", "public class Holder {\n"
+                       "    public static final class Row {\n"
+                       "        public static long of(long a) { return 1; }\n    }\n}"),
+            ("Row", "public class Row {\n"
+                    "    public static long of(long a) { return 0; }\n}"),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_member_imported_statically_from_outside_this_tree_reaches_nothing(self):
+        """The type a static import names is followed whole, or not at all.
+
+        `com.external.Prices` is no module here, so calling a member of it coordinates
+        nothing this page can draw. Cut back to `Prices` the name was resolved a second
+        time — against this file's imports and its own package — and landed on a module
+        that merely shares the last word of it.
+        """
+        modules = self.modules(
+            ("Till", "import static com.external.Prices.of;\n\npublic class Till {\n"
+                     "    public long ring(long id) { return of(id); }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+        )
+
+        self.assertEqual([], self.reached(modules["Till"]))
+
+    def test_a_static_import_does_not_put_its_holder_in_front_of_the_files_own_package(self):
+        """A static import introduces a member, never the name of the type holding it.
+
+        So `Helper.build()` here means the `Helper` this file's package holds, exactly as
+        it would with the import deleted. Read as though `import static shop.stock.Helper.of`
+        had imported the name `Helper`, the call went to `shop.stock`'s — the wrong card
+        drawn and the right one lost, on a plain receiver with no static call in it.
+        """
+        modules = self.modules(
+            ("Till", "import static shop.stock.Helper.of;\n\npublic class Till {\n"
+                     "    public long ring() { return Helper.build(); }\n}"),
+            ("Helper", "public class Helper {\n"
+                       "    public static long build() { return 2; }\n}"),
+            Helper=("shop.stock", "public class Helper {\n"
+                                  "    public static long of(long a) { return 0; }\n"
+                                  "    public static long build() { return 1; }\n}"),
+        )
+
+        self.assertEqual([("module", "Helper")], self.reached(modules["Till"]))
+        self.assertEqual(
+            "shop.till.Helper", modules["Till"]["reach"]["reaches"][0]["moduleId"]
+        )
+
+    def test_a_parameter_borrowing_a_field_name_is_read_as_the_field_and_the_page_says_so(self):
+        """The one reading that can overstate a fan, stated on the page rather than hidden.
+
+        A call is followed through a field by the name it is written against, and
+        `public long ring(Shelf prices)` borrows the name of a field holding a `Prices`.
+        So the fan draws the `Prices` this body never touches and misses the `Shelf` it
+        does. Telling a parameter from a field means knowing which declaration was in
+        scope where the call was written, which this reading does not track.
+
+        Every other omission leaves a fan shorter than the source; this one can leave it
+        longer, so the page names it as that rather than letting a reader discover it. A
+        promise of a floor with an exception nobody wrote down is worth less than no
+        promise at all.
+        """
+        modules, rendered = self.rendered(
+            ("Till", "import shop.stock.Shelf;\n\npublic class Till {\n"
+                     "    private final Prices prices;\n"
+                     "    Till(Prices prices) { this.prices = prices; }\n"
+                     "    public long ring(Shelf prices) {\n"
+                     "        prices.take(1);\n        return 0;\n    }\n}"),
+            ("Prices", A_MODULE_TO_CALL),
+            Shelf=("shop.stock", A_MODULE_IN_ANOTHER_PACKAGE),
+        )
+
+        self.assertEqual([("module", "Prices")], self.reached(modules["Till"]))
+        self.assertIn("borrows a field's name", rendered)
+
     def test_a_call_written_in_a_comment_reaches_nothing(self):
         modules = self.modules(
             ("Till", "public class Till {\n"

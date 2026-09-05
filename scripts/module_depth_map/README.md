@@ -207,12 +207,19 @@ with both numbers it was taken from, so the division can be checked by hand.
 Nothing is reached that the graph does not also hold. A name in a body is followed to a
 module the way the compiler would follow it — a type the module declares inside itself
 first, then the file's own single-type imports, then its package, then any on-demand
-import — and a name that resolves to no module here is not counted at all. That is what
+import — and a name that resolves to no module here is not counted at all. A single-type
+import *binds* rather than merely wins: `import shop.Holder.Row` makes `Row` mean
+`Holder.Row` in that file and nothing else, so when that names no module here the name
+reaches nothing rather than falling back to a `Row` in the file's own package. A static
+import binds nothing at all: `import static q.Helper.of` introduces the member `of`, never
+the name `Helper`, so a later `Helper.build()` means whatever `Helper` the package and the
+imports say it means. That is what
 keeps every line in a fan pointing at a card on the same page, and what stops a module
 raising its own score by importing more of the JDK. The nested type comes first because
 Java puts it first: `Kind.of(x)` written in a module that nests a `Kind` means that one
 rather than the top-level `Kind` next door, and a nested type is not a module, so the name
-reaches nothing at all. A name written out in full — `new other.Receipt()` — means the
+reaches nothing at all. A name written out in full — `new other.Receipt()`, a field
+declared `private final other.Receipt receipt`, the type a static import names — means the
 module of that id and no other; the package in front of it is the answer rather than
 something to cut off. The transaction is the one thing reached with no module behind it,
 and it says so by carrying no module id.
@@ -242,6 +249,18 @@ that the edge of the floor can be seen rather than discovered:
 Each of these leaves a fan shorter than the source, never longer. That is the direction
 this tool is willing to be wrong in: a number a reader can check and find understated is
 worth more than one they can check and find false.
+
+One reading goes the other way, and the page names it too, in the same paragraph and as
+what it is:
+
+- a call written on a name a **parameter or a local variable borrowed from a field** —
+  `void go(Other repo)` in a module holding a `Repo repo` — is read against the field's
+  type, so the fan draws a line to the `Repo` and can miss the `Other`. A call is followed
+  through a field by the name it is written against, and telling that name from a
+  parameter's means knowing which declaration was in scope where the call was written,
+  which this reading does not track. It is admitted rather than guessed at or quietly
+  left: a page promising a floor while holding one reading that is not one is worse than a
+  page with no promise on it.
 
 The three rules deciding what a reached thing *is* live in `scoring.json` beside the
 weights, each with the sentence it is argued for, which the page prints. Change what counts
