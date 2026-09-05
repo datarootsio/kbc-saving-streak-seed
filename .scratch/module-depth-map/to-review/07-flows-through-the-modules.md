@@ -11,10 +11,10 @@ flow that stops matching the code is a flow that fails rather than one that quie
 
 **Blocked by:** 03 (Reach, and the fan).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] A deposit, a withdrawal with the deposits it draws down, and a reward claim are each available as a flow
-- [ ] Choosing a flow highlights every module it passes through, in the order it passes through them
+- [x] Choosing a flow highlights every module it passes through, in the order it passes through them
 - [x] Flows are derived from the call graph rather than listed by hand
 - [x] Each flow is defined by its entry point in the checked-in configuration file, not by a hardcoded path through the modules
 - [x] A flow whose path can no longer be resolved fails loudly rather than rendering a shorter path
