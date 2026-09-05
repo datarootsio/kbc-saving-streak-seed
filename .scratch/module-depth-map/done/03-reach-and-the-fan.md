@@ -14,9 +14,9 @@ numerator.
 
 **Blocked by:** 02 (What a caller must learn).
 
-**Status:** needs-info
+**Status:** done
 
-- [ ] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
+- [x] A module's reach counts the distinct collaborating modules it calls, the adapters it drives, the persistent records it writes, and whether it establishes a transaction
 - [x] Adding lines to an implementation without adding coordination does not change its reach, and a fixture establishes this
 - [x] Depth is reported as reach relative to interface cost, and appears in the graph document as its own value
 - [x] The fan beneath each module is drawn from its reach, with one line per thing reached
@@ -1590,3 +1590,48 @@ A refused deposit of `0` leaves no `io.dataroots.savingstreak` WARN line — onl
 again in `…app.6.backend.log`: the withdrawal refusal logs its reason, the deposit and claim
 refusals log nothing. `WithdrawalsService` logs its refusal; `DepositsService` and
 `RewardsService` do not. Pre-existing, untouched here, flagged by all six reviews now.
+
+## Accepted - by decision, over a reviewer's needs-info
+
+This ticket was **not** passed by a reviewer. Six attempts were each reviewed by a fresh
+reviewer and each sent back on criterion 1; the repository's owner accepted the work on
+attempt 6 and directed the run on to ticket 04. Recording that plainly so nobody later
+reads a tick as a review pass.
+
+**What the six reviews agreed on, independently, every time:**
+
+- Every reach entry in the committed `docs/module-depth-map.json` verifies against the
+  source. Attempts 5 and 6 checked all 76 mechanically: 0 problems, 0 dangling `moduleId`,
+  `count == len(reaches)` throughout.
+- Criteria 2-7 met and measured; no regression against `ticket/02-what-a-caller-must-learn`.
+- 325 python tests, 113 backend tests, `npm run typecheck` clean, output byte-identical
+  across runs and to what is committed.
+- The page drives clean in chromium, light and dark, 1024 and 1280: 71 cards, 0 console
+  messages, 0 page errors, 0 failed requests, no horizontal overflow, every fan matching
+  the graph and no foot clipped.
+
+**Why it kept being sent back, and what is still open.** Every blocking defect across all
+six attempts was *latent* — a Java spelling that appears nowhere in `backend/src/main/java`,
+so the committed page was correct at every attempt. Criterion 1 was being judged against
+arbitrary Java rather than against this source tree, which asks a regex reader to resolve
+names the way `javac` does.
+
+Known defects that remain in the reader, all latent here, all in the ticket's own review
+feedback sections with repros:
+
+1. **A field initialised with a lambda is dropped, with a false reason** — introduced by
+   attempt 6's own fix. `_declares_several_names` (`javasource.py`) treats `>` as a closing
+   bracket, so `private final Register register = make(x -> x.a(), 1);` reads as several
+   declarators. This is the one to fix first: it is a regression, not an inherited gap.
+2. **A qualified supertype is resolved against the reading file's package** —
+   `_supertypes_in` keeps only the last segment, so `extends other.Base` is read as
+   `shop.Base`.
+3. **A module's own simple name loses to a wildcard import** — `resolve` skips the
+   candidate equal to `module_id` and falls through to on-demand imports; overstating
+   direction.
+4. Non-blocking: `@Holder.Ann(1)` reads as `called on Holder`; method references
+   (`RewardResponse::of`, live in `RewardController.java:26`) reach nothing and are not
+   among the omissions the page names.
+
+Full evidence for each: `.scratch/module-depth-map/logs/03-reach-and-the-fan.review.{1..6}.md`
+and `.implement.{1..6}.md`.
