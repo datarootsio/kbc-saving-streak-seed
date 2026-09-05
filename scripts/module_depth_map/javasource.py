@@ -175,6 +175,16 @@ DECLARES_NO_TYPE = ("package-info.java", "module-info.java")
 # method and no types at all.
 NOTHING_RETURNED = "void"
 
+# Every `throw` a body writes, whatever it goes on to throw. Found first and read second,
+# so that a throw this parser cannot name is *counted* rather than passed over: a floor
+# nobody knows the height of is not one anything can be argued from, and the one thing
+# built on this reading — saying a module never raises what it documented — is only sound
+# where every throw in the body was read.
+#
+# `throws IOException` on a signature is not one of these: the word is `throws`, and the
+# boundary after `throw` is what tells them apart.
+_A_THROW = re.compile(r"(?<![\w.$])throw(?![\w$])")
+
 # A refusal the implementation actually raises: `throw new WithdrawalRefused(...)`. Read
 # over the module's whole body, nested types and all, because that whole body is the
 # module — `DepositsService.deposit` documents a `DepositRefused` that three of its own
@@ -185,12 +195,12 @@ NOTHING_RETURNED = "void"
 # about the type it holds, and following it would mean reading Java the way javac does.
 # So what is read here is a floor on what a module raises, in the same direction every
 # other floor in this tool leans.
-_THROWN = re.compile(r"(?<![\w.$])throw[ \t\r\n]+new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
+_THROWN = re.compile(r"[ \t\r\n]+new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
 
 # A refusal thrown through a method of this module's own: `throw refusing(reason)`. The
 # name is followed to a declaration in the same file and to nothing else — a bare call is
 # the one spelling whose declaration is guaranteed to be here to read.
-_THROWN_THROUGH = re.compile(r"(?<![\w.$])throw[ \t\r\n]+([A-Za-z_$][\w$]*)[ \t\r\n]*\(")
+_THROWN_THROUGH = re.compile(r"[ \t\r\n]+([A-Za-z_$][\w$]*)[ \t\r\n]*\(")
 
 # A refusal the documentation promises, as Java's own syntax for saying so. The tag has
 # to stand where a javadoc *block* tag stands: at the start of a line, or after one of the
@@ -246,10 +256,17 @@ class Method:
     at: nothing here infers a refusal from a name that ends in "Refused", from a `throws`
     clause the compiler would have forced, or from anything but the source's own
     `@throws`.
+
+    `has_a_body` says whether the source wrote an implementation under this signature or
+    ended it at a semicolon. An interface method, an abstract one and a native one are the
+    three that do not, and the distinction is a refusal's: a `@throws` on a signature with
+    no body is a promise made to whoever implements it, and holding it against *this*
+    module's body would accuse every interface in the source of breaking a word it never
+    gave.
     """
 
     def __init__(self, name, visibility, parameters, returns, type_parameters=(),
-                 annotations=(), documented_refusals=()):
+                 annotations=(), documented_refusals=(), has_a_body=True):
         self.name = name
         self.visibility = visibility
         self.parameters = tuple(parameters)
@@ -257,6 +274,37 @@ class Method:
         self.type_parameters = tuple(type_parameters)
         self.annotations = tuple(annotations)
         self.documented_refusals = tuple(documented_refusals)
+        self.has_a_body = has_a_body
+
+
+class Constructor:
+    """One constructor a module declares, and the refusals its javadoc promises.
+
+    Kept apart from the methods rather than among them, because a constructor is not a
+    method: it says how a module is built, which in this application is the framework's
+    business, and counting it would charge every module for being injectable. That was
+    already true before this class existed and is why `_method_in` answers None for one.
+
+    What it is kept *for* is the one thing a constructor does say to a caller — how
+    building one can refuse. `new AmountOfMoney(-1)` is a refusal a caller meets, and the
+    body of a constructor is already read into what the module raises, so a constructor's
+    `@throws` had to be read too or the two sides of one refusal would be read
+    asymmetrically: the throw counted, the promise invisible, and the commonest validation
+    idiom in Java accused of raising something nobody documented.
+
+    `parameters` is not read. A compact constructor writes none, a canonical one writes
+    the record's own, and nothing here prices either — only the refusals are wanted.
+    """
+
+    def __init__(self, name, visibility, documented_refusals=()):
+        self.name = name
+        self.visibility = visibility
+        self.documented_refusals = tuple(documented_refusals)
+        # A constructor is never abstract and never native: whatever it promises, the
+        # implementation that has to keep it is right here. Written down rather than left
+        # to be assumed, so that whatever reads a documenter can read every documenter the
+        # same way.
+        self.has_a_body = True
 
 
 class Field:
@@ -315,13 +363,21 @@ class DeclaredType:
 
     `raises` is the sixth and is read the same way: the refusals this module's body throws,
     by simple name, over that whole body. It is the implementation's half of a refusal, and
-    the half a `@throws` on a method is checked against.
+    the half a `@throws` on a method is checked against. `throws_not_read` is how much of
+    that half is missing — the number of `throw` statements in the body whose type only
+    javac could have resolved — so that a rule can decline to say "never raised" about a
+    body it knows it did not read whole.
+
+    `constructors` are kept beside the methods and never among them: they are read for
+    their javadoc's refusals alone, because a constructor's body is already read into
+    `raises` and reading only one side of it would accuse the commonest validation idiom
+    in Java of raising something nobody wrote down.
     """
 
     def __init__(self, name, kind, depth, ends_at, owner, qualified,
                  annotations=(), supertypes=(), methods=(), type_parameters=(),
                  fields=(), receivers=(), constructed=(), called=(), declares=(),
-                 raises=()):
+                 raises=(), throws_not_read=0, constructors=()):
         self.name = name
         self.kind = kind
         self.depth = depth
@@ -338,6 +394,8 @@ class DeclaredType:
         self.called = tuple(called)
         self.declares = tuple(declares)
         self.raises = tuple(raises)
+        self.throws_not_read = throws_not_read
+        self.constructors = tuple(constructors)
 
 
 class ParsedFile:
@@ -777,6 +835,9 @@ def _declared_types(masked, depths, documented):
             supertypes=_supertypes_in(header),
             type_parameters=_type_parameters_in(header),
             methods=methods,
+            constructors=() if owner is not None else _constructors_of(
+                masked, kind, match.group(2), body_starts_at, body_ends_at, documented
+            ),
             fields=() if owner is not None
             else _fields_of(masked, kind, header, body_starts_at, body_ends_at, line),
             **reached,
@@ -920,9 +981,15 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, docume
     is named by a line a reader can go and open.
     """
     written_here = []
-    for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
+    for member, at, has_a_body in _member_headers(
+        masked, kind, body_starts_at, body_ends_at
+    ):
         method = _method_in(
-            member, kind, _line_of(masked, at), _documented_before(masked, at, documented)
+            member,
+            kind,
+            _line_of(masked, at),
+            _documented_before(masked, at, documented),
+            has_a_body,
         )
         if method is not None:
             written_here.append(method)
@@ -945,6 +1012,28 @@ def _methods_of(masked, kind, header, body_starts_at, body_ends_at, line, docume
         # element: the dots say how many on the way in, and nothing at all on the way out.
         accessors.append(Method(name, "public", (), spelled + ("[]" if dots else "")))
     return tuple(accessors + written_here)
+
+
+def _constructors_of(masked, kind, name, body_starts_at, body_ends_at, documented):
+    """Every constructor this type writes, and the refusals each one's javadoc promises.
+
+    Walked separately from the methods, the way the fields are, because a constructor is
+    not a method and the two lists are wanted for different reasons: one is what a caller
+    has to learn and is priced, the other is read for its `@throws` alone.
+
+    A synthesised one is not among them. A record with no constructor written down still
+    has a canonical one, and a class with none has a default — but neither was written, so
+    neither carries a javadoc, and a list of what documents this module has no use for a
+    constructor nobody typed.
+    """
+    found = []
+    for member, at, _ in _member_headers(masked, kind, body_starts_at, body_ends_at):
+        constructor = _constructor_in(
+            member, kind, name, _documented_before(masked, at, documented)
+        )
+        if constructor is not None:
+            found.append(constructor)
+    return tuple(found)
 
 
 def _components_in(header, line):
@@ -978,7 +1067,7 @@ def _fields_of(masked, kind, header, body_starts_at, body_ends_at, line):
     if kind == "record":
         for spelled, name, dots in _components_in(header, line):
             found.append(Field(name, spelled + ("[]" if dots else "")))
-    for member, at in _member_headers(masked, kind, body_starts_at, body_ends_at):
+    for member, at, _ in _member_headers(masked, kind, body_starts_at, body_ends_at):
         field = _field_in(member, _line_of(masked, at))
         if field is not None:
             found.append(field)
@@ -1132,6 +1221,7 @@ def _reached_in(body, methods):
     Everything a body writes inside a comment or a literal is already blanked out by the
     time this reads it, so a call in a javadoc example is not a collaborator.
     """
+    raises, throws_not_read = _raised_in(body, methods)
     plain = _THROUGH_THIS.sub("", body)
     called = []
     declares = []
@@ -1162,12 +1252,13 @@ def _reached_in(body, methods):
         "constructed": sorted(_constructed_in(plain)),
         "called": sorted(set(called)),
         "declares": sorted(set(declares)),
-        "raises": sorted(_raised_in(body, methods)),
+        "raises": sorted(raises),
+        "throws_not_read": throws_not_read,
     }
 
 
 def _raised_in(body, methods):
-    """Every refusal this body throws, by simple name, in the two spellings that can be read.
+    """Every refusal this body throws, and how many throws in it could not be read at all.
 
     `throw new X(...)` says the type outright. `throw x(...)`, where `x` is a method this
     module declares, says it through a declaration this file has already read, so the
@@ -1175,18 +1266,72 @@ def _raised_in(body, methods):
     field, of a call on something else — names a type only javac could resolve, and is not
     guessed at: what is counted here is a floor on what a module raises, which is the
     direction every other reading in this file errs in.
+
+    A name a module declares twice is two methods, and which of them a call means is
+    settled by the arguments and their types — which is javac's job, not this file's. So a
+    throw is followed only where every declaration of that name hands back the same type:
+    then it is that type whichever one the call meant, and nothing has been guessed. Where
+    two of them hand back different types, nothing is read at all. Keying on the name and
+    taking whichever declaration came last made `throw refusing(why)` mean the wrong
+    `refusing` — putting a `String` on a module's interface as a refusal, and losing the
+    refusal it really raises. That is not a floor: it is a wrong answer in both directions
+    at once, and it is one line away from the two seams this reading exists to serve, both
+    of which write exactly that spelling.
+
+    The throws that could not be read are counted rather than shrugged off, because what
+    is built on this reading is the claim that a module never raises what it documented,
+    and that claim is only sound over a body every throw of which was read. The count is
+    what lets a caller of this decline to make it. Each one is logged with its reason.
     """
-    raised = {_simple(found.group(1)) for found in _THROWN.finditer(body)}
-    returns = {
-        method.name: _simple(method.returns)
-        for method in methods
-        if not method.type_parameters
-    }
-    for found in _THROWN_THROUGH.finditer(body):
-        through = returns.get(found.group(1))
-        if through is not None and through != NOTHING_RETURNED:
-            raised.add(through)
-    return raised
+    raised = set()
+    could_not_be_read = 0
+    declared = {}
+    for method in methods:
+        declared.setdefault(method.name, []).append(method)
+    for throw in _A_THROW.finditer(body):
+        built = _THROWN.match(body, throw.end())
+        if built is not None:
+            raised.add(_simple(built.group(1)))
+            continue
+        through = _THROWN_THROUGH.match(body, throw.end())
+        refusal = _thrown_through(through.group(1), declared) if through else None
+        if refusal is None:
+            could_not_be_read += 1
+            log.debug(
+                "throw not read as a refusal reason=%s thrown=%s",
+                "it throws neither a type it builds nor a call whose declarations in "
+                "this module all hand back one type, so what it throws is a type only "
+                "javac could resolve",
+                _one_line(body[throw.start():throw.start() + 80]),
+            )
+            continue
+        raised.add(refusal)
+    return raised, could_not_be_read
+
+
+def _thrown_through(name, declared):
+    """What `throw f(...)` throws, when every `f` this module declares hands back the same.
+
+    The arguments are not what settles it, and they cannot be: this reads the *masked*
+    text, where a literal has been blanked out, so `f("shut")` and `f()` are the same
+    characters by the time they arrive here. Counting them would be guessing at an arity,
+    and one wrong arity is a refusal invented or a refusal lost. What the declarations
+    agree on needs no arity at all.
+
+    Three ways to answer nothing, and each of them is a name this file will not guess at:
+    no `f` is declared here — a static import, or something inherited, whose declaration is
+    in a file this parser is not reading; the declarations of `f` hand back different
+    types, so only javac could say which was called; or they agree on a type variable or on
+    nothing, neither of which is a refusal a caller could ever catch by name.
+    """
+    candidates = declared.get(name, ())
+    if not candidates or any(method.type_parameters for method in candidates):
+        return None
+    refusals = {_simple(method.returns) for method in candidates}
+    if len(refusals) != 1:
+        return None
+    refusal = refusals.pop()
+    return None if refusal == NOTHING_RETURNED else refusal
 
 
 def _receivers_in(plain):
@@ -1276,11 +1421,18 @@ def _declares_rather_than_calls(text, at):
 
 
 def _member_headers(masked, kind, body_starts_at, body_ends_at):
-    """Each member of a type body, as (the text before its body or semicolon, its offset).
+    """Each member of a type body, as (its text, its offset, whether a body followed).
 
     Every member's body is stepped over whole, so nothing written inside a method — a
     call that reads like a declaration, a local class, a lambda — is ever taken for part
     of the type's interface.
+
+    Whether a body followed is read here and nowhere else, because here is the only place
+    that knows: the member's text stops at the `{` or the `;` that ended it, and which of
+    the two it was is the whole of the difference between a method that has an
+    implementation to read and one that only promises somebody else will write it. An
+    interface method, an abstract one and a native one all end at a semicolon, and each of
+    them can carry a `@throws` this module's own body could never be asked to keep.
 
     An enum's constants are not members, and are skipped as the block they are. They are
     written in the same place as members, they may carry arguments and a body of their
@@ -1300,19 +1452,19 @@ def _member_headers(masked, kind, body_starts_at, body_ends_at):
         elif character == ")":
             parens = max(0, parens - 1)
         elif parens == 0 and character == "{":
-            headers.append(_header(masked, start, position))
+            headers.append(_header(masked, start, position, True))
             position = _after_balanced(masked, position, "{", "}")
             start = position
             continue
         elif parens == 0 and character == ";":
-            headers.append(_header(masked, start, position))
+            headers.append(_header(masked, start, position, False))
             start = position + 1
         position += 1
     return headers
 
 
-def _header(masked, start, position):
-    """One member's text, and the offset of the first thing written in it.
+def _header(masked, start, position, has_a_body):
+    """One member's text, the offset of the first thing written in it, and its body or not.
 
     The offset is where the member's own first word is rather than where the member
     before it ended, because it is only ever used to name a line to a reader, and the
@@ -1320,7 +1472,7 @@ def _header(masked, start, position):
     """
     while start < position and masked[start] in " \t\r\n":
         start += 1
-    return masked[start:position], start
+    return masked[start:position], start, has_a_body
 
 
 def _after_enum_constants(masked, start, body_ends_at):
@@ -1346,7 +1498,7 @@ def _after_enum_constants(masked, start, body_ends_at):
     return body_ends_at
 
 
-def _method_in(member, holder_kind, line, documented_refusals=()):
+def _method_in(member, holder_kind, line, documented_refusals=(), has_a_body=True):
     """The method this member declares, or None when the member is not one.
 
     Fields, initialisers, enum constants, nested types and constructors all arrive here
@@ -1409,6 +1561,36 @@ def _method_in(member, holder_kind, line, documented_refusals=()):
         _type_parameters_in(rest),
         _annotations_on(member),
         documented_refusals,
+        has_a_body,
+    )
+
+
+def _constructor_in(member, holder_kind, holder_name, documented_refusals=()):
+    """The constructor this member declares, or None when the member is not one.
+
+    A constructor is the one member written with the type's own name and no return type in
+    front of it, in both of the shapes Java allows: `public Coin(long cents)`, and a
+    record's compact `public Coin` with no parameter list at all. The second is why the
+    parameter list cannot be what this is recognised by — and why `_method_in` never sees
+    it, since it looks for a bracket the compact form does not write.
+
+    Told apart by the name *and* by there being nothing in front of it: `public Coin
+    make()` declares a method named `make`, and `private final Coin coin` holds a field
+    named `coin`. Both write the type's name where a return type or a field's type goes,
+    and neither is a constructor.
+    """
+    text = _without_annotations(member)
+    opened = text.find("(")
+    head = text if opened < 0 else text[:opened]
+    if "=" in head or _TYPE.search(head):
+        return None
+    modifiers, rest = _modifiers_in(head)
+    signature = _without_type_parameters(rest)
+    name = _TRAILING_NAME.search(signature)
+    if name is None or name.group(1) != holder_name or signature[:name.start()].strip():
+        return None
+    return Constructor(
+        holder_name, _visibility(modifiers, holder_kind), documented_refusals
     )
 
 

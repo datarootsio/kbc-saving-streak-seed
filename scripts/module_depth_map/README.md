@@ -206,17 +206,32 @@ identical, and a module is then paid for saying nothing about its failure modes.
 
 Each refusal is read from the source's own words on both sides, and guessed at on neither:
 
-- **documented** is the `@throws` (or `@exception`) written in the javadoc over a method a
-  caller can reach. A refusal named in prose, or inside a `{@link}`, is prose; a tag in an
-  ordinary `/* */` block is a note to whoever edits the file; and a `@throws` over a
-  private helper documents the helper rather than the seam. A javadoc documents the member
-  written under it, annotations and all — `@Transactional` sits between the two — and not
-  the member after that one.
-- **raised** is what the module's body throws, over that whole body, nested types
-  included. Two spellings are read: `throw new X(...)`, and `throw f(...)` where `f` is a
-  method this module declares, which is a throw of whatever `f` hands back. That second
-  one is not a nicety — `ClockService` and `ScheduledJobs` both write `throw refusing(why)`,
-  and left unfollowed each is reported as promising a refusal it never raises.
+- **documented** is the `@throws` (or `@exception`) written in the javadoc over a *member*
+  a caller can reach — a method, or a constructor. A refusal named in prose, or inside a
+  `{@link}`, is prose; a tag in an ordinary `/* */` block is a note to whoever edits the
+  file; and a `@throws` over a private helper or a private constructor documents that,
+  rather than the seam. A javadoc documents the member written under it, annotations and
+  all — `@Transactional` sits between the two — and not the member after that one.
+- **raised** is what the module's body throws, over that whole body, nested types and
+  constructors included. Two spellings are read: `throw new X(...)`, and `throw f(...)`
+  where `f` is a method this module declares, which is a throw of whatever `f` hands back.
+  That second one is not a nicety — `ClockService` and `ScheduledJobs` both write
+  `throw refusing(why)`, and left unfollowed each is reported as promising a refusal it
+  never raises. Where a module declares that name more than once and the declarations hand
+  back *different* types, nothing is read: which one a call meant is settled by the
+  arguments and their types, which is javac's job. It cannot be done here even in
+  principle, because this reads the masked source, where a literal has been blanked — so
+  `refusing("shut")` and `refusing()` are the same characters by the time the reading gets
+  to them, and an arity read off them would be a guess.
+
+A constructor is read on **both** sides or it would be read on one. Its body is part of the
+module's body, so `throw new IllegalArgumentException(...)` inside it is already counted as
+raised; the choice was between reading its `@throws` too and no longer reading its throw.
+This tool reads the `@throws`. The other answer says something false about the source —
+`new AmountOfMoney(-1)` refuses, and a caller has that to learn — and validating in a
+constructor is the sanctioned way to give a Java value an invariant, so the asymmetry
+accused the commonest idiom there is of raising something nobody documented. What documents
+such a refusal is named by the module's own name, which is what a constructor is called.
 
 Names are matched simply, so `@throws java.lang.IllegalArgumentException` and
 `throw new IllegalArgumentException` are one refusal rather than a disagreement about a
@@ -246,9 +261,29 @@ than by a type — `throw thrown`, `throw somethingElse.build()` — needs a typ
 never resolves, so it is not read and not guessed at. A refusal one module raises by
 calling another is the second module's, and is drawn there. And a prose sentence about
 when something fails is part of the interface and is measured nowhere. So a band at
-nothing says only that there was nothing here to read, and a *documented but never raised*
-finding can be a spelling this tool cannot follow rather than a promise the code broke —
-which is why both sides are printed on the card.
+nothing says only that there was nothing here to read.
+
+Which is why a *documented but never raised* finding is made only where the implementation
+was there to read and all of it was read. Two things stop it:
+
+- **A `@throws` on a method with no body.** An interface's method, an abstract one and a
+  native one all promise something whoever implements them has to keep, and holding that
+  against this module's own body would accuse every documented interface in a source of
+  breaking a word it never gave. The refusal is still on the band — a caller of the
+  interface has it to learn — and no finding is made about it. Nothing in this repository
+  writes one today; it is the shape a participant is most likely to add next, and
+  `tests/refusalsastheirownband` pins it.
+- **A `throw` in the body this tool could not name.** Every `throw` is counted, including
+  the ones neither spelling above reads, and a module carrying one may be raising exactly
+  what it promised. `SavingsAccountController` and `ScheduledJobs` each write one today.
+
+Neither is a finding and neither is a module keeping its word, so they are counted apart,
+as `refusalsNotChecked` in the graph and on the page, and each is logged at DEBUG with the
+reason. On the card the refusal is drawn underlined rather than in alarm ink, and its title
+says the tool could not read whether the module raises it. A machine that accused a module
+which kept its word would stop being read, which is worth more than the stale comments it
+would catch — so both sides are printed on the card either way, and a reader can check what
+the tool would not.
 
 ## What a module reaches, and what depth is
 

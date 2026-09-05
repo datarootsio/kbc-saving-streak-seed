@@ -26,7 +26,8 @@ log = logging.getLogger("module_depth_map.graph")
 # it does not know, so versioning what it writes as well is the same promise kept in the
 # other direction. It moved to /5 when every module gained its `findings` and its
 # `interface` gained a `refusals` band with the `refusalCost` and `costWithoutRefusals`
-# the total is split into.
+# the total is split into — each refusal saying which side of the seam named it, and
+# whether the two could be held against each other at all.
 SCHEMA = "module-depth-map/5"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
@@ -303,8 +304,9 @@ def build(roots, rules):
             furthest["depth"]["leverage"],
         )
     log.info(
-        "refusals checked read=%d modulesWithFindings=%d findings=%d",
+        "refusals checked read=%d notChecked=%d modulesWithFindings=%d findings=%d",
         document["scoring"]["refusals"]["refusalsRead"],
+        document["scoring"]["refusals"]["refusalsNotChecked"],
         document["scoring"]["refusals"]["modulesWithFindings"],
         sum(
             entry["findings"] for entry in document["scoring"]["refusals"]["findingsByKind"]
@@ -367,6 +369,11 @@ def _check_the_refusals(modules, rules):
     Logged at INFO one line per disagreement, because that is the finding. A run that
     produced it should not need the page to be opened before anybody knows, and the line
     carries both sides so that it can be acted on without the graph being read either.
+
+    A refusal the tool declined to hold against anything is counted on the module's DEBUG
+    line rather than left invisible. It is the difference between "these agree" and "this
+    was never checked", and a reader who cannot see which of the two they are looking at
+    would have to trust the silence.
     """
     for module in modules:
         module["findings"] = rules.findings_of(module["id"], module["interface"]["refusals"])
@@ -380,11 +387,16 @@ def _check_the_refusals(modules, rules):
                 finding["raised"],
             )
         log.debug(
-            "refusals read module=%s refusals=%s findings=%d",
+            "refusals read module=%s refusals=%s findings=%d notChecked=%d",
             module["id"],
             ",".join(refusal["name"] for refusal in module["interface"]["refusals"])
             or "none this tool can read",
             len(module["findings"]),
+            sum(
+                1
+                for refusal in module["interface"]["refusals"]
+                if not refusal["checked"]
+            ),
         )
 
 
@@ -557,9 +569,12 @@ def _scoring(rules, modules):
         },
         # The refusal band's own rule, and what holding the two sides against each other
         # turned up, carried in the document the findings were rendered into. The counts
-        # are of findings rather than of modules, because one module can be in both
-        # disagreements at once — this repository's `ScheduledJobs` was, on two different
-        # refusals — and a count of modules would hide one of them behind the other.
+        # are of findings rather than of modules, because nothing stops one module being in
+        # both disagreements at once — a stale `@throws` on one refusal and a silent throw
+        # of another are independent, and a count of modules would hide one of them behind
+        # the other. `refusalsNotChecked` is the third number and the honest one: refusals
+        # this tool read and then declined to hold against anything, which are neither a
+        # finding nor a module keeping its word.
         "refusals": {
             "because": rules.refusals.because,
             "documentedNeverRaised": {
@@ -572,6 +587,12 @@ def _scoring(rules, modules):
             },
             "refusalsRead": sum(
                 len(module["interface"]["refusals"]) for module in modules
+            ),
+            "refusalsNotChecked": sum(
+                1
+                for module in modules
+                for refusal in module["interface"]["refusals"]
+                if not refusal["checked"]
             ),
             "modulesWithFindings": sum(1 for module in modules if module["findings"]),
             "findingsByKind": [

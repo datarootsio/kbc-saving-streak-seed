@@ -251,6 +251,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "withdrawFrom"
@@ -1372,6 +1373,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "advanceBy"
@@ -1786,6 +1788,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "IllegalArgumentException",
@@ -2112,6 +2115,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "deposit"
@@ -2903,6 +2907,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "WithdrawalRefused",
@@ -3330,12 +3335,14 @@
         "refusalCost": 6,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "IllegalStateException",
             "raised": true
           },
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "runNow"
@@ -3344,6 +3351,7 @@
             "raised": true
           },
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "runNow"
@@ -3772,6 +3780,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "spend"
@@ -4339,6 +4348,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": true,
             "documentedBy": [
               "claim"
@@ -4902,6 +4912,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "ResponseStatusException",
@@ -5304,6 +5315,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "ResponseStatusException",
@@ -5962,6 +5974,7 @@
         "refusalCost": 2,
         "refusals": [
           {
+            "checked": true,
             "documented": false,
             "documentedBy": [],
             "name": "ResponseStatusException",
@@ -6730,6 +6743,7 @@
         "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer.",
         "finding": "raised but never documented"
       },
+      "refusalsNotChecked": 0,
       "refusalsRead": 13
     },
     "typesEveryCallerAlreadyKnows": [

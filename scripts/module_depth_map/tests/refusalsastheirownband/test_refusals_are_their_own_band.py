@@ -61,6 +61,75 @@ PROMISES_WHAT_IT_CANNOT_DO = (
     "    }\n}"
 )
 
+# One name declared twice, handing back two different things. Which of them
+# `throw refusing("no")` means is javac's answer to give and not this tool's, and reading
+# it as either one is how a module that kept its word came to carry a finding in each
+# direction — and a `String` on its interface as a refusal.
+TWO_HELPERS_OF_ONE_NAME = (
+    "public class Overloaded {\n"
+    "\n"
+    "    /**\n"
+    "     * Lets one through.\n"
+    "     *\n"
+    "     * @throws Shut if it is shut\n"
+    "     */\n"
+    "    public void go(long id) {\n"
+    "        if (id < 0) { throw refusing(\"no\"); }\n"
+    "    }\n"
+    "\n"
+    "    private Shut refusing(String why) { return new Shut(why); }\n"
+    "\n"
+    "    private String refusing(int code) { return \"code \" + code; }\n}"
+)
+
+# The same shape, agreeing. Whichever of the two the call meant, it throws a `Shut`, so
+# there is nothing here to resolve and nothing to guess at either.
+TWO_HELPERS_THAT_AGREE = (
+    "public class Overloaded {\n"
+    "\n"
+    "    /** @throws Shut if it is shut */\n"
+    "    public void go(long id) {\n"
+    "        if (id < 0) { throw refusing(\"no\"); }\n"
+    "    }\n"
+    "\n"
+    "    private Shut refusing(String why) { return new Shut(why); }\n"
+    "\n"
+    "    private Shut refusing(String why, long id) { return new Shut(why); }\n}"
+)
+
+# The commonest validation idiom in Java: a constructor that refuses, documented on the
+# constructor because that is the member a caller of `new Built(-1)` meets.
+A_CONSTRUCTOR_THAT_REFUSES = (
+    "public class Built {\n"
+    "\n"
+    "    private final long cents;\n"
+    "\n"
+    "    /**\n"
+    "     * Builds one.\n"
+    "     *\n"
+    "     * @throws Shut if the amount is negative\n"
+    "     */\n"
+    "    public Built(long cents) {\n"
+    "        if (cents < 0) { throw new Shut(\"negative\"); }\n"
+    "        this.cents = cents;\n"
+    "    }\n"
+    "\n"
+    "    public long cents() { return cents; }\n}"
+)
+
+# A promise made to whoever implements it. The interface's own body throws nothing, and
+# there is nothing there that ever could.
+A_SEAM_WITH_NO_BODY_UNDER_IT = (
+    "public interface Turnstiles {\n"
+    "\n"
+    "    /**\n"
+    "     * Lets one through.\n"
+    "     *\n"
+    "     * @throws Shut if it is shut\n"
+    "     */\n"
+    "    void go(long id);\n}"
+)
+
 # The other direction: a body that refuses and a seam that says nothing about it.
 REFUSES_WITHOUT_SAYING_SO = (
     "public class Barrier {\n"
@@ -132,6 +201,13 @@ class SourceOfKnownShapeTest(SourceTreeTest):
             for refusal in module["interface"]["refusals"]
         }
 
+    def checked_of(self, module):
+        """Which of one module's refusals this tool held against its implementation."""
+        return {
+            refusal["name"]: refusal["checked"]
+            for refusal in module["interface"]["refusals"]
+        }
+
 
 class EveryRefusalAModuleCanAnswerWithIsPartOfItsInterfaceTest(SourceOfKnownShapeTest):
     """A caller who does not know how a module refuses has not learned the module."""
@@ -166,7 +242,15 @@ class EveryRefusalAModuleCanAnswerWithIsPartOfItsInterfaceTest(SourceOfKnownShap
         modules = self.modules(("Shut", A_REFUSAL), ("Gate", KEEPS_ITS_WORD))
 
         self.assertEqual(
-            [{"name": "Shut", "documented": True, "documentedBy": ["go"], "raised": True}],
+            [
+                {
+                    "name": "Shut",
+                    "documented": True,
+                    "documentedBy": ["go"],
+                    "raised": True,
+                    "checked": True,
+                }
+            ],
             modules["Gate"]["interface"]["refusals"],
         )
 
@@ -660,6 +744,220 @@ class TheRefusalRuleIsUsedOrTheRunStopsTest(SourceOfKnownShapeTest):
         self.assertIn("interfaceCost.weights.refusal", reason)
 
 
+class ARefusalOnlyOneSideOfWhichCouldBeReadTest(SourceOfKnownShapeTest):
+    """The one thing this feature cannot afford: accusing a module that kept its word.
+
+    A finding is worth what a reader's trust in it is worth, and a machine that says
+    "documented but never raised" about a module doing exactly what its javadoc says stops
+    being read at all. So where one side of a refusal could not be read, the refusal is
+    still on the band — a caller has it to learn either way — and no finding is made about
+    it. The card still prints both sides, so a reader can go and check what the tool would
+    not.
+    """
+
+    def test_a_name_declared_twice_that_disagrees_is_followed_to_neither(self):
+        """Which `refusing` a call meant is javac's answer, and it is not guessed at."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Overloaded", TWO_HELPERS_OF_ONE_NAME))
+
+        self.assertEqual({"Shut": (True, False)}, self.refusals_of(modules["Overloaded"]))
+
+    def test_a_type_that_is_not_a_refusal_at_all_never_reaches_the_band(self):
+        """`private String refusing(int)` hands back a String, which nothing can throw."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Overloaded", TWO_HELPERS_OF_ONE_NAME))
+
+        self.assertNotIn("String", self.refusals_of(modules["Overloaded"]))
+        self.assertEqual(
+            self.document["scoring"]["weights"]["refusal"],
+            modules["Overloaded"]["interface"]["refusalCost"],
+        )
+
+    def test_a_module_whose_helpers_collide_is_accused_of_nothing(self):
+        """Documentation and implementation agree here; only this tool cannot see it."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Overloaded", TWO_HELPERS_OF_ONE_NAME))
+
+        self.assertEqual([], modules["Overloaded"]["findings"])
+        self.assertEqual({"Shut": False}, self.checked_of(modules["Overloaded"]))
+
+    def test_two_declarations_of_one_name_that_agree_are_followed(self):
+        """Whichever the call meant it throws a Shut, so nothing has to be resolved."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Overloaded", TWO_HELPERS_THAT_AGREE))
+
+        self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Overloaded"]))
+        self.assertEqual({"Shut": True}, self.checked_of(modules["Overloaded"]))
+        self.assertEqual([], modules["Overloaded"]["findings"])
+
+    def test_a_throw_of_a_name_rather_than_a_type_leaves_the_promise_unchecked(self):
+        """`throw thrown` needs a type only javac resolves, so nothing is claimed about it."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Rethrows", "public class Rethrows {\n"
+                         "\n"
+                         "    /** @throws Shut if it is shut */\n"
+                         "    public void go(Shut thrown) { throw thrown; }\n}"),
+        )
+
+        self.assertEqual({"Shut": (True, False)}, self.refusals_of(modules["Rethrows"]))
+        self.assertEqual({"Shut": False}, self.checked_of(modules["Rethrows"]))
+        self.assertEqual([], modules["Rethrows"]["findings"])
+
+    def test_a_body_this_tool_read_whole_is_still_held_to_what_it_promised(self):
+        """The floor is not an excuse: a module with nothing unreadable is checked."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Turnstile", PROMISES_WHAT_IT_CANNOT_DO))
+
+        self.assertEqual({"Shut": True}, self.checked_of(modules["Turnstile"]))
+        self.assertEqual(
+            [self.the_rule()["documentedNeverRaised"]["finding"]],
+            [f["finding"] for f in modules["Turnstile"]["findings"]],
+        )
+
+    def test_a_refusal_promised_by_a_method_with_no_body_is_on_the_band(self):
+        """A caller of the interface has it to learn, whoever ends up raising it."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Turnstiles", A_SEAM_WITH_NO_BODY_UNDER_IT))
+
+        self.assertEqual({"Shut": (True, False)}, self.refusals_of(modules["Turnstiles"]))
+
+    def test_a_refusal_promised_by_a_method_with_no_body_is_never_a_finding(self):
+        """The promise is to whoever implements it; this module was never going to keep it."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Turnstiles", A_SEAM_WITH_NO_BODY_UNDER_IT))
+
+        self.assertEqual({"Shut": False}, self.checked_of(modules["Turnstiles"]))
+        self.assertEqual([], modules["Turnstiles"]["findings"])
+
+    def test_an_abstract_method_promising_a_refusal_is_not_accused_either(self):
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Gates", "public abstract class Gates {\n"
+                      "\n"
+                      "    /** @throws Shut if it is shut */\n"
+                      "    public abstract void go(long id);\n}"),
+        )
+
+        self.assertEqual([], modules["Gates"]["findings"])
+
+    def test_a_module_with_a_body_and_a_bodiless_promise_is_checked_on_the_body(self):
+        """One unimplemented signature does not buy the rest of the module an alibi."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Locked", ANOTHER_REFUSAL),
+            ("Gates", "public abstract class Gates {\n"
+                      "\n"
+                      "    /** @throws Shut if it is shut */\n"
+                      "    public abstract void go(long id);\n"
+                      "\n"
+                      "    /** @throws Locked if it is locked */\n"
+                      "    public void close(long id) {}\n}"),
+        )
+
+        self.assertEqual({"Shut": False, "Locked": True}, self.checked_of(modules["Gates"]))
+        self.assertEqual(
+            ["Locked"], [f["refusal"] for f in modules["Gates"]["findings"]]
+        )
+
+    def test_the_document_counts_the_refusals_it_never_checked(self):
+        """Three denominators, and this is the honest one: neither finding nor agreement."""
+        self.modules(
+            ("Shut", A_REFUSAL),
+            ("Locked", ANOTHER_REFUSAL),
+            ("Turnstiles", A_SEAM_WITH_NO_BODY_UNDER_IT),
+            ("Gate", KEEPS_ITS_WORD),
+            ("Barrier", REFUSES_WITHOUT_SAYING_SO),
+        )
+
+        self.assertEqual(3, self.the_rule()["refusalsRead"])
+        self.assertEqual(1, self.the_rule()["refusalsNotChecked"])
+
+
+class WhatAConstructorSaysAboutHowAModuleRefusesTest(SourceOfKnownShapeTest):
+    """Both sides of a constructor's refusal, or neither. Reading one is what accuses.
+
+    A constructor's body is read into what a module raises — `new AmountOfMoney(-1)`
+    refuses, and a caller meets that refusal — so its `@throws` is read as the module
+    documenting itself. The other way round was the alternative: stop reading a
+    constructor's throw. That says something false about the source, and validating in a
+    constructor is the sanctioned way to give a Java value an invariant.
+    """
+
+    def test_a_refusal_documented_on_a_constructor_is_the_modules_own(self):
+        modules = self.modules(("Shut", A_REFUSAL), ("Built", A_CONSTRUCTOR_THAT_REFUSES))
+
+        self.assertEqual({"Shut": (True, True)}, self.refusals_of(modules["Built"]))
+
+    def test_a_constructor_that_documents_what_it_throws_is_accused_of_nothing(self):
+        modules = self.modules(("Shut", A_REFUSAL), ("Built", A_CONSTRUCTOR_THAT_REFUSES))
+
+        self.assertEqual([], modules["Built"]["findings"])
+
+    def test_the_constructor_is_named_as_what_documents_it(self):
+        """By the module's own name, which is what a constructor is called."""
+        modules = self.modules(("Shut", A_REFUSAL), ("Built", A_CONSTRUCTOR_THAT_REFUSES))
+
+        self.assertEqual(
+            ["Built"], modules["Built"]["interface"]["refusals"][0]["documentedBy"]
+        )
+
+    def test_a_constructor_promising_a_refusal_nothing_raises_is_still_a_finding(self):
+        """Read as documentation, so a stale one on a constructor is caught like any other."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Built", "public class Built {\n"
+                      "\n"
+                      "    /** @throws Shut if the amount is negative */\n"
+                      "    public Built(long cents) {}\n}"),
+        )
+
+        self.assertEqual(
+            [(self.the_rule()["documentedNeverRaised"]["finding"], "Shut")],
+            [(f["finding"], f["refusal"]) for f in modules["Built"]["findings"]],
+        )
+
+    def test_a_refusal_documented_on_a_constructor_no_caller_can_reach_is_not_the_modules(self):
+        """A private constructor is a factory's business, the way a private helper is."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Built", "public class Built {\n"
+                      "\n"
+                      "    /** @throws Shut if the amount is negative */\n"
+                      "    private Built(long cents) {}\n"
+                      "\n"
+                      "    public static Built of(long cents) { return new Built(cents); }\n}"),
+        )
+
+        self.assertEqual([], modules["Built"]["interface"]["refusals"])
+        self.assertEqual([], modules["Built"]["findings"])
+
+    def test_a_records_compact_constructor_documents_the_record(self):
+        """The one constructor Java lets you write with no parameter list at all."""
+        modules = self.modules(
+            ("Locked", ANOTHER_REFUSAL),
+            ("Coin", "public record Coin(long cents) {\n"
+                     "\n"
+                     "    /** @throws Locked if the amount is negative */\n"
+                     "    public Coin {\n"
+                     "        if (cents < 0) { throw new Locked(\"no\"); }\n"
+                     "    }\n}"),
+        )
+
+        self.assertEqual({"Locked": (True, True)}, self.refusals_of(modules["Coin"]))
+        self.assertEqual([], modules["Coin"]["findings"])
+
+    def test_a_method_named_after_its_module_is_not_its_constructor(self):
+        """`public Coin coin()` writes the type's name twice and constructs nothing."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Coin", "public class Coin {\n"
+                     "\n"
+                     "    /** @throws Shut if it is shut */\n"
+                     "    public Coin Coin() { throw new Shut(\"shut\"); }\n}"),
+        )
+
+        self.assertEqual(
+            ["Coin"], modules["Coin"]["interface"]["refusals"][0]["documentedBy"]
+        )
+        self.assertEqual(
+            ["Coin"], [m["name"] for m in modules["Coin"]["interface"]["methods"]]
+        )
+
+
 class TheBandIsDrawnOnThePageTest(SourceOfKnownShapeTest):
     """The page shows the band, names the refusals, and prints both sides of a finding."""
 
@@ -740,3 +1038,22 @@ class TheBandIsDrawnOnThePageTest(SourceOfKnownShapeTest):
 
         self.assertIn("throw thrown", script)
         self.assertIn("not guessed at", script)
+
+    def test_the_page_says_which_promises_it_never_held_against_anything(self):
+        """A withheld finding is invisible unless the page says it was withheld."""
+        _, rendered = self.rendered(*self.three_gates())
+        script = self.script(rendered)
+
+        self.assertIn("document_.scoring.refusals.refusalsNotChecked", script)
+        self.assertIn("a method with no body", script)
+
+    def test_a_refusal_the_page_never_checked_is_marked_apart_from_both(self):
+        """Neither a finding nor an agreement, and drawn as neither."""
+        _, rendered = self.rendered(
+            ("Shut", A_REFUSAL), ("Turnstiles", A_SEAM_WITH_NO_BODY_UNDER_IT)
+        )
+        drawn = self.body(rendered, "drawRefusals")
+
+        self.assertIn("refusal.checked", drawn)
+        self.assertIn('"refusal unchecked"', drawn)
+        self.assertIn(".refusal.unchecked", rendered)

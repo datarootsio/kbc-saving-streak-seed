@@ -155,6 +155,10 @@ section.package { margin: 2rem 0 0; }
 .module .refusals { margin: .2rem 0 0; font-size: .8rem; color: var(--ink-soft); }
 .module .refusals .refusal { color: var(--refusal); font-weight: 650; }
 .module .refusals .refusal.found { color: var(--alarm-ink); }
+/* A promise this tool never held against an implementation. Marked, because it is
+   neither a finding nor an agreement — and underlined rather than recoloured, since
+   alarm ink is for what the tool actually found. */
+.module .refusals .refusal.unchecked { text-decoration: underline dotted; }
 /* A disagreement between what a module documents and what it raises. Under its own rule,
    like the verdict, because it is a finding rather than a measurement — and in alarm ink
    on the finding's own words only, so the card is not washed in a colour that would read
@@ -353,9 +357,11 @@ _SCRIPT = """
   });
   add(band, "p", null,
     "A refusal is read from the source's own words on both sides and guessed at on "
-    + "neither: what a module documents is the @throws written over a method a caller can "
-    + "reach, and what it raises is what its body throws. Where the two disagree the card "
-    + "says so, naming the refusal and both sides of it:");
+    + "neither: what a module documents is the @throws written over a method or a "
+    + "constructor a caller can reach, and what it raises is what its body throws — "
+    + "a constructor's body included, which is why a constructor's @throws is read as "
+    + "well. Where the two disagree the card says so, naming the refusal and both sides "
+    + "of it:");
   var disagreements = add(band, "ul");
   [
     document_.scoring.refusals.documentedNeverRaised,
@@ -377,13 +383,23 @@ _SCRIPT = """
   add(band, "p", null,
     "What this band leaves out is a floor in the same direction as everything else here. "
     + "A refusal thrown by a name rather than by a type \u2014 throw thrown, throw "
-    + "somethingElse.build() \u2014 needs a type this tool never resolves, so it is not "
-    + "read and not guessed at; a refusal one module raises by calling another is the "
-    + "second module's, drawn there; and a prose sentence about when something fails is "
-    + "part of the interface and is measured nowhere. So a band at nothing says only that "
-    + "there was nothing here to read, and a documented but never raised finding can be "
-    + "a spelling this tool cannot follow rather than a promise the code broke. Both "
-    + "sides are printed on the card for exactly that reason.");
+    + "somethingElse.build(), throw refusing(why) where two methods are called refusing "
+    + "and they hand back different things \u2014 needs a type this tool never resolves, "
+    + "so it is not read and not guessed at; a refusal one module raises by calling "
+    + "another is the second module's, drawn there; and a prose sentence about when "
+    + "something fails is part of the interface and is measured nowhere. So a band at "
+    + "nothing says only that there was nothing here to read.");
+  add(band, "p", null,
+    "Where the implementation could not be read, no finding is made either, and the "
+    + "refusal is drawn underlined instead: a @throws on a method with no body \u2014 an "
+    + "interface's, an abstract one's \u2014 is a promise to whoever implements it rather "
+    + "than something this module's own body was ever going to keep, and a body carrying "
+    + "a throw this tool could not name may be raising exactly what was promised. "
+    + count(document_.scoring.refusals.refusalsNotChecked, "refusal is", "refusals are")
+    + " left unchecked on this page for one of those two reasons. A machine that accused "
+    + "a module which kept its word would stop being read, which is worth more than the "
+    + "stale comments it would catch \u2014 so both sides are printed on the card, and a "
+    + "reader can go and check what the tool would not.");
 
   var fans = add(root, "section", "rules");
   add(fans, "h2", null, "What the fans measure");
@@ -803,9 +819,22 @@ _SCRIPT = """
     refusals.forEach(function (refusal, index) {
       if (index > 0) { line.appendChild(document.createTextNode(", ")); }
       var finding = disagreeing[refusal.name];
-      var named_ = add(line, "span", finding ? "refusal found" : "refusal", refusal.name);
-      named_.title = finding ? finding.finding + " \u2014 " + finding.because
-        : "documented by " + refusal.documentedBy.join(", ") + ", and raised by this module";
+      var marked = "refusal";
+      var says = "documented by " + refusal.documentedBy.join(", ")
+        + ", and raised by this module";
+      if (finding) {
+        marked = "refusal found";
+        says = finding.finding + " \\u2014 " + finding.because;
+      } else if (!refusal.checked) {
+        // Neither a finding nor a module keeping its word: a promise this tool never
+        // held against anything. Marked apart from both, because reading it as
+        // agreement is exactly the false confidence the band exists to avoid.
+        marked = "refusal unchecked";
+        says = "documented by " + refusal.documentedBy.join(", ")
+          + ", and whether this module raises it is not something this tool could read";
+      }
+      var named_ = add(line, "span", marked, refusal.name);
+      named_.title = says;
     });
   }
 

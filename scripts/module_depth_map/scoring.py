@@ -35,10 +35,24 @@ it — a caller who does not know a module can answer with `WithdrawalRefused` h
 learned the module. It is then carried as a band of its own, `refusalCost` beside
 `costWithoutRefusals`, so that a module whose interface is wide because it is honest about
 how it can fail can be told apart from one that is merely wide. Both sides are read from
-the source's own words: the `@throws` written over a method a caller can reach, and what
+the source's own words: the `@throws` written over a member a caller can reach, and what
 the body throws. Where the two disagree the module carries a finding naming both of them,
 under one of two names the file gives — because a stale comment caught by a machine is
 only worth as much as the rule a reader can point at behind it.
+
+A constructor a caller can reach is one of those members. Of the two ways to make the
+sides of a refusal symmetrical — read a constructor's `@throws` as the module documenting
+itself, or stop reading a constructor's `throw` into what it raises — this is the first,
+because the second says something false: `new AmountOfMoney(-1)` refuses, and a caller who
+does not know that has not learned the module. Validating in a constructor is the
+sanctioned way to give a Java value an invariant, and reading only the throw would accuse
+every module that does it of raising something nobody wrote down.
+
+Where a promise could not be held against an implementation, no finding is made and the
+reason is logged: a `@throws` on a method with no body is a promise to whoever implements
+it, and a body carrying a throw this tool could not name may be raising exactly what was
+promised. A machine that accuses a module which kept its word stops being read, which
+would cost more than the stale comments it catches are worth.
 
 The deletion test is the verdict those two halves add up to: would deleting this module
 concentrate complexity, or merely move it to its callers? A module coordinating no more
@@ -553,14 +567,30 @@ class Rules:
         is what a disagreement is made of, and because the page and the findings below both
         read it.
 
-        Documented is read off the methods a caller can reach, and off nothing else: a
+        Documented is read off the members a caller can reach, and off nothing else: a
         `@throws` on a private helper documents that helper to whoever maintains the
-        module, not the module to whoever calls it.
+        module, not the module to whoever calls it. A constructor a caller can reach is one
+        of those members. `new AmountOfMoney(-1)` refuses, the refusal is one the caller
+        has to know about, and the constructor's own body is already read into what the
+        module raises — so reading its `@throws` too is what keeps the two sides of one
+        refusal symmetrical.
+
+        `checked` is whether the two sides could be held against each other at all. A
+        refusal the body raises is checked by that fact. A refusal only the documentation
+        promises is checked only where there is an implementation here to read and all of
+        it was read: a `@throws` on a method with no body — an interface's, an abstract
+        one's — is a promise made to whoever implements it, and a body carrying a throw
+        this parser could not name may well be raising exactly what was promised. Saying
+        "never raised" in either case is a machine accusing a module that kept its word,
+        which is the one thing this feature cannot afford.
         """
         documented_by = {}
-        for method in methods:
-            for name in method.documented_refusals:
-                documented_by.setdefault(name, []).append(method.name)
+        an_implementation_to_read = set()
+        for member in self._documenters_of(declared, methods):
+            for name in member.documented_refusals:
+                documented_by.setdefault(name, []).append(member.name)
+                if member.has_a_body:
+                    an_implementation_to_read.add(name)
         names = sorted(set(documented_by) | set(declared.raises))
         return [
             {
@@ -568,8 +598,25 @@ class Rules:
                 "documented": name in documented_by,
                 "documentedBy": sorted(set(documented_by.get(name, ()))),
                 "raised": name in declared.raises,
+                "checked": name in declared.raises or (
+                    not declared.throws_not_read and name in an_implementation_to_read
+                ),
             }
             for name in names
+        ]
+
+    def _documenters_of(self, declared, methods):
+        """Every member of this module whose javadoc documents the module to a caller.
+
+        The methods arrive already narrowed to the ones a caller can reach; the
+        constructors are narrowed here, by the same rule and for the same reason. A
+        private constructor is a factory's business and nobody else's, and what it
+        promises is a note to whoever maintains the module.
+        """
+        return list(methods) + [
+            constructor
+            for constructor in declared.constructors
+            if constructor.visibility in self.reachable_from_outside
         ]
 
     def findings_of(self, name, refusals):
@@ -584,9 +631,27 @@ class Rules:
         Read for every module, scored or not. A finding is not a score: it is two things in
         the source disagreeing, and a rule that declines to *price* a record has said
         nothing about whether that record's javadoc tells the truth.
+
+        A refusal this tool could not check is not a disagreement and gets no finding. The
+        whole argument for this feature is that a machine catches a stale comment, and a
+        machine that accuses a module which kept its word stops being read — so where the
+        implementation was not there to read, or not read whole, the module is left alone
+        and the reason is logged. Both sides are still printed on the card, so a reader
+        can see the promise and go and check it themselves.
         """
         findings = []
         for refusal in refusals:
+            if refusal["documented"] and not refusal["raised"] and not refusal["checked"]:
+                log.debug(
+                    "refusal not held against the implementation module=%s refusal=%s "
+                    "documentedBy=%s reason=%s",
+                    name,
+                    refusal["name"],
+                    ",".join(refusal["documentedBy"]) or "nothing a caller can reach",
+                    "this module has no body promising it that was read whole, so "
+                    "whether it is ever raised is not something this tool read",
+                )
+                continue
             if refusal["documented"] and not refusal["raised"]:
                 named = self.refusals.documented_never_raised
             elif refusal["raised"] and not refusal["documented"]:
