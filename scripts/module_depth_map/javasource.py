@@ -1561,7 +1561,12 @@ def _method_in(member, holder_kind, line, documented_refusals=(), has_a_body=Tru
         _type_parameters_in(rest),
         _annotations_on(member),
         documented_refusals,
-        has_a_body,
+        # An annotation's members are abstract, all of them, always. One of them is also
+        # the single shape whose header holds a brace that opens nothing —
+        # `String[] value() default {"a"};` — so the brace a body is recognised by is
+        # there without a body under it. Answered by the kind rather than by the brace,
+        # because the kind is the fact and the brace is the thing that misleads.
+        has_a_body and holder_kind != "annotation",
     )
 
 

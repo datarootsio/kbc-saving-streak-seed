@@ -266,10 +266,12 @@ nothing says only that there was nothing here to read.
 Which is why a *documented but never raised* finding is made only where the implementation
 was there to read and all of it was read. Two things stop it:
 
-- **A `@throws` on a method with no body.** An interface's method, an abstract one and a
-  native one all promise something whoever implements them has to keep, and holding that
-  against this module's own body would accuse every documented interface in a source of
-  breaking a word it never gave. The refusal is still on the band — a caller of the
+- **A `@throws` on a method with no body.** An interface's method, an abstract one, a
+  native one and every member of an `@interface` all promise something whoever implements
+  them has to keep, and holding that against this module's own body would accuse every
+  documented interface in a source of breaking a word it never gave. The annotation is
+  answered by its kind rather than by the brace it writes: `String[] value() default {"a"}`
+  is the one member header holding a brace that opens no body. The refusal is still on the band — a caller of the
   interface has it to learn — and no finding is made about it. Nothing in this repository
   writes one today; it is the shape a participant is most likely to add next, and
   `tests/refusalsastheirownband` pins it.

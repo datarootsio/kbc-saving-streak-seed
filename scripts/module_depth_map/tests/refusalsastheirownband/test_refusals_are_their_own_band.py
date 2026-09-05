@@ -834,6 +834,19 @@ class ARefusalOnlyOneSideOfWhichCouldBeReadTest(SourceOfKnownShapeTest):
 
         self.assertEqual([], modules["Gates"]["findings"])
 
+    def test_an_annotations_member_promises_nothing_this_module_could_keep(self):
+        """Every member of an `@interface` is abstract, brace in its default value or not."""
+        modules = self.modules(
+            ("Shut", A_REFUSAL),
+            ("Marks", "public @interface Marks {\n"
+                      "\n"
+                      "    /** @throws Shut if it is shut */\n"
+                      "    String[] value() default {\"a\"};\n}"),
+        )
+
+        self.assertEqual({"Shut": False}, self.checked_of(modules["Marks"]))
+        self.assertEqual([], modules["Marks"]["findings"])
+
     def test_a_module_with_a_body_and_a_bodiless_promise_is_checked_on_the_body(self):
         """One unimplemented signature does not buy the rest of the module an alibi."""
         modules = self.modules(
