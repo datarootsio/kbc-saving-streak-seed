@@ -560,11 +560,25 @@ A few smaller things about the panel that are easier to get wrong than to notice
   keyboard's Enter on the name button is a click with no mouse events behind it at all —
   it is told apart by `detail`, which counts the pointer clicks that raised the event and
   is 0 for that one.
-- **Only the button that opens things opens or closes anything.** `mousedown` and
+- **Taking a whole word out of a card is a double-click, and no single click can see
+  one.** When the first of the two arrives nothing has been selected, the pointer has not
+  moved and `detail` is 1, so every rule above says "a click" — and opening there put a
+  modal over the reader double-clicking a module name: the second click landed on
+  whatever the panel had just put under the pointer, selecting the panel's own text, or,
+  for a card in an outer column, on the backdrop, which dismissed the panel again. Neither
+  the word nor the panel. So a click *asks* for the opening and the opening waits out the
+  half-second a second click has to arrive in, and the second press calls it off — half a
+  beat of delay before a card opens, against the browser's own way of taking a word off a
+  page not working on this one. The keyboard's Enter is not a gesture that can grow and
+  opens straight away.
+- **Nothing that asks for a context menu opens or closes anything.** `mousedown` and
   `mouseup` fire for every button on the mouse, so without a guard a right-press beside
   the panel dismissed it and the context menu the reader asked for opened over a page the
   panel had just left — while a right-click *inside* the panel, which the browser handles
-  itself, correctly left it open. Both ends read `PRIMARY_BUTTON`.
+  itself, correctly left it open. The button is only the visible half of that rule: on
+  macOS the same request is Ctrl+click, delivered as the primary button with `ctrlKey`
+  set, so `button` alone let it straight through and the two ends disagreed again. Both
+  ends read one `opensAContextMenu`.
 - **A cost of 0 is caveated wherever it is printed.** The card and the panel say
   "nothing this bar counts, which is not the same as nothing to learn" from one string,
   because the panel is where a reader goes to check the card and so is the last place that
@@ -579,10 +593,14 @@ A few smaller things about the panel that are easier to get wrong than to notice
 
 Where there is no modal dialog to open — a browser old enough that `<dialog>` is an unknown
 element — the panel falls back to setting and clearing the `open` attribute, and the
-stylesheet carries the `dialog.behind:not([open]) { display: none; }` rule that a browser
-knowing `<dialog>` would have supplied itself. Without it the fallback has nothing tying
-the attribute to whether the panel is on the page, and the empty shell would sit in the
-page from load with no close ever taking it away.
+stylesheet carries both halves of the rule a browser knowing `<dialog>` would have supplied
+itself: `dialog.behind { display: block; }` and `dialog.behind:not([open]) { display:
+none; }`. Without the second the fallback has nothing tying the attribute to whether the
+panel is on the page, and the empty shell would sit in the page from load with no close
+ever taking it away; without the first an unknown element falls back to `display: inline`,
+and the panel opens as a run of inline text spliced into the page flow with its own width
+inert. Where `<dialog>` is known the pair says what the browser was going to say anyway —
+the closed rule is the more specific of the two, so it still wins.
 
 ## What is drawn but never scored
 

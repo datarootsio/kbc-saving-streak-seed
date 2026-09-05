@@ -210,6 +210,13 @@ section.package { margin: 2rem 0 0; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   text-align: left;
   cursor: pointer;
+  /* A module's name is the string a reader most wants off this page — into a search, an
+     import, a message to whoever owns it — and a browser will not select the text inside
+     a button unless it is told to: chromium computes `user-select: auto` here and still
+     selects nothing, by double-click or by drag. Everywhere else on a card the words come
+     out already, so without this the name is the word a reader cannot take. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 .module button.name:hover { text-decoration: underline; }
 .module button.name:focus-visible,
@@ -229,8 +236,13 @@ dialog.behind {
 }
 /* What a browser's own stylesheet says about a dialog it knows, said here for one it does
    not. Where there is no modal dialog, `<dialog>` is an unknown element and the `open`
-   attribute the script falls back to means nothing to it: without this rule the empty
-   panel shell sits in the page from load and no close ever removes it. */
+   attribute the script falls back to means nothing to it: without these two rules the
+   empty panel shell sits in the page from load and no close ever removes it. Both halves,
+   because a browser's own sheet supplies both: an unknown element defaults to `display:
+   inline`, so hiding it without saying how to show it leaves the panel an inline run
+   spliced into the page. Where `<dialog>` is known these say what the browser was going
+   to say anyway — the closed rule is the more specific of the two, so it still wins. */
+dialog.behind { display: block; }
 dialog.behind:not([open]) { display: none; }
 dialog.behind::backdrop { background: rgba(12, 13, 15, .6); }
 .behindBody { max-height: calc(100vh - 4rem); overflow: auto; padding: 0 1.1rem 1.3rem; }
@@ -7835,11 +7847,22 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // the one in the file, and a reader could not tell which of the two the shape was drawn
   // from.
   var BEHIND_NAME = "behind-the-shape";
-  // The one button that opens and closes things. Both ends of this page's pointer rules —
-  // the card that opens a panel and the backdrop that shuts one — read it, because
-  // `mousedown` and `mouseup` fire for every button on the mouse and neither gesture is
-  // meant for the one that opens a context menu.
+  // The one button that opens and closes things: `mousedown` and `mouseup` fire for every
+  // button on the mouse, and neither of this page's gestures is meant for the one that
+  // opens a context menu.
   var PRIMARY_BUTTON = 0;
+
+  // Asking for a context menu, whichever way the reader asks. The secondary button is the
+  // half that is easy to see; the other is Ctrl+click, which is how macOS asks and which
+  // arrives as the primary button with `ctrlKey` set, so a rule reading `button` alone
+  // lets it straight through. Neither is a gesture about this panel: acting on one shuts
+  // the panel under the menu the reader just asked for, and the browser already leaves a
+  // context menu inside the panel alone, so the two ends of the page would disagree about
+  // the same gesture. The card reads it too, so that a press which was never going to
+  // open anything is not recorded as the start of a click.
+  function opensAContextMenu(event) {
+    return event.button !== PRIMARY_BUTTON || event.ctrlKey;
+  }
   var panel = add(root, "dialog", "behind");
   panel.setAttribute("aria-labelledby", BEHIND_NAME);
   var behindBody = add(panel, "div", "behindBody");
@@ -7875,14 +7898,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // backdrop and ended inside the panel alone, the way a button ignores a release
   // dragged off it.
   //
-  // Primary button only, because that is the other half of the rule light dismiss uses:
-  // `mousedown` and `mouseup` fire for every button, so without the guard a right-press
-  // beside the panel dismisses it — and a context menu opening over the page the panel
-  // just left is a menu about nothing. A right-click inside the panel already leaves it
-  // alone, so the guard is also what stops the two ends disagreeing.
+  // Nothing that asks for a context menu, because that is the other half of the rule
+  // light dismiss uses: `mousedown` and `mouseup` fire for every button and for macOS's
+  // Ctrl+click, so without the guard a press beside the panel meant for the menu
+  // dismisses it — and a context menu opening over the page the panel just left is a menu
+  // about nothing. Such a press inside the panel already leaves it alone, so the guard is
+  // also what stops the two ends disagreeing.
   var pressedOn = null;
   panel.addEventListener("mousedown", function (event) {
-    pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;
+    pressedOn = opensAContextMenu(event) ? null : event.target;
   });
   panel.addEventListener("mouseup", function (event) {
     if (event.target === panel && pressedOn === panel) { shutBehind(); }
@@ -8138,11 +8162,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     // three are listed out in full further up this same panel. A verdict read off some
     // other reach, or some other number of callers, is a second claim inside one panel —
     // and a reader who opened the panel to check the card has nowhere further to go.
+    //
+    // In the panel's ordinary ink rather than the softer one the sentence before it is
+    // drawn in, and the same way the guard over the depth is drawn: `.says` is for the
+    // prose supporting a reading, and a reading contradicting itself is not that.
     if (test.reach !== module.reach.count || test.callers !== module.callers.count) {
-      add(line, "span", "says",
+      line.appendChild(document.createTextNode(
         " — but this panel lists " + module.reach.count + " reached and "
         + module.callers.count + " going through it, so this verdict was read off counts "
-        + "the rest of this panel was not drawn from");
+        + "the rest of this panel was not drawn from"));
     }
     add(part, "p", "because", test.because);
   }
@@ -8173,16 +8201,31 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // opening a panel moves the focus and a focus move collapses a selection. This is the
   // rule the backdrop one element up already uses, said for a control whose two ends are
   // both inside itself: there, press and release have to have landed on the same element;
-  // here, in the same place.
+  // here, in the same place. The gesture no single click can see — the double-click, and
+  // the triple-click behind it — is the other half of the same problem, and is waited out
+  // rather than measured.
   var pressedAt = null;
   // A trackpad click drifts a pixel or two under a steady hand, so an exact match would
   // make the cards feel broken. Wider than the drift and narrower than a word.
   var A_STEADY_HAND = 3;
+  // How long a second click has to arrive in and still be the same gesture. Windows,
+  // macOS and the engines that follow them all default to half a second, and there is no
+  // way to ask a browser what its own figure is. This is what the opening waits out; see
+  // `openWhenNoSecondClickFollows` for why it has to wait at all.
+  var A_SECOND_CLICK = 500;
+  // The opening a first click asked for, while it is still waiting to find out whether a
+  // second one is coming.
+  var opening = null;
 
   function pressedOnACard(event) {
-    pressedAt = event.button === PRIMARY_BUTTON
-      ? {x: event.clientX, y: event.clientY}
-      : null;
+    // A second press of one gesture, arriving before the first click's panel has opened:
+    // the reader is taking a word out of the card, not asking for the panel. Called off
+    // here rather than on the click that follows, which is a whole click later, and this
+    // is the moment the browser itself selects the word.
+    if (event.detail > 1) { holdTheOpening(); }
+    pressedAt = opensAContextMenu(event)
+      ? null
+      : {x: event.clientX, y: event.clientY};
   }
 
   // Read once and cleared, because a press that never became a click — dragged off the
@@ -8197,10 +8240,46 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     if (at === null) { return true; }
     if (Math.abs(event.clientX - at.x) > A_STEADY_HAND) { return true; }
     if (Math.abs(event.clientY - at.y) > A_STEADY_HAND) { return true; }
-    // A press and a release in the same place that still left text selected: a reader
-    // taking one word out of the card. The gesture the guard exists for, at the one size
-    // the distance above cannot see.
+    // A press and a release in the same place that still left text selected: a drag of a
+    // pixel or two across a word, which is a selection at the one size the distance above
+    // cannot see. Taking a *whole* word out of a card is the double-click, and that one
+    // no single click can recognise; it is waited out below rather than measured here.
     return selectionInside(card);
+  }
+
+  // A click cannot tell whether it is the whole gesture or the first half of a
+  // double-click: `detail` is 1 either way, nothing has been selected yet and the pointer
+  // has not moved, so every guard above says "a click". Opening there is what threw a
+  // modal over a reader double-clicking a module name — the ordinary way to take one off
+  // a card — and left them with the panel's own text selected instead of the name, or,
+  // for a card in an outer column, with the second click landing on the backdrop and
+  // dismissing the panel again: neither the word nor the panel.
+  //
+  // So the opening waits out the interval a second click has to arrive in, and the press
+  // of that second click calls it off. The cost is that a card opens half a beat after
+  // the click rather than under it; the alternative is that the browser's own way of
+  // taking a word off a page does not work on this one.
+  //
+  // The keyboard's Enter is not a gesture that can grow: `detail` is 0, there is no
+  // second Enter to wait for, and it opens straight away.
+  function openWhenNoSecondClickFollows(event, open) {
+    holdTheOpening();
+    if (event.detail === 0) {
+      open();
+      return;
+    }
+    if (event.detail > 1) { return; }
+    opening = window.setTimeout(function () {
+      opening = null;
+      open();
+    }, A_SECOND_CLICK);
+  }
+
+  function holdTheOpening() {
+    if (opening !== null) {
+      window.clearTimeout(opening);
+      opening = null;
+    }
   }
 
   function selectionInside(card) {
@@ -8226,15 +8305,19 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       // the same panel by tabbing to the name and pressing Enter, whose click bubbles up
       // to the one opening handler here. Written with a second one on the button, a click
       // on the name would have opened the panel twice. The press beside it arms nothing
-      // and opens nothing: it only records where the gesture began, so that the click can
-      // tell a reader who meant to open this card from one who meant to select from it.
+      // and opens nothing: it records where the gesture began, so that the click can tell
+      // a reader who meant to open this card from one who meant to select from it, and it
+      // calls off an opening if a second press shows the gesture was a double-click. The
+      // click asks for the panel rather than opening it, for the same reason.
       var opens = add(item, "button", "name", module.name);
       opens.setAttribute("type", "button");
       opens.setAttribute("aria-haspopup", "dialog");
       item.addEventListener("mousedown", pressedOnACard);
       item.addEventListener("click", function (event) {
         if (aDragRatherThanAClick(event, item)) { return; }
-        openBehind(module, opens);
+        openWhenNoSecondClickFollows(event, function () {
+          openBehind(module, opens);
+        });
       });
       add(item, "div", "kind", module.kind);
       drawShape(item, module);

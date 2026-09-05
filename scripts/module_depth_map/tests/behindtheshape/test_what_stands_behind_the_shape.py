@@ -183,7 +183,9 @@ class ClickingAModuleOpensWhatStandsBehindItTest(BehindTheShapeTest):
         self.assertIn(
             'item.addEventListener("click", function (event) {\n'
             "        if (aDragRatherThanAClick(event, item)) { return; }\n"
-            "        openBehind(module, opens);",
+            "        openWhenNoSecondClickFollows(event, function () {\n"
+            "          openBehind(module, opens);\n"
+            "        });",
             card,
         )
         self.assertEqual(1, card.count("openBehind("))
@@ -264,7 +266,7 @@ class WhatCountsAsAClickOnTheBackdropTest(BehindTheShapeTest):
 
         self.assertIn(
             'panel.addEventListener("mousedown", function (event) {\n'
-            "    pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;",
+            "    pressedOn = opensAContextMenu(event) ? null : event.target;",
             script,
         )
         self.assertIn(
@@ -281,33 +283,50 @@ class WhatCountsAsAClickOnTheBackdropTest(BehindTheShapeTest):
         self.assertNotIn('panel.addEventListener("click"', script)
 
 
-class OnlyTheButtonThatOpensThingsOpensOrClosesThePanelTest(BehindTheShapeTest):
-    """`mousedown` and `mouseup` fire for every button, and one of them means "menu".
+class NoGestureAskingForAContextMenuOpensOrClosesThePanelTest(BehindTheShapeTest):
+    """`mousedown` and `mouseup` fire for every way a reader can ask for a menu.
 
-    Without a guard, a right-press beside the panel dismisses it, so the context menu the
-    reader asked for opens over a page the panel has just left — and a right-click inside
-    the panel, which the browser handles itself, correctly leaves it open, so the two ends
-    of the same gesture disagree. The card is the same story from the other side: the
-    press that records where a gesture began must not record one that was never going to
-    open anything.
+    Without a guard, a press beside the panel meant for the context menu dismisses it, so
+    the menu opens over a page the panel has just left — while the same press inside the
+    panel, which the browser handles itself, correctly leaves it open, so the two ends of
+    one gesture disagree. The secondary button is the visible half of the rule; the other
+    is macOS's Ctrl+click, which arrives as the primary button with `ctrlKey` set and
+    sails through a rule reading `button` alone. The card is the same story from the other
+    side: the press that records where a gesture began must not record one that was never
+    going to open anything.
     """
 
     def test_the_page_names_the_button_rather_than_writing_the_number_twice(self):
         self.assertIn("var PRIMARY_BUTTON = 0;", self.script())
 
+    def test_asking_for_a_menu_is_both_the_button_and_the_key_that_stands_for_it(self):
+        self.assertIn(
+            "function opensAContextMenu(event) {\n"
+            "    return event.button !== PRIMARY_BUTTON || event.ctrlKey;",
+            self.script(),
+        )
+
     def test_the_backdrop_reads_it_before_it_remembers_where_a_press_landed(self):
         self.assertIn(
-            "pressedOn = event.button === PRIMARY_BUTTON ? event.target : null;",
+            "pressedOn = opensAContextMenu(event) ? null : event.target;",
             self.script(),
         )
 
     def test_the_card_reads_it_before_it_remembers_where_a_press_landed(self):
         self.assertIn(
-            "pressedAt = event.button === PRIMARY_BUTTON\n"
-            "      ? {x: event.clientX, y: event.clientY}\n"
-            "      : null;",
+            "pressedAt = opensAContextMenu(event)\n"
+            "      ? null\n"
+            "      : {x: event.clientX, y: event.clientY};",
             self.script(),
         )
+
+    def test_neither_end_is_left_reading_the_button_on_its_own(self):
+        """One rule, read by both, is what stops the two ends disagreeing again."""
+        script = self.script()
+
+        self.assertEqual(2, script.count("opensAContextMenu(event)\n      ?")
+                         + script.count("opensAContextMenu(event) ?"))
+        self.assertNotIn("event.button === PRIMARY_BUTTON", script)
 
 
 class WhatCountsAsAClickOnACardTest(BehindTheShapeTest):
@@ -332,7 +351,7 @@ class WhatCountsAsAClickOnACardTest(BehindTheShapeTest):
     def test_the_press_records_where_it_landed_and_opens_nothing(self):
         pressing = self.body("pressedOnACard")
 
-        self.assertIn("pressedAt = event.button === PRIMARY_BUTTON", pressing)
+        self.assertIn("pressedAt = opensAContextMenu(event)", pressing)
         self.assertIn("{x: event.clientX, y: event.clientY}", pressing)
         self.assertNotIn("openBehind", pressing)
 
@@ -349,7 +368,7 @@ class WhatCountsAsAClickOnACardTest(BehindTheShapeTest):
         )
 
     def test_a_press_that_left_text_selected_is_a_drag_however_short_it_was(self):
-        """A reader taking one word out of a card moves the pointer by a few pixels."""
+        """A drag of a pixel or two across a word is a selection the distance cannot see."""
         self.assertIn("return selectionInside(card);", self.body("aDragRatherThanAClick"))
         selecting = self.body("selectionInside")
 
@@ -387,6 +406,74 @@ class WhatCountsAsAClickOnACardTest(BehindTheShapeTest):
         self.assertIn("var A_STEADY_HAND = 3;", self.script())
 
 
+class TakingAWordOutOfACardIsNotAskingForThePanelTest(BehindTheShapeTest):
+    """A double-click is two clicks, and the first of them looks exactly like a click.
+
+    Nothing has been selected when it arrives, the pointer has not moved and `detail` is
+    1, so every guard the card has says "a click" and the panel opens under click two —
+    which then lands on whatever the modal put beneath the pointer. The reader who
+    double-clicked a module name to copy it gets the panel's own text selected instead of
+    the name, or, on a card in an outer column, a second click on the backdrop that
+    dismisses the panel again: neither the word nor the panel.
+
+    No single click can tell the two apart, so the opening waits out the interval a second
+    click has to arrive in, and the second press calls it off. The keyboard's Enter is not
+    a gesture that can grow — `detail` is 0 — and opens straight away, which is the
+    constraint that keeps the opening on the click rather than on `mouseup`.
+    """
+
+    def test_the_first_click_asks_for_the_panel_rather_than_opening_it(self):
+        waiting = self.body("openWhenNoSecondClickFollows")
+
+        self.assertIn("holdTheOpening();", waiting)
+        self.assertIn("opening = window.setTimeout(function () {", waiting)
+        self.assertIn("}, A_SECOND_CLICK);", waiting)
+
+    def test_the_keyboard_opens_the_panel_without_waiting_for_anything(self):
+        waiting = self.body("openWhenNoSecondClickFollows")
+
+        self.assertIn("if (event.detail === 0) {\n      open();\n      return;\n    }",
+                      waiting)
+        self.assertLess(waiting.index("event.detail === 0"),
+                        waiting.index("setTimeout"))
+
+    def test_a_click_that_is_the_second_of_a_gesture_opens_nothing(self):
+        self.assertIn("if (event.detail > 1) { return; }",
+                      self.body("openWhenNoSecondClickFollows"))
+
+    def test_the_second_press_calls_off_the_opening_the_first_click_asked_for(self):
+        """A press is a whole click earlier than the click, and it is where the browser
+        selects the word the reader is after."""
+        pressing = self.body("pressedOnACard")
+
+        self.assertIn("if (event.detail > 1) { holdTheOpening(); }", pressing)
+
+    def test_only_one_opening_is_ever_waiting(self):
+        """A click on another card while one is pending must not open two panels."""
+        waiting = self.body("openWhenNoSecondClickFollows")
+        holding = self.body("holdTheOpening")
+
+        self.assertTrue(waiting.startswith(
+            "function openWhenNoSecondClickFollows(event, open) {\n"
+            "    holdTheOpening();"), waiting)
+        self.assertIn("window.clearTimeout(opening);\n      opening = null;", holding)
+
+    def test_the_interval_is_named_and_is_the_one_the_platforms_default_to(self):
+        self.assertIn("var A_SECOND_CLICK = 500;", self.script())
+
+    def test_the_name_a_reader_double_clicks_is_text_a_browser_will_select(self):
+        """A browser selects nothing inside a button unless the page says otherwise.
+
+        Which would leave the module's name — the string most worth taking off this page
+        — the one word on a card that cannot be copied, while the rule above carefully
+        keeps the panel out of the way of taking it.
+        """
+        rule = self.rendered[self.rendered.index(".module button.name {"):]
+
+        self.assertIn("user-select: text;", rule[:rule.index("}")])
+        self.assertIn("-webkit-user-select: text;", rule[:rule.index("}")])
+
+
 class ThePanelWithoutAModalDialogToOpenItInTest(BehindTheShapeTest):
     """The fallback branch has to be able to do what its comment says it does.
 
@@ -398,6 +485,20 @@ class ThePanelWithoutAModalDialogToOpenItInTest(BehindTheShapeTest):
 
     def test_a_panel_that_is_not_open_is_not_on_the_page(self):
         self.assertIn("dialog.behind:not([open]) { display: none; }", self.rendered)
+
+    def test_a_panel_that_is_open_is_a_block_rather_than_a_run_of_inline_text(self):
+        """Both halves, because a browser's own sheet supplies both.
+
+        An unknown element defaults to `display: inline`, so a rule that only hides the
+        panel leaves the fallback's `open` attribute showing it as an inline run spliced
+        into the page flow, with the panel's own width inert. The closed rule is the more
+        specific of the two, so where `<dialog>` is known nothing changes.
+        """
+        opened = self.rendered.index("dialog.behind { display: block; }")
+
+        self.assertLess(
+            opened, self.rendered.index("dialog.behind:not([open]) { display: none; }")
+        )
 
     def test_the_fallback_opens_and_closes_by_the_attribute_that_rule_reads(self):
         self.assertIn('panel.setAttribute("open", "open");', self.body("openBehind"))
@@ -647,6 +748,23 @@ class ThePanelCannotPrintTwoDisagreeingNumbersInSilenceTest(BehindTheShapeTest):
             drawn,
         )
         self.assertIn("the rest of this panel was not drawn from", drawn)
+
+    def test_both_guards_are_drawn_in_the_ink_the_rest_of_the_line_is(self):
+        """`.says` is the softer ink supporting prose is drawn in, and a reading that
+
+        contradicts itself is not supporting prose. The card's own guard passes no class
+        either, so the three read the same weight wherever a reader meets them.
+        """
+        self.assertIn(
+            'over.appendChild(document.createTextNode(\n'
+            '          " — but this panel lists "',
+            self.body("drawBehindInterface"),
+        )
+        self.assertIn(
+            'line.appendChild(document.createTextNode(\n'
+            '        " — but this panel lists "',
+            self.body("drawBehindVerdict"),
+        )
 
     def test_the_document_this_page_carries_holds_no_such_disagreement(self):
         """So the branches above are a guard rather than a sentence anybody reads today."""
