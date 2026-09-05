@@ -62,6 +62,16 @@ A module coordinating more than it presents is concentrating it, and earns its k
 thresholds live in the file with the rest, because "this is a pass-through" is only a
 finding rather than an opinion if the rule behind it is one a reader can point at.
 
+A flow is the last thing the file decides, and the only one that is about the whole graph
+rather than about one module. Each flow names the business event it is, the reason it is
+worth tracing, and the one call a caller makes to enter it — a module and a method on it,
+and nothing else. The modules it passes through are never written down: they are walked
+out of the reach every module already has, in the order the walk enters them, so a flow
+cannot describe an application the source no longer holds. Where the walk cannot start —
+no module of that id in the graph, no such method a caller can reach on it, nothing
+reached from it at all — the flow carries no path rather than a shorter one, and says
+which of the three it was.
+
 Three kinds of thing are drawn but never scored, each by a rule the file names: values
 that only carry data across a seam, repository interfaces whose implementation is
 generated rather than written, and the application's entry point. They are shallow by
@@ -91,7 +101,10 @@ log = logging.getLogger("module_depth_map.scoring")
 # others: a /3 file prices a refusal at nothing and names neither disagreement a refusal
 # can be in, so every module would read as costing a caller less than it does and every
 # stale `@throws` in the source would go unreported under rules nobody wrote.
-SCHEMA = "module-depth-map-scoring/4"
+# It moved to /5 when they gained a `flows` section: a /4 file names no business event at
+# all, so the page would draw no flow and say nothing about why — which reads as an
+# application that does nothing worth tracing rather than as a file that was never asked.
+SCHEMA = "module-depth-map-scoring/5"
 
 DEFAULT_CONFIGURATION = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring.json")
 
@@ -225,6 +238,12 @@ def _strings(value, where, may_be_empty=False):
 # opinion about how Java spells a name.
 _A_SIMPLE_NAME = re.compile(r"(?:[^\W\d]|\$)[\w$]*\Z")
 _THE_END_OF_A_NAME = re.compile(r"[\w$]+\Z")
+# What a module id looks like: the package the graph recorded, a dot, and the module's own
+# name. A flow's entry point is the one place in this file that names a module rather than
+# matching a fact about one, so it is the one place an id is written — and it is written in
+# full, because two packages can hold a module of the same name and a flow pointing at
+# whichever one was found first is a flow about nothing anybody chose.
+_A_MODULE_ID = re.compile(r"(?:(?:[^\W\d]|\$)[\w$]*\.)+(?:[^\W\d]|\$)[\w$]*\Z")
 
 
 def _the_name_in(written):
@@ -449,11 +468,34 @@ class Finding:
         self.because = because
 
 
+class Flow:
+    """One business event, named by the single call a caller makes to enter it.
+
+    An entry point and nothing else. The modules a flow passes through are not written
+    here and cannot be: they are walked out of the graph's own reach, which is what makes
+    a flow a reading of the code rather than a second description of it sitting beside
+    the code and going stale against it. The only thing this file decides is where the
+    walk starts.
+
+    The method is part of the entry point rather than decoration on it. Three of this
+    application's flows are entered through modules a single caller holds, and a flow
+    named by its module alone would be a claim about everything that module does — while
+    a method that has been renamed out from under the flow is exactly the drift a flow is
+    supposed to fail on rather than quietly survive.
+    """
+
+    def __init__(self, flow, because, module, method):
+        self.flow = flow
+        self.because = because
+        self.module = module
+        self.method = method
+
+
 class Rules:
     """The scoring rules one configuration file holds, ready to be applied to a module."""
 
     def __init__(self, path, weights, reachable_from_outside, already_known, exclusions,
-                 reached, deletion_test, refusals):
+                 reached, deletion_test, refusals, flows):
         self.path = path
         self.weights = weights
         self.reachable_from_outside = reachable_from_outside
@@ -462,6 +504,7 @@ class Rules:
         self.reached = reached
         self.deletion_test = deletion_test
         self.refusals = refusals
+        self.flows = flows
 
     def excluded_by(self, declared):
         """The first rule that says this module is never scored, or None if it is scored.
@@ -1174,7 +1217,8 @@ def load(path=None):
         )
     _only(
         document,
-        ("schema", "interfaceCost", "refusals", "reach", "deletionTest", "exclusions"),
+        ("schema", "interfaceCost", "refusals", "reach", "deletionTest", "flows",
+         "exclusions"),
         "the configuration",
     )
 
@@ -1227,10 +1271,11 @@ def load(path=None):
     refusals = _refusals(document.get("refusals"))
     reached = _reach(document.get("reach"))
     deletion_test = _deletion_test(document.get("deletionTest"))
+    flows = _flows(document.get("flows"))
     exclusions = _exclusions(document.get("exclusions"))
     rules = Rules(
         path, dict(weights), frozenset(reachable), frozenset(known), exclusions, reached,
-        deletion_test, refusals,
+        deletion_test, refusals, flows,
     )
     log.debug(
         "scoring rules read weights=%s reachableFromOutside=%s typesAlreadyKnown=%d "
@@ -1262,7 +1307,73 @@ def load(path=None):
         refusals.documented_never_raised.finding,
         refusals.raised_never_documented.finding,
     )
+    for flow in flows:
+        log.debug(
+            "flow read flow=%s entryPoint=%s.%s",
+            flow.flow,
+            flow.module,
+            flow.method,
+        )
     return rules
+
+
+def _flows(listed):
+    """The business events this file asks to be traced, each by its entry point alone.
+
+    A list rather than an object, because the order the file writes them in is the order
+    they are offered in: which flow a reader is shown first is a decision somebody made,
+    and sorting them here would take it away from them.
+
+    Allowed to be empty and required to be present, which are different answers. A file
+    holding `"flows": []` is one whose author decided this application has no event worth
+    tracing — a position somebody can hold and argue for. A file with no `flows` key at
+    all has decided nothing, and reading that as "no flows" would put a page with no flows
+    on it in front of a reader with nothing anywhere saying why.
+
+    Nothing here is resolved against any source: this function only knows what a flow
+    *says*. Whether the module exists, whether the method is one a caller can reach and
+    what the flow passes through are all questions about a graph, and they are answered
+    where the graph is.
+    """
+    if not isinstance(listed, list):
+        raise ConfigurationRefused("flows is %s, and it has to be a list" % _shape(listed))
+    flows = []
+    named = set()
+    for index, entry in enumerate(listed):
+        where = "flows[%d]" % index
+        _an_object(entry, where)
+        _only(entry, ("flow", "because", "entryPoint"), where)
+        for field in ("flow", "because"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                raise ConfigurationRefused(
+                    "%s.%s is %r, and a flow nobody can name is one nobody can choose"
+                    % (where, field, entry.get(field))
+                )
+        if entry["flow"] in named:
+            raise ConfigurationRefused(
+                "%s.flow is %r, which another flow is already called: a reader choosing "
+                "one of them could not tell which they had chosen" % (where, entry["flow"])
+            )
+        named.add(entry["flow"])
+        entry_point = entry.get("entryPoint")
+        _an_object(entry_point, "%s.entryPoint" % where)
+        _only(entry_point, ("module", "method"), "%s.entryPoint" % where)
+        module = entry_point.get("module")
+        if not isinstance(module, str) or not _A_MODULE_ID.match(module.strip()):
+            raise ConfigurationRefused(
+                "%s.entryPoint.module is %r, and a flow starts at one module written in "
+                "full — its package, a dot, and its name — because two packages can hold "
+                "a module of the same name" % (where, module)
+            )
+        method = entry_point.get("method")
+        if not isinstance(method, str) or not _A_SIMPLE_NAME.match(method.strip()):
+            raise ConfigurationRefused(
+                "%s.entryPoint.method is %r, and a flow is entered by calling one method "
+                "on that module: without one the flow would be a claim about everything "
+                "the module does" % (where, method)
+            )
+        flows.append(Flow(entry["flow"], entry["because"], module.strip(), method.strip()))
+    return flows
 
 
 def _refusals(entry):

@@ -132,8 +132,10 @@ bands, the refusals it can answer with and everything else — over a fan with o
 to each thing it coordinates on that caller's behalf, and under both a verdict on what
 deleting it would do — read off the fan, the bar and the number of modules
 that go through it. Clicking a module opens everything standing behind its shape, which
-is what the rest of this file is about. Nothing is ranked, and nothing is proposed for
-change.
+is what the rest of this file is about. Above the cards, three flows — a deposit, a
+withdrawal with the deposits it draws down, and a reward claimed — each highlight the
+modules that business event passes through, in order. Nothing is ranked, and nothing is
+proposed for change.
 
 ## What an interface costs
 
@@ -602,6 +604,62 @@ and the panel opens as a run of inline text spliced into the page flow with its 
 inert. Where `<dialog>` is known the pair says what the browser was going to say anyway —
 the closed rule is the more specific of the two, so it still wins.
 
+## Flows through the modules
+
+Three things this application actually does, each traceable across the modules it passes
+through: a deposit, a withdrawal and the deposits it draws down, and a reward claimed.
+Choosing one on the page highlights every module on it and numbers it in the order the
+flow enters it, while every other module fades — so what one business event sets in motion
+can be told apart from what it does not, without stepping through it in a debugger.
+Clearing the choice puts every module back on an equal footing.
+
+**A flow is its entry point, and nothing else.** Each one is defined in `scoring.json` by
+the single call a caller makes to enter it — one module, written in full, and one method
+on it a caller can reach:
+
+    {
+      "flow": "a deposit",
+      "because": "...",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.deposits.DepositsService",
+        "method": "deposit"
+      }
+    }
+
+The method is part of the entry point rather than decoration on it. All three of these
+events are reachable through modules a single caller holds, so a flow named by its module
+alone would be a claim about everything that module does — and a method renamed out from
+under a flow is exactly the drift a flow should fail on rather than quietly survive.
+
+**The path is walked, never written down.** From the entry point the tool follows the same
+fans the cards below are drawn from: depth first, taking each module's reach in the order
+the document holds it, which is the order the card lists it in. A module already entered is
+not entered again — the graph has cycles in it, and a flow is a path through modules rather
+than a transcript of calls — so it keeps the step it was first entered at. The transaction
+a module establishes is reached and is not a step, because a flow passes through modules and
+nothing on the page could be highlighted for it. Every module a flow names is therefore a
+module the graph contains, by construction rather than by care.
+
+**A walk that cannot start ends in no path at all, never in a shorter one.** Three things
+can stop it, and each is recorded on the flow, logged as a warning by the run, and printed
+on the page in place of the path:
+
+- no module of that id is in the graph, so there is nowhere for the flow to start;
+- the module is there and presents no method of that name a caller can reach, so nothing
+  in it is the call the flow is entered by — the reason names what it does present;
+- the module reaches nothing this graph holds, so the flow passes through the one module it
+  starts at and is not a path through the application.
+
+A flow half walked is the one output worse than no flow: every module on it is real, the
+path is followable, and the event it claims to trace stopped happening that way some
+commits ago. So the button for such a flow cannot be pressed, and the reason sits above the
+chooser where the greyed-out button would send a reader looking for it.
+
+Nothing about a flow is worked out while the page is drawn. The path arrives in the graph
+document as a numbered list, each step naming the module it was reached from and the same
+sentence the fan was read with, and the page reads that list — so the highlighting on the
+cards and what a later tool reads out of `module-depth-map.json` are the same facts.
+
 ## What is drawn but never scored
 
 Three kinds of thing are shallow by construction, and ranking them beside the modules that
@@ -621,7 +679,7 @@ published in parts is still a score for a module the document says has none:
     --source DIR     a directory of source to read (repeatable; default backend/src/main/java)
     --graph FILE     where to write the graph document
     --page FILE      where to write the page
-    --scoring FILE   the weights and exclusion rules to apply (default scoring.json beside the tool)
+    --scoring FILE   the weights, exclusion rules and flows to apply (default scoring.json beside the tool)
     --log-level ...  DEBUG to see every file read, every module found and every exclusion
 
 ## Layout
@@ -632,6 +690,6 @@ published in parts is still a score for a module the document says has none:
         graph.py                      source roots in, the graph document out
         javasource.py                 reading one Java file well enough to name its modules
         scoring.py                    what an interface costs, and what is never scored
-        scoring.json                  the weights and rules that decide both — edit this
+        scoring.json                  the weights, the rules and the flows — edit this
         page.py                       the graph document rendered as one self-contained file
         tests/                        one package per property being established

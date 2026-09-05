@@ -52,7 +52,7 @@ def parser():
         "--scoring",
         default=scoring.DEFAULT_CONFIGURATION,
         metavar="FILE",
-        help="the scoring weights and exclusion rules to apply (default the file beside the tool)",
+        help="the scoring weights, exclusion rules and flows to apply (default the file beside the tool)",
     )
     it.add_argument(
         "--log-level",
@@ -147,7 +147,7 @@ def main(argv=None):
         return 5
     log.info(
         "run finished graphBytes=%d pageBytes=%d filesParsed=%d filesUnparsed=%d modules=%d "
-        "scored=%d neverScored=%d",
+        "scored=%d neverScored=%d flows=%d flowsTraced=%d",
         written[arguments.graph],
         written[arguments.page],
         document["source"]["filesParsed"],
@@ -155,7 +155,22 @@ def main(argv=None):
         len(document["modules"]),
         document["scoring"]["modulesScored"],
         document["scoring"]["modulesNeverScored"],
+        len(document["flows"]),
+        sum(1 for flow in document["flows"] if flow["resolved"]),
     )
+
+    # The flows the configuration asked for and this graph could not walk. Said again
+    # here, after the counts, because a flow that no longer resolves is the one finding
+    # in this document that is about the tool's own configuration having gone stale
+    # against the source — and the run that produced it is where somebody is standing.
+    for flow in document["flows"]:
+        if flow["resolved"]:
+            continue
+        log.warning(
+            "the flow %s is drawn with no path through the modules: %s",
+            flow["flow"],
+            flow["couldNotResolve"],
+        )
 
     if document["source"]["filesUnparsed"]:
         log.warning(

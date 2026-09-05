@@ -321,6 +321,79 @@ dialog.behind::backdrop { background: rgba(12, 13, 15, .6); }
 .behind .verdict strong { color: var(--ink); font-weight: 650; }
 .behind .verdict.found strong { color: var(--alarm-ink); }
 .behind .finding strong { color: var(--alarm-ink); font-weight: 650; }
+/* Flows: the three business events, and what choosing one does to the cards below. The
+   chooser is a set of buttons rather than a select, because the state a reader has to be
+   able to see is which flow is chosen — and `aria-pressed` says it to a screen reader in
+   the same breath that the colour says it to everybody else. */
+.flows .chooser { display: flex; flex-wrap: wrap; gap: .5rem; margin: .6rem 0 .9rem; padding: 0; list-style: none; }
+.flows button {
+  padding: .3rem .8rem;
+  border: 1px solid var(--edge);
+  border-radius: .35rem;
+  background: var(--ground);
+  color: var(--ink);
+  font: inherit;
+  font-size: .9rem;
+  cursor: pointer;
+}
+.flows button:hover { border-color: var(--accent); }
+.flows button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.flows button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  /* The raised ink rather than the ground, so the chosen button reads the same way in
+     both themes: the accent is dark on light and light on dark, and one fixed text
+     colour would be invisible in one of the two. */
+  color: var(--raised);
+  font-weight: 650;
+}
+/* A flow this graph could not walk. Not a button a reader can press: pressing it could
+   only highlight a path that is not there, and a shorter path is the one output worse
+   than none. */
+.flows button[disabled] {
+  cursor: not-allowed;
+  border-style: dashed;
+  color: var(--ink-soft);
+}
+.flows .untraced {
+  border: 1px solid var(--alarm-edge);
+  background: var(--alarm-ground);
+  color: var(--alarm-ink);
+  border-radius: .5rem;
+  padding: .6rem .8rem;
+  margin: 0 0 .8rem;
+  font-size: .88rem;
+}
+.flows .untraced strong { font-weight: 650; }
+.flows ol.path { margin: .2rem 0 .6rem; padding-left: 1.6rem; }
+.flows ol.path li { font-size: .88rem; color: var(--ink-soft); margin-bottom: .2rem; }
+.flows ol.path code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+.flows ol.path button.at {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.flows ol.path button.at:hover { text-decoration: underline; }
+/* A module the chosen flow passes through, and one it does not. Nothing is hidden: a
+   module off the flow is drawn faded rather than removed, so the shape of the whole
+   application stays on the page and a reader can see how much of it one event touches. */
+.module.onTheFlow { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.module.aside { opacity: .3; }
+.module .step {
+  float: right;
+  margin-left: .4rem;
+  padding: 0 .4rem;
+  border-radius: .8rem;
+  background: var(--accent);
+  color: var(--raised);
+  font-size: .72rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
 footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
 """
 
@@ -1484,8 +1557,176 @@ _SCRIPT = """
     return card.contains(selected.getRangeAt(0).commonAncestorContainer);
   }
 
+  // Flows through the modules: three business events, each traceable across everything it
+  // passes through. The path is the document's own — walked out of the graph's reach
+  // before the page was written — and everything below reads it rather than working it
+  // out, for the same reason the panel does: a page that walked the fans itself would be
+  // a second tracing beside the document's, and a reader could not tell which of the two
+  // the highlighting on the cards came from.
+
+  // The flow a reader has chosen, and the buttons that choose one. Held, because choosing
+  // a second flow has to un-choose the first: two flows highlighted at once would be two
+  // orders drawn over one set of cards, and neither readable.
+  var flowButtons = [];
+  // The step numbers put on the cards of the chosen flow, so that choosing another can
+  // take them off again. A card carries at most one, because a flow passes through a
+  // module once however many times it is called.
+  var flowBadges = [];
+
+  function drawFlows(section) {
+    add(section, "h2", null, "Flows through the modules");
+    add(section, "p", null,
+      "Each of these is one thing this application does, end to end. Choosing one "
+      + "highlights every module it passes through and numbers them in the order it "
+      + "passes through them, while everything else fades \u2014 so what one business "
+      + "event sets in motion can be told from what it does not. Clearing the choice puts "
+      + "every module back on an equal footing.");
+    add(section, "p", null,
+      "No flow is a path anybody wrote down. Each is defined in "
+      + document_.scoring.configuration + " by its entry point alone \u2014 one module, "
+      + "and one method a caller calls on it \u2014 and the modules under it are walked "
+      + "out of the same fans drawn on the cards below, depth first, each module's reach "
+      + "in the order the card lists it. So a flow cannot go on describing an application "
+      + "this source no longer holds: where the walk cannot start, the flow is drawn with "
+      + "no path at all rather than with a shorter one, and says which of the three ways "
+      + "it failed.");
+    if (document_.flows.length === 0) {
+      add(section, "p", "none",
+        "This configuration names no flow, so there is nothing here to trace.");
+      return;
+    }
+    // A flow this graph could not walk, named where a reader will look for it rather than
+    // left as a button that does nothing. Drawn above the chooser, because the reason is
+    // the answer to the question the greyed-out button raises.
+    document_.flows.forEach(function (flow) {
+      if (flow.resolved) { return; }
+      var untraced = add(section, "div", "untraced");
+      add(untraced, "strong", null, flow.flow);
+      add(untraced, "span", null,
+        " cannot be traced through this graph: " + flow.couldNotResolve
+        + ". It is drawn with no path rather than with a shorter one, because a flow half "
+        + "walked is the one output worse than no flow at all \u2014 every module on it "
+        + "real, the path followable, and the event it claims to trace no longer "
+        + "happening that way.");
+    });
+    var chooser = add(section, "ul", "chooser");
+    var says = add(section, "div", "chosen");
+    document_.flows.forEach(function (flow) {
+      var chooses = add(add(chooser, "li"), "button", "flow", flow.flow);
+      chooses.setAttribute("type", "button");
+      if (!flow.resolved) {
+        // Not a control at all. Pressing it could only highlight a path that is not
+        // there, and `aria-pressed` on something nobody can press says a state about a
+        // flow that has none.
+        chooses.disabled = true;
+        chooses.title = flow.couldNotResolve;
+        return;
+      }
+      chooses.setAttribute("aria-pressed", "false");
+      chooses.title = flow.because;
+      flowButtons.push({flow: flow, button: chooses});
+      chooses.addEventListener("click", function () { chooseFlow(flow, says); });
+    });
+    var clears = add(add(chooser, "li"), "button", "clear", "Clear");
+    clears.setAttribute("type", "button");
+    clears.title = "Show every module equally again";
+    clears.addEventListener("click", function () { clearFlow(says); });
+  }
+
+  function chooseFlow(flow, says) {
+    var onIt = {};
+    flow.path.forEach(function (step) { onIt[step.moduleId] = step; });
+    flowButtons.forEach(function (each) {
+      each.button.setAttribute("aria-pressed", each.flow === flow ? "true" : "false");
+    });
+    takeTheStepsOff();
+    eachCard(function (card, id) {
+      var step = onIt[id];
+      // The class written whole rather than added to, because it is the whole of what a
+      // card's class says: a card is on the chosen flow, beside it, or on no flow at all.
+      // Adding and removing two names left a card wearing both the first time a reader
+      // chose a second flow.
+      card.className = step ? "module onTheFlow" : "module aside";
+      if (step) { putTheStepOn(card, step); }
+    });
+    drawTheChosenFlow(says, flow);
+  }
+
+  function clearFlow(says) {
+    flowButtons.forEach(function (each) {
+      each.button.setAttribute("aria-pressed", "false");
+    });
+    takeTheStepsOff();
+    eachCard(function (card) { card.className = "module"; });
+    empty(says);
+  }
+
+  function eachCard(does) {
+    for (var id in cardFor) {
+      if (Object.prototype.hasOwnProperty.call(cardFor, id)) { does(cardFor[id], id); }
+    }
+  }
+
+  function putTheStepOn(card, step) {
+    var badge = add(card, "span", "step", step.step);
+    badge.title = "step " + step.step + " of this flow \u2014 " + step.matched;
+    // First on the card, so the number sits beside the module's name rather than under
+    // whichever part of the shape happened to be drawn last.
+    card.insertBefore(badge, card.firstChild);
+    flowBadges.push(badge);
+  }
+
+  function takeTheStepsOff() {
+    flowBadges.forEach(function (badge) { badge.parentNode.removeChild(badge); });
+    flowBadges = [];
+  }
+
+  function empty(element) {
+    while (element.firstChild) { element.removeChild(element.firstChild); }
+  }
+
+  // The chosen flow written out in order, under the chooser, because a highlight spread
+  // over a page taller than the screen is not an order anybody can read. Each module is a
+  // button that scrolls to its card: the list says what the order is, the cards say what
+  // each module in it looks like, and a reader moves between the two.
+  function drawTheChosenFlow(says, flow) {
+    empty(says);
+    add(says, "p", null, flow.because);
+    add(says, "p", null,
+      "Entered by calling " + flow.entryPoint.method + " on "
+      + flow.entryPoint.moduleId + ", and traced from there through "
+      + count(flow.modules, "module", "modules") + ", in this order:");
+    var listed = add(says, "ol", "path");
+    flow.path.forEach(function (step) {
+      var item = add(listed, "li");
+      var at = add(item, "button", "at", step.name);
+      at.setAttribute("type", "button");
+      at.title = step.moduleId;
+      at.addEventListener("click", function () { cardFor[step.moduleId].scrollIntoView(); });
+      add(item, "span", null,
+        " \u2014 " + (step.reachedFrom === null
+          ? step.matched
+          : "reached from " + byId[step.reachedFrom].name + ", " + step.matched));
+    });
+  }
+
   var byId = {};
   document_.modules.forEach(function (module) { byId[module.id] = module; });
+
+  // Flows through the modules: the business events this application actually performs,
+  // each traceable across everything it passes through. The section is put on the page
+  // here — above the cards, because that is what choosing a flow changes — and filled in
+  // once those cards exist, since choosing a flow is a thing done to them.
+  //
+  // Nothing about a path is worked out here. Which modules a flow passes through, and in
+  // what order, is walked out of the graph's own reach before the page is written and
+  // arrives in the document as a numbered list; this reads that list. A page that walked
+  // the fans itself would be a second tracing standing beside the document's, and a
+  // reader could not tell which of the two the highlighting came from.
+  var flows = add(root, "section", "rules flows");
+  // The card each module is drawn on, by id, so that choosing a flow can reach the cards
+  // it passes through without going looking for them in the page.
+  var cardFor = {};
 
   document_.packages.forEach(function (package_) {
     var section = add(root, "section", "package");
@@ -1496,6 +1737,7 @@ _SCRIPT = """
     package_.moduleIds.forEach(function (id) {
       var module = byId[id];
       var item = add(modules, "li", "module");
+      cardFor[id] = item;
       // The whole card is the control, and the name inside it is a real button: a
       // pointer opens the panel by clicking anywhere on the card, and a keyboard opens
       // the same panel by tabbing to the name and pressing Enter, whose click bubbles up
@@ -1527,6 +1769,8 @@ _SCRIPT = """
       }
     });
   });
+
+  drawFlows(flows);
 
   add(root, "footer", null,
     "Rendered from the graph document carried inside this file. Nothing is fetched, and "

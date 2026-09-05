@@ -27,8 +27,11 @@ log = logging.getLogger("module_depth_map.graph")
 # other direction. It moved to /5 when every module gained its `findings` and its
 # `interface` gained a `refusals` band with the `refusalCost` and `costWithoutRefusals`
 # the total is split into — each refusal saying which side of the seam named it, and
-# whether the two could be held against each other at all.
-SCHEMA = "module-depth-map/5"
+# whether the two could be held against each other at all. It moved to /6 when the
+# document grew a top-level `flows` list: the business events the configuration asks to be
+# traced, each with the path through the modules that was walked for it, or the reason
+# there is none.
+SCHEMA = "module-depth-map/6"
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -245,6 +248,7 @@ def build(roots, rules):
     _check_the_refusals(modules, rules)
     _measure_depth(read, rules)
     _run_the_deletion_test(modules, rules)
+    flows = _trace_the_flows(modules, rules)
 
     packages = {}
     for module in modules:
@@ -263,6 +267,7 @@ def build(roots, rules):
             {"name": name, "moduleIds": sorted(ids)} for name, ids in sorted(packages.items())
         ],
         "scoring": _scoring(rules, modules),
+        "flows": flows,
         "modules": modules,
     }
 
@@ -444,6 +449,143 @@ def _run_the_deletion_test(modules, rules):
             len(goes_through),
             ",".join(goes_through) or "nothing in this graph",
         )
+
+
+def _trace_the_flows(modules, rules):
+    """Walk each business event the configuration names out of the graph's own reach.
+
+    A fourth pass, and the only one about the whole application rather than about one
+    module. The configuration says where a flow starts — one module, one method on it —
+    and says nothing else; every module the flow passes through is walked from there
+    through the fan each module already has, so a flow is a reading of the code rather
+    than a second description of it kept beside the code by hand.
+
+    The walk is depth first and takes each module's reach in the order the document holds
+    it, which is the order a reader sees under the card: entering a module, the flow goes
+    through what that module coordinates before it goes on to the next thing its caller
+    coordinates. A module already walked is not walked again — the graph has cycles in it
+    and a flow is a path through modules, not a transcript of calls — so the step it was
+    first entered at is the step it keeps.
+
+    Nothing is followed that this graph does not hold. Every entry in a fan that names a
+    module names one the graph contains, and the transaction, which is reached and is not
+    a module, is not a step: a flow passes through modules, and nothing on the page could
+    be highlighted for it.
+
+    Three things can stop a walk before it starts, and each of them ends with the flow
+    carrying no path at all rather than a shorter one. A flow whose modules are half
+    walked is the one output worse than no flow: it draws a path a reader can follow,
+    every module on it is real, and the event it claims to trace stopped happening that
+    way some commits ago. So the reason is recorded on the flow, logged as a warning, and
+    printed on the page in place of the path.
+    """
+    by_id = {module["id"]: module for module in modules}
+    flows = []
+    for flow in rules.flows:
+        entry = {
+            "flow": flow.flow,
+            "because": flow.because,
+            "entryPoint": {"moduleId": flow.module, "method": flow.method},
+            "resolved": False,
+            "couldNotResolve": None,
+            "modules": 0,
+            "path": [],
+        }
+        flows.append(entry)
+        unresolved = _why_the_flow_cannot_start(flow, by_id)
+        if unresolved is not None:
+            entry["couldNotResolve"] = unresolved
+            log.warning(
+                "flow not traced flow=%s entryPoint=%s.%s reason=%s. It is drawn with no "
+                "path rather than a shorter one",
+                flow.flow,
+                flow.module,
+                flow.method,
+                unresolved,
+            )
+            continue
+        entry["path"] = _walked_from(flow, by_id)
+        entry["resolved"] = True
+        entry["modules"] = len(entry["path"])
+        log.info(
+            "flow traced flow=%s entryPoint=%s.%s modules=%d through=%s",
+            flow.flow,
+            flow.module,
+            flow.method,
+            entry["modules"],
+            ",".join(step["moduleId"] for step in entry["path"]),
+        )
+    log.info(
+        "flows read flows=%d traced=%d notTraced=%d",
+        len(flows),
+        sum(1 for entry in flows if entry["resolved"]),
+        sum(1 for entry in flows if not entry["resolved"]),
+    )
+    return flows
+
+
+def _why_the_flow_cannot_start(flow, by_id):
+    """What stops this flow being walked, in a sentence, or None when nothing does.
+
+    Each answer names the thing that was looked for and the thing that was found instead,
+    because "this flow no longer resolves" on its own sends whoever reads it back to the
+    source to work out which half moved.
+    """
+    module = by_id.get(flow.module)
+    if module is None:
+        return (
+            "no module in this graph is called %s, so there is nowhere for this flow to "
+            "start" % flow.module
+        )
+    reachable = [method["name"] for method in module["interface"]["methods"]]
+    if flow.method not in reachable:
+        return (
+            "%s presents no method called %s that a caller can reach, so nothing here is "
+            "the call this flow is entered by — it presents %s"
+            % (
+                flow.module,
+                flow.method,
+                ", ".join(sorted(set(reachable))) or "no such method at all",
+            )
+        )
+    if not any(reached["moduleId"] in by_id for reached in module["reach"]["reaches"]):
+        return (
+            "%s reaches nothing this graph holds, so this flow passes through the one "
+            "module it starts at and is not a path through the application" % flow.module
+        )
+    return None
+
+
+def _walked_from(flow, by_id):
+    """The modules this flow passes through, in the order the walk enters them."""
+    path = []
+    entered = set()
+
+    def go(module_id, reached_from, matched):
+        if module_id in entered:
+            return
+        entered.add(module_id)
+        module = by_id[module_id]
+        path.append(
+            {
+                "step": len(path) + 1,
+                "moduleId": module_id,
+                "name": module["name"],
+                "package": module["package"],
+                "reachedFrom": reached_from,
+                "matched": matched,
+            }
+        )
+        for reached in module["reach"]["reaches"]:
+            if reached["moduleId"] in by_id:
+                go(reached["moduleId"], module_id, reached["matched"])
+
+    go(
+        flow.module,
+        None,
+        "the flow is entered here, by calling %s" % flow.method,
+    )
+    return path
 
 
 def _measure_depth(read, rules):

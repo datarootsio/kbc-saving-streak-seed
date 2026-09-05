@@ -1,5 +1,5 @@
 {
-  "schema": "module-depth-map-scoring/4",
+  "schema": "module-depth-map-scoring/5",
 
   "interfaceCost": {
     "weights": {
@@ -106,6 +106,33 @@
       "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist."
     }
   },
+
+  "flows": [
+    {
+      "flow": "a deposit",
+      "because": "Money moving from a current account into a savings account is the first of the three things this application does, and the point a whole euro earns is credited inside the same call. The flow is entered by calling this method and nothing else is written down about it: every module under it is read from the call graph, so a flow that stops matching the code stops resolving rather than quietly describing an application that no longer exists.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.deposits.DepositsService",
+        "method": "deposit"
+      }
+    },
+    {
+      "flow": "a withdrawal, and the deposits it draws down",
+      "because": "Money moving back out is the second, and it is the one flow that cannot be read off a single module: a withdrawal is allocated against the deposits it comes out of, so the deposits it draws down are part of the event rather than a neighbour of it. Following the call graph out of this method is what puts them on the page without anybody listing them.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+        "method": "withdraw"
+      }
+    },
+    {
+      "flow": "a reward claimed",
+      "because": "Spending points on a reward is the third, and the one a reader is most likely to go looking for: it is where the points the other two flows earn are finally worth something. Entered by calling this method, and traced from there the same way as the other two.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.rewards.RewardsService",
+        "method": "claim"
+      }
+    }
+  ],
 
   "exclusions": [
     {
