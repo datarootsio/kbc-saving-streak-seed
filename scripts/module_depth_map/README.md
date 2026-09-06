@@ -254,9 +254,14 @@ makes it, and a cheap interface over a fan is what this page calls deep.
 
 And legal TypeScript is never failed, which matters more here than on the Java side: a
 failed file is a whole module off the page and every fan line into it gone with it, while
-a module reaching nothing is exactly what a shallow module looks like. Every shape this
-reading used to refuse, or read wrongly, on source `tsc` compiles without a word is a
-fixture in `tests/thefrontendhonestly` now:
+a module reaching nothing is exactly what a shallow module looks like. That is a rule this
+reading is held to rather than anything it can prove about itself — the parsing here is
+targeted pattern matching over the source, not a grammar — so it is kept the only way it
+can be. Every shape found to break it is written down as a fixture, and every one of them
+so far was found by somebody reading the source and trying it rather than by the suite,
+which is why each is a test and not only a fix. Every shape this reading used to refuse,
+or read wrongly, on source `tsc` compiles without a word is a fixture in
+`tests/thefrontendhonestly` now:
 
 - a **destructured parameter** — `function Banking({ customer, onSignOut }: Props)`, which
   is how all forty of this frontend's components take their props;
@@ -285,7 +290,24 @@ fixture in `tests/thefrontendhonestly` now:
 - a **parameter typed by the binding above it** — `const ring: Ring = (a) => a`, where
   TypeScript reads the parameter's type off the annotation;
 - a **type predicate** — `asserts x is number` — where the parameter's own name was read
-  as a type to learn.
+  as a type to learn;
+- a **self-closing JSX tag carrying a prop expression** — `<li key={i} />` inside a
+  `.map()`, which is the single most common line in React — where the `}` closing the
+  container let the following `/` open a regular expression, and the scan ran to the next
+  slash on the line and blanked the brace that closed the enclosing `{`. `<span>{done} /
+  {total}</span>` went the same way;
+- a **`<` written inside a declarator's value** — `export const flag = 1 < 2, b = (x:
+  number): number => x` — counted as a bracket nothing closed, so the comma separating the
+  two declarators was never seen and `b` was left out with no line in any log saying so;
+- a **written type wrapped onto a second line** — `const held: Till |\n  Receipt = ...` —
+  recorded as `Till |`, so a call through it reached one of the two names the source wrote
+  and the card printed a type that is not one;
+- a **string literal type** — `a: 'one' | 'two'` — printed as `' ' | ' '`, which is the
+  masked text rather than the source's;
+- **one type spelled two ways** — `string|null` and `string | null`, the union half of the
+  rule that had already closed up `Record<string,number>`;
+- an **overload set**, charged for the implementation signature TypeScript never lets a
+  caller call.
 
 Two exports are still failed by name on purpose, and they are the whole of the exception
 to the sentence above: `export declare` and `export namespace`. What either describes is
@@ -301,15 +323,26 @@ One reading that was wrong in the other direction is here too: `new api.Thing()`
 exactly the characters a call on `api` writes, and drew a fan line whose evidence read
 "called on api" over a file that calls nothing on it. The Java reading declines that
 spelling and calls it the one failure it exists to make impossible; this one is now built
-the same way.
+the same way. `<Icons.Chevron />` is the same shape written as an element and gets the
+same answer — the name read is `Icons.Chevron`, which names no module here, so it reaches
+nothing — and that floor is named on the page beside the other floors rather than left
+where a reader checking a fan against the source would find a gap nobody accounted for.
+
+And a module reaching nothing because of *what it is called* was worse than either. A
+module's own name is a binding inside its own source in Java — a class's name is in scope
+in the file that declares it — and is nothing of the sort in TypeScript, where the name is
+the basename of the file. Read the Java way, a file called `format.ts` was taken to
+declare `format`, its own `import { format } from './util'` was never followed, and it
+reached nothing at all while a byte-identical file under any other name reached `util`.
+Each language now says which it is, in `THE_NAME_IS_A_BINDING`.
 
 Every one was found by review rather than by the suite, which is why each is written down
 as a test rather than only fixed: an alarm that cries wolf stops being read, and a page
 that accused a module which kept its word would stop being read with it.
 
-Six helpers are one function read by both sides rather than two — `after_balanced` and
-`in_evaluation_order`, which always were, and `split_on_commas`, `normalised`, `line_of`
-and `ends_an_arrow`, which are now. Matching a bracket to its partner, evaluating a call's
+Seven helpers are one function read by both sides rather than two — `after_balanced` and
+`in_evaluation_order`, which always were, and `split_on_commas`, `spans_between_commas`,
+`normalised`, `line_of` and `ends_an_arrow`, which are now. Matching a bracket to its partner, evaluating a call's
 arguments before the call, splitting a list on the commas that separate it, spelling a
 type, counting a line, and knowing that the `>` of an `=>` closes nothing are facts about
 punctuation rather than about either language, and both readings have to answer every one

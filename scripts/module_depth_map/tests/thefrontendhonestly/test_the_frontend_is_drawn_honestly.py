@@ -942,7 +942,15 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         )
 
     def test_a_signature_with_no_body_is_read_as_one_rather_than_swallowing_the_next(self):
-        """An overload ends at a `;`, which is asked about before any brace is looked for."""
+        """An overload ends at a `;`, which is asked about before any brace is looked for.
+
+        What is asserted is the *return type* of the signature that survives. Read without
+        that rule it came back as `string export function ring(id: number): string` —
+        every word of the next declaration's header charged to a caller as a type to learn
+        — so this stays a test of where a signature ends. Only one method comes out
+        because the implementation signature under it is not one a caller can call, which
+        is `AnOverloadSetIsWhatACallerCanCallTest` below.
+        """
         interface = self.interface_of(
             "till.ts",
             "export function ring(id: number): string\n"
@@ -950,7 +958,7 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         )
 
         self.assertEqual(
-            [("ring", "string"), ("ring", "string")],
+            [("ring", "string")],
             [(method["name"], method["returns"]) for method in interface["methods"]],
         )
 
@@ -1310,6 +1318,191 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
             "T", [type_["name"] for type_ in interface["typesCrossingTheSeam"]]
         )
 
+    def test_a_self_closing_tag_with_a_prop_expression_inside_a_map_is_read(self):
+        """The single most common line in React, and this reading refused the whole file.
+
+        `_AFTER_WHICH_A_REGEX_CAN_START` held `}`, so the brace closing `key={i}` let the
+        `/` of the ` />` after it open a regular expression; the scan ran to the next
+        slash on the line — the one in `</ul>` — and blanked the `}` that was going to
+        close `{items.map(`. The file was then failed for braces that do not balance,
+        which is not true of it: `tsc --noEmit --strict --jsx react-jsx` compiles this
+        without a word. A whole module off the page, and every fan line into it.
+
+        `<div a={x} /></div>` survived by luck, because of where the next slash happened
+        to land, so the fixture has to be the `.map()` shape specifically.
+        """
+        interface = self.interface_of(
+            "list.tsx",
+            "export function List(items: string[]): JSX.Element {\n"
+            "  return <ul>{items.map(i => <li key={i} />)}</ul>\n}\n",
+        )
+
+        self.assertEqual(
+            [("List", ["string[]"])],
+            [(method["name"], method["parameters"]) for method in interface["methods"]],
+        )
+
+    def test_a_self_closing_tag_followed_by_a_conditional_sibling_is_read(self):
+        """The same cause one step along: the brace with nothing open was the report."""
+        interface = self.interface_of(
+            "note.tsx",
+            "export function Note(x: boolean): JSX.Element {\n"
+            "  return <><div className={x ? 'a' : 'b'} /> {x ? <Bar /> : null}</>\n}\n",
+        )
+
+        self.assertEqual(
+            ["Note"], [method["name"] for method in interface["methods"]]
+        )
+
+    def test_a_slash_written_between_two_expression_containers_is_read(self):
+        """`<span>{done} / {total}</span>`, which is how a progress line is written.
+
+        This one costs no file: the braces still balance, because everything between the
+        two slashes is blanked whole. What it costs is the code in between — here a call
+        to something the file imports, and with it the only fan line the module has, gone
+        with no line in any log saying so.
+        """
+        modules = self.read(
+            "bar.tsx",
+            "import { asMoney } from './money'\n"
+            "export function Bar(done: number, total: number): JSX.Element {\n"
+            "  return <span>{done} / {asMoney(total)}</span>\n}\n",
+            ("money.ts", "export function asMoney(cents: number): string {\n"
+                         "  return String(cents)\n}"),
+        )
+
+        self.assertEqual(
+            ["web/money"],
+            [each["moduleId"] for each in modules["web/bar"]["reach"]["reaches"]],
+        )
+
+    def test_a_comparison_in_a_declarator_does_not_lose_the_declarators_after_it(self):
+        """`export const flag = 1 < 2, b = ...` — `b` is a function a caller can import.
+
+        `_next_declarator` counted the `<` of the comparison as a bracket nothing closed,
+        so the depth stayed above zero for the rest of the scan and the comma separating
+        the two declarators was never seen. `b` was then in `methods`, in `types` and in
+        the declined log alike — nowhere at all, which is the one thing this reading must
+        never do with something a caller can reach.
+        """
+        interface = self.interface_of(
+            "till.ts", "export const flag = 1 < 2, b = (x: number): number => x\n"
+        )
+
+        self.assertEqual(
+            [("b", ["number"], "number")],
+            [(each["name"], each["parameters"], each["returns"])
+             for each in interface["methods"]],
+        )
+
+    def test_a_type_argument_list_in_a_declarator_does_not_split_it(self):
+        """The floor under the rule above: a `<` a `>` closes on the same line is a bracket.
+
+        Read as no bracket at all, the comma inside `Map<string, number>` would separate
+        two declarators the source never wrote.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export const held = new Map<string, number>(), b = (x: number): number => x\n",
+        )
+
+        self.assertEqual(
+            ["b"], [method["name"] for method in interface["methods"]]
+        )
+
+    def test_a_written_type_wrapped_onto_a_second_line_keeps_both_names(self):
+        """`const held: Till |\n  Receipt = ...` was recorded as the type `Till |`.
+
+        A newline at bracket depth zero ended the written type, and a `|` continuation is
+        outside every bracket — so a call written through `held` drew a fan line to one of
+        the two names the source wrote, and the evidence printed on the card was a string
+        that is not a type at all.
+        """
+        modules = self.read(
+            "till.ts",
+            "import { make } from './make'\n"
+            "import type { Receipt } from './receipts'\n"
+            "import type { Till } from './tills'\n"
+            "const held: Till |\n  Receipt = make()\n"
+            "export function go(): number {\n  held.ring()\n  return 1\n}\n",
+            ("make.ts", "export function make(): number {\n  return 1\n}"),
+            ("receipts.ts", "export type Receipt = { ring(): void }"),
+            ("tills.ts", "export type Till = { ring(): void }"),
+        )
+
+        self.assertEqual(
+            ["web/make", "web/receipts", "web/tills"],
+            sorted(each["moduleId"] for each in modules["web/till"]["reach"]["reaches"]),
+        )
+        self.assertIn(
+            "called through the field held, which holds a Till | Receipt",
+            [each["matched"] for each in modules["web/till"]["reach"]["reaches"]],
+        )
+
+    def test_a_written_type_wrapped_with_the_joiner_leading_keeps_both_names(self):
+        """The other way a formatter breaks the same type."""
+        modules = self.read(
+            "till.ts",
+            "import { make } from './make'\n"
+            "import type { Receipt } from './receipts'\n"
+            "import type { Till } from './tills'\n"
+            "const held: Till\n  | Receipt = make()\n"
+            "export function go(): number {\n  held.ring()\n  return 1\n}\n",
+            ("make.ts", "export function make(): number {\n  return 1\n}"),
+            ("receipts.ts", "export type Receipt = { ring(): void }"),
+            ("tills.ts", "export type Till = { ring(): void }"),
+        )
+
+        self.assertEqual(
+            ["web/make", "web/receipts", "web/tills"],
+            sorted(each["moduleId"] for each in modules["web/till"]["reach"]["reaches"]),
+        )
+
+    def test_a_string_literal_type_is_printed_as_the_source_wrote_it(self):
+        """A parameter came out `' ' | ' '`, which is the masked text rather than a type.
+
+        Nothing moved and no file failed, which is why it went unnoticed: the only thing
+        wrong with it was that a reader checking the card against the source would find a
+        type the file does not contain. A type is measured off the masked text — a comma
+        inside a string must not split a parameter list — and spelled off the original.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export function union(a: 'one' | 'two' | 'three'): number {\n"
+            "  return a.length\n}\n",
+        )
+
+        self.assertEqual(
+            ["'one' | 'two' | 'three'"], interface["methods"][0]["parameters"]
+        )
+
+    def test_a_string_literal_type_names_no_type_a_caller_must_learn(self):
+        """The floor under the rule above: a literal type is a value, not a type.
+
+        Spelled back onto the card and then read for names, `one`, `two` and `three` were
+        each charged to a caller as a type to go and learn.
+        """
+        interface = self.interface_of(
+            "till.ts",
+            "export function union(a: 'one' | 'two' | 'three'): 'read' | 'write' {\n"
+            "  return 'read'\n}\n",
+        )
+
+        self.assertEqual(
+            "'read' | 'write'", interface["methods"][0]["returns"]
+        )
+        self.assertEqual([], interface["typesCrossingTheSeam"])
+
+    def test_a_string_literal_type_inside_a_generic_is_printed_as_written(self):
+        interface = self.interface_of(
+            "till.ts",
+            "export function keyed(a: Record<'a'|'b', number>): number {\n  return 1\n}\n",
+        )
+
+        self.assertEqual(
+            ["Record<'a' | 'b', number>"], interface["methods"][0]["parameters"]
+        )
+
 
 class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
     """A fan line is followed from the name the body wrote, not the name the module was asked for.
@@ -1441,6 +1634,237 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
             [reached["moduleId"] for reached in modules["web/uses"]["reach"]["reaches"]],
         )
 
+    def test_a_module_named_after_a_name_it_imports_still_reaches_it(self):
+        """Two files of the same bytes, one of them named after a function it imports.
+
+        A name a body declares is not a call to an import that shares its spelling, and a
+        Java class's own name is one of those: it is in scope inside the file that
+        declares it. A TypeScript module's name is the basename of its file and a binding
+        nowhere in it — so read the Java way, `format.ts` was taken to declare `format`,
+        its own import of that name was never followed, and it reached nothing while the
+        identical file next to it reached `util`. Naming a file after the thing it is
+        about is the ordinary way to write a frontend, and this repository's own `api.ts`
+        is one rename away from it.
+        """
+        body = ("import { format } from './util'\n"
+                "export function run(n: number): string {\n  return format(n)\n}")
+        modules = self.modules(
+            ("util.ts", "export function format(n: number): string {\n  return String(n)\n}"),
+            ("format.ts", body),
+            ("other.ts", body),
+        )
+
+        for module_id in ("web/format", "web/other"):
+            with self.subTest(module=module_id):
+                self.assertEqual(
+                    [("web/util", "calls format, which this file imports from it")],
+                    [(each["moduleId"], each["matched"])
+                     for each in modules[module_id]["reach"]["reaches"]],
+                )
+
+    def test_a_java_module_still_declares_its_own_name_for_itself(self):
+        """The floor under the rule above, on the side the rule was written for.
+
+        A Java class really does bind its own name, so a body writing `of(...)` inside a
+        class called `of` is writing its own declaration and reaches nothing. Read without
+        that, a module that merely imports a member and happens to declare something of
+        the same name is credited with calling the module the import came from.
+        """
+        tree = self.tree("backend")
+        tree.java("shop", "Prices", "public class Prices {\n"
+                  "    public static long of(long each) { return each; }\n}")
+        tree.java("shop.till", "Till",
+                  "import static shop.Prices.of;\npublic class Till {\n"
+                  "    public long ring(long each) { return of(each); }\n"
+                  "    private long of(long each) { return each; }\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        modules = {module["id"]: module for module in document["modules"]}
+
+        self.assertEqual([], modules["shop.till.Till"]["reach"]["reaches"])
+
+    def test_a_jsx_element_written_with_a_dot_reaches_nothing_rather_than_the_namespace(self):
+        """`<Icons.Chevron />` is `new api.Thing()` written as an element, and gets its answer.
+
+        The name the source wrote is `Icons.Chevron`, which names no module here. Matched
+        without the dot the name read was `Icons`, which would say the file builds the
+        namespace itself — a sentence a reader can check against the source and find
+        false. So this is a floor, and it is named on the page beside the other floors
+        rather than left where somebody checking a fan would find a gap nobody accounted
+        for.
+        """
+        modules = self.modules(
+            ("icons.tsx", "export function Chevron(): JSX.Element {\n  return <i />\n}"),
+            ("row.tsx",
+             "import * as Icons from './icons'\n"
+             "export function Row(): JSX.Element {\n  return <Icons.Chevron />\n}"),
+        )
+
+        self.assertEqual([], modules["web/row"]["reach"]["reaches"])
+
+    def test_the_run_says_which_qualified_names_it_followed_nowhere(self):
+        """A floor nobody can see is not one anybody can trust, so it is said out loud.
+
+        Once per file rather than once per element: a `.tsx` file writes tens of them and
+        a line each would be a line inside a loop.
+        """
+        tree = self.tree("web")
+        tree.typescript("", "icons.tsx",
+                        "export function Chevron(): JSX.Element {\n  return <i />\n}")
+        tree.typescript("", "row.tsx",
+                        "import * as Icons from './icons'\n"
+                        "export function Row(): JSX.Element {\n  return <Icons.Chevron />\n}")
+
+        with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
+            graph.build([graph.source_root(tree.root)], scoring.load())
+
+        said = "\n".join(logged.output)
+        self.assertIn("qualified names read as reaching no module here", said)
+        self.assertIn("Icons.Chevron", said)
+
+    def test_the_page_names_a_dotted_name_among_the_readings_that_understate(self):
+        """A floor whose edge a reader cannot see is not one they can trust.
+
+        The page lists its understating readings by name, and this one was absent — so
+        somebody checking a fan against the source would have found a gap the page does
+        not account for.
+        """
+        tree = self.tree("web")
+        tree.typescript("", "icons.tsx",
+                        "export function Chevron(): JSX.Element {\n  return <i />\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
+
+        self.assertIn("a name written with a dot in front of it", rendered)
+        self.assertIn("Icons.Chevron", rendered)
+        self.assertIn("api.Thing()", rendered)
+
+    def test_a_jsx_element_from_a_named_import_still_reaches_its_module(self):
+        """The floor above it, which is the reading this one must not have broken."""
+        modules = self.modules(
+            ("icons.tsx", "export function Chevron(): JSX.Element {\n  return <i />\n}"),
+            ("row.tsx",
+             "import { Chevron } from './icons'\n"
+             "export function Row(): JSX.Element {\n  return <Chevron />\n}"),
+        )
+
+        self.assertEqual(
+            ["web/icons"],
+            [reached["moduleId"] for reached in modules["web/row"]["reach"]["reaches"]],
+        )
+
+
+class AnOverloadSetIsWhatACallerCanCallTest(SourceTreeTest):
+    """TypeScript never exposes an overload set's implementation signature to a caller.
+
+    Two signatures over an implementation give a caller two calls they can make, not
+    three, and the third is one `tsc` refuses to let anybody write. Read as a method it
+    was charged a method and a parameter, the card named a call a reader can go looking
+    for and will never be able to make, and the inflated cost was the denominator leverage
+    is divided by.
+
+    This is a place where measuring both halves of the application by the same rules means
+    reading two shapes differently rather than the same. Every Java overload is genuinely
+    callable; exactly one TypeScript overload in every set is not.
+    """
+
+    THE_SET = ("export function ring(id: string): string\n"
+               "export function ring(id: number): string\n"
+               "export function ring(id: string | number): string {\n"
+               "  return String(id)\n}\n")
+
+    def module(self, body, under="web"):
+        tree = self.tree(under)
+        tree.typescript("", "till.ts", body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {module["id"]: module for module in document["modules"]}[under + "/till"]
+
+    def test_only_the_signatures_a_caller_can_call_are_on_the_interface(self):
+        interface = self.module(self.THE_SET)["interface"]
+
+        self.assertEqual(
+            [("ring", ["number"]), ("ring", ["string"])],
+            sorted((method["name"], method["parameters"])
+                   for method in interface["methods"]),
+        )
+
+    def test_the_implementation_signature_is_charged_nothing(self):
+        """The cost is the two callable signatures and no more: a method and a parameter each."""
+        interface = self.module(self.THE_SET)["interface"]
+
+        self.assertEqual(4, interface["cost"])
+
+    def test_widening_the_implementation_signature_moves_no_number(self):
+        """Which is the whole claim: it is not part of what a caller has to learn.
+
+        The strongest form of "the same cost as the equivalent set" this can be written
+        as — the implementation may be spelled any way the source likes and the interface
+        is the same interface.
+        """
+        wider = ("export function ring(id: string): string\n"
+                 "export function ring(id: number): string\n"
+                 "export function ring(id: string | number | boolean): string {\n"
+                 "  return String(id)\n}\n")
+
+        self.assertEqual(
+            self.module(self.THE_SET, under="narrow")["interface"],
+            self.module(wider, under="wide")["interface"],
+        )
+
+    def test_a_function_written_once_is_still_the_one_method_it_is(self):
+        """The floor under all of it: a body is only an implementation where a header is above it."""
+        interface = self.module(
+            "export function ring(id: string | number): string {\n  return String(id)\n}\n"
+        )["interface"]
+
+        self.assertEqual(
+            [("ring", ["string | number"])],
+            [(method["name"], method["parameters"]) for method in interface["methods"]],
+        )
+        self.assertEqual(2, interface["cost"])
+
+    def test_a_refusal_documented_on_the_implementation_is_still_the_module_s_word(self):
+        """The one thing hiding it must not cost: a module accused of breaking its word.
+
+        TypeScript's own language service shows a caller the implementation's JSDoc for an
+        overload that carries none of its own, and this reads it the same way. Left behind
+        instead, a module that documented its refusal exactly where TypeScript wants it
+        written would be reported for raising one it never promised.
+        """
+        module = self.module(
+            "export class Refused extends Error {}\n"
+            "export function ring(id: string): string\n"
+            "export function ring(id: number): string\n"
+            "/** @throws Refused when the till will not */\n"
+            "export function ring(id: string | number): string {\n"
+            "  if (id === 0) {\n    throw new Refused()\n  }\n"
+            "  return String(id)\n}\n"
+        )
+
+        self.assertEqual([], module["findings"])
+        self.assertEqual(
+            [("Refused", True, True)],
+            [(each["name"], each["documented"], each["raised"])
+             for each in module["interface"]["refusals"]],
+        )
+
+    def test_every_java_overload_is_still_a_method_a_caller_can_call(self):
+        """The other side of "the same rules": here the reading is not the same reading."""
+        tree = self.tree("backend")
+        tree.java("shop", "Till", "public class Till {\n"
+                  "    public String ring(String id) { return id; }\n"
+                  "    public String ring(long id) { return \"\"; }\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        interface = {module["id"]: module
+                     for module in document["modules"]}["shop.Till"]["interface"]
+
+        self.assertEqual(
+            [("ring", ["String"]), ("ring", ["long"])],
+            sorted((method["name"], method["parameters"])
+                   for method in interface["methods"]),
+        )
+
 
 class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
     """The familiar-type list is one list per language, and the file writes both.
@@ -1559,16 +1983,51 @@ class OneAccountOfWhatBothReadingsShareTest(SourceTreeTest):
             sorted({method["parameters"][0] for method in interface["methods"]}),
         )
 
+    def test_one_union_spelled_two_ways_is_one_string(self):
+        """`string|null` and `string | null` are one type, exactly as the comma case is.
+
+        The same hazard `normalised`'s own docstring names, fixed for the comma and missed
+        for the joiner beside it. Nothing counts differently either way; what a reader
+        sees on two cards does.
+        """
+        tree = self.tree("web")
+        tree.typescript(
+            "", "till.ts",
+            "export function a(m: string|null): void {}\n"
+            "export function b(m: string | null): void {}\n",
+        )
+
+        interface = self.read(tree, "web/till")["interface"]
+
+        self.assertEqual(
+            ["string | null"],
+            sorted({method["parameters"][0] for method in interface["methods"]}),
+        )
+
+    def test_the_union_rule_lives_in_the_speller_both_readings_share(self):
+        """Asked of the shared function itself, because Java writes no union into a type.
+
+        Its `|` is a multi-catch's and its `&` a type bound's, and neither is a parameter,
+        a return or a field — so there is no Java fixture to write. The rule still belongs
+        in the one speller rather than on the TypeScript side, for the reason the comma
+        does: whether two strings are one type spelled twice is a question about spacing,
+        and a second answer to it is one that can drift from this one.
+        """
+        for written in ("string|null", "string | null", "string  |  null"):
+            with self.subTest(written=written):
+                self.assertEqual("string | null", javasource.normalised(written))
+        self.assertEqual("A & B", typescriptsource.normalised("A&B"))
+
     def test_the_typescript_reading_holds_no_copy_of_a_helper_the_java_one_owns(self):
         """A guard on the arrangement itself, since a copy is what drifted last time."""
-        for name in ("split_on_commas", "normalised", "line_of", "after_balanced",
-                     "in_evaluation_order", "ends_an_arrow"):
+        for name in ("split_on_commas", "spans_between_commas", "normalised", "line_of",
+                     "after_balanced", "in_evaluation_order", "ends_an_arrow"):
             with self.subTest(helper=name):
                 self.assertIs(
                     getattr(javasource, name), getattr(typescriptsource, name)
                 )
         source = open(typescriptsource.__file__, encoding="utf-8").read()
-        for name in ("split_on_commas", "normalised", "line_of"):
+        for name in ("split_on_commas", "spans_between_commas", "normalised", "line_of"):
             with self.subTest(helper=name):
                 self.assertNotIn("def %s(" % name, source)
 

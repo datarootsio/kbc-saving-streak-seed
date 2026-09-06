@@ -259,6 +259,15 @@ KINDS = tuple(sorted(set(_KINDS.values())))
 NAME = "java"
 SUFFIXES = (".java",)
 
+# Whether the name a module goes by is also a name bound inside its own source. It is,
+# here: a class's own name is in scope throughout the file that declares it, so a body
+# writing `of(...)` inside a class called `of` — or, far more usually, calling a nested
+# type's constructor by its simple name — is writing its own declaration rather than a
+# member it imported. The reading that asks this is the one deciding whether a bare call
+# is a call to a static import, and answering yes where the answer is no loses a real
+# fan line and dead-ends a real flow.
+THE_NAME_IS_A_BINDING = True
+
 # What a module of this language is, and why, in one sentence a page can print. It lives
 # here because the grain is this reading's own decision: written into the renderer instead,
 # a page rendered a sentence about Java classes on a run that read no Java at all.
@@ -2168,7 +2177,22 @@ def split_on_commas(text):
     parameter, `{ customer, onSignOut }: Props`, which is one parameter however many names
     the caller's object is taken apart into.
     """
-    parts = []
+    return [text[start:ends_at] for start, ends_at in spans_between_commas(text)]
+
+
+def spans_between_commas(text):
+    """The same split as `split_on_commas`, as where each part starts and ends.
+
+    Public, and the one of the two that does the work, so that there is a single account
+    of where a comma separates. Offsets rather than strings because a caller may hold two
+    texts of the same length that have to be cut in the same places: the TypeScript side
+    reads a parameter list off the masked source, where a string literal's characters are
+    blanked so that a comma inside one cannot split anything, and then spells the type it
+    found off the source as written — `a: 'one' | 'two'` is a parameter whose type a
+    reader can check against the file, and it was printed as `' ' | ' '` while the only
+    text this could hand back was the masked one.
+    """
+    spans = []
     depth = 0
     start = 0
     for position, character in enumerate(text):
@@ -2177,10 +2201,10 @@ def split_on_commas(text):
         elif character in ">)]}" and not ends_an_arrow(text, position):
             depth = max(0, depth - 1)
         elif character == "," and depth == 0:
-            parts.append(text[start:position])
+            spans.append((start, position))
             start = position + 1
-    parts.append(text[start:])
-    return parts
+    spans.append((start, len(text)))
+    return spans
 
 
 def ends_an_arrow(text, position):
@@ -2239,11 +2263,21 @@ def _before_balanced(text, opening="(", closing=")"):
 def normalised(written):
     """A type as the graph carries it: one space where it needs one, none where it does not.
 
-    Every bracket is closed up against what it holds and every comma between two type
-    arguments is followed by exactly one space, whether or not the source wrote one. The
-    comma is the one that matters: while the space after it was carried through, one
-    document held both `Map<String, Long>` and `Map<String,Long>`, which reads as two
-    types a caller has to learn where there is one.
+    Every bracket is closed up against what it holds, every comma between two type
+    arguments is followed by exactly one space, and every `|` or `&` joining two types has
+    exactly one space on each side, whether or not the source wrote them. The joiners are
+    the ones that matter: while whatever spacing the source used was carried through, one
+    document held both `Map<String, Long>` and `Map<String,Long>`, and then both
+    `string|null` and `string | null`, which each read as two types a caller has to learn
+    where there is one.
+
+    `|` and `&` are TypeScript's, where they spell a union and an intersection. They are
+    handled here beside the comma rather than on that side, for the reason the comma is:
+    the answer to "is this the same type spelled twice" is about spacing and brackets
+    rather than about either language, and a second speller is one that can disagree with
+    this one. Java writes neither into a type this ever sees — its `|` is a multi-catch's
+    and its `&` a type bound's, and neither is a parameter, a return or a field — so the
+    rule costs that side nothing.
 
     Public, and read by the TypeScript side as well. It was hand-copied there once and the
     copy left the comma out, so `Record<string,number>` and `Record<string, number>` stayed
@@ -2254,7 +2288,8 @@ def normalised(written):
     for bracket in ("<", ">", ",", "[", "]"):
         tidy = tidy.replace(" " + bracket, bracket)
     tidy = tidy.replace("< ", "<").replace("[ ", "[")
-    return re.sub(r",\s*", ", ", tidy).strip()
+    tidy = re.sub(r",\s*", ", ", tidy)
+    return re.sub(r"\s*([|&])\s*", r" \1 ", tidy).strip()
 
 
 def candidate_ids(name, package, imports):

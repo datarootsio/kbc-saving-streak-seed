@@ -67,10 +67,11 @@ from .javasource import (
     in_evaluation_order,
     line_of,
     normalised,
+    spans_between_commas,
     split_on_commas,
 )
 
-# Nine names come from the Java reading and none of them is about Java. A bracket's
+# Ten names come from the Java reading and none of them is about Java. A bracket's
 # partner, the order a call's arguments are evaluated in, where a comma splits a list, how
 # a type is spelled, which line an offset sits on and whether a `>` closes anything are
 # facts about punctuation, and both readings have to give the same answer to every one of
@@ -84,6 +85,16 @@ log = logging.getLogger("module_depth_map.typescriptsource")
 # What this reading is called in the graph, and which files it is the reading of.
 NAME = "typescript"
 SUFFIXES = (".ts", ".tsx")
+
+# Whether the name a module goes by is also a name bound inside its own source. It is not,
+# here, and that is a real difference between the two grains rather than a detail: a
+# TypeScript module is a file, and the name it is known by is the file's basename, which
+# is not a binding anywhere in it. Answered the Java way — where a class's own name really
+# is in scope — a file called `format.ts` was taken to declare `format` for itself, so
+# `import { format } from './util'` was never followed and the module reached nothing,
+# while the identical file under any other name reached `util`. Naming a file after the
+# thing it is about is the ordinary way to write a frontend.
+THE_NAME_IS_A_BINDING = False
 
 # What a module of this language is, and why, in one sentence a page can print — the
 # reading's own answer rather than the renderer's, for the reason the Java side gives.
@@ -193,7 +204,14 @@ _PRECEDED_BY_NEW = re.compile(r"(?<![\w$.])new$")
 # same way `new` is. Only a name starting with a capital can be one: JSX reads a lowercase
 # tag as an HTML element and never as a name in scope, which is React's own rule and the
 # whole of what tells `<div>` from `<Deposits>`.
-_A_JSX_ELEMENT = re.compile(r"<[ \t\r\n]*([A-Z][\w$]*)(?=[ \t\r\n/>])")
+#
+# A dotted name is one too. `<Icons.Chevron />` is how a component is taken out of a
+# namespace import or off a compound component, and matched without the dot the name read
+# was `Icons` — a construction of the namespace itself, which is not what the source says.
+# Read whole it is `Icons.Chevron`, which names no module here and so reaches nothing, the
+# same answer `new api.Thing()` gets and for the same reason. That is a floor rather than
+# a fan line nobody can check, and it is named on the page beside the other floors.
+_A_JSX_ELEMENT = re.compile(r"<[ \t\r\n]*([A-Z][\w$]*(?:\.[A-Za-z_$][\w$]*)*)(?=[ \t\r\n/>])")
 
 # The name a `<` that opens a type argument list stands behind.
 _A_NAME_BEHIND_IT = re.compile(r"[A-Za-z_$][\w$]*$")
@@ -245,10 +263,25 @@ _NOT_A_TYPE_NAME = frozenset(
 # receiver is read, so that `this.name` is not a collaborator called `this`.
 _THROUGH_THIS = re.compile(r"(?<![\w$.])this[ \t\r\n]*\.[ \t\r\n]*")
 
-# What a `/` can follow and still open a regular expression. `<` and `>` are deliberately
-# not among them: `</div>` writes a `<` and then a `/`, and read as a regex it blanked the
+# What a `/` can follow and still open a regular expression. Three characters are
+# deliberately not among them, and every one was a whole file off the page.
+#
+# `<` and `>`: `</div>` writes a `<` and then a `/`, and read as a regex it blanked the
 # JSX tags after it on the same line. Nothing writes `a < /re/` on purpose.
-_AFTER_WHICH_A_REGEX_CAN_START = frozenset("(,=:[!&|?;{}+-*%~^")
+#
+# `}`: a JSX expression container is closed with one, and what follows it is very often a
+# slash. `<li key={i} />` and `<span>{done} / {total}</span>` both write `} /`, and read as
+# a regex the scan ran to the next slash on the line — the one in `</ul>` — blanking the
+# `{` that opened the enclosing container and leaving the `}` that closes it. The file was
+# then failed for braces that do not balance, which is not true of the source: rendering a
+# list with `.map()` and a self-closing child carrying `key={...}` is the single most
+# common line in React and `tsc --strict` compiles it without a word. What it costs is a
+# regular expression written as the first thing after a block — `if (a) { b() }` and then
+# `/x/.test(s)` on the next line — which is read as a division and left unblanked. That
+# one is legal too, and rare enough that nothing in this repository or in the sweep of
+# third-party source this reading was tried against writes it; a regex after a `(`, a `,`,
+# an `=` or a `return`, which is where all of them are actually written, is unaffected.
+_AFTER_WHICH_A_REGEX_CAN_START = frozenset("(,=:[!&|?;{+-*%~^")
 _BEFORE_A_REGEX = frozenset(
     ["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return",
      "throw", "typeof", "void", "yield"]
@@ -427,6 +460,11 @@ def written_names_in(written):
     """
     if written in (NOTHING_RETURNED, INFERRED):
         return []
+    # A literal type is a value rather than a type, and this is where that gets decided
+    # now that a type is printed as the source spelled it: `'one' | 'two'` names nothing a
+    # caller goes and learns, and read with its characters in place it put two types on
+    # the card that no reader could ever find.
+    written = _without_literals(written)
     found = []
     for match in re.finditer(r"[A-Za-z_$][\w$.]*", written):
         name = match.group(0).strip(".")
@@ -477,7 +515,7 @@ def parse(text, path, root=None):
         owner=None,
         qualified=name,
         methods=exports.methods,
-        fields=_fields_in(masked, depth_of),
+        fields=_fields_in(masked, text, depth_of),
         constructors=(),
         **_reached_in(masked, jsx),
     )
@@ -699,6 +737,10 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
     for found in _DECLARES.finditer(masked):
         if depth_of[found.start()] == 0 and found.group(2) not in declared_at:
             declared_at[found.group(2)] = (found.group(1), found.end(1))
+    # Where each method's `export` was written, kept beside the methods themselves so that
+    # the one reading taken over the whole list — an overload set's implementation
+    # signature, which is only knowable once every export has been read — can name a line.
+    written_at = []
     for found in _AN_EXPORT.finditer(masked):
         if depth_of[found.start()] != 0:
             continue
@@ -706,6 +748,7 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
             masked, text, matching, documented, module, found.end(), methods, types, jsx,
             declared_at,
         )
+        written_at.extend([found.start()] * (len(methods) - len(written_at)))
     for found in _DECLARES.finditer(masked):
         # A type the file declares but does not export is still a type declared inside
         # this module, and is named on it exactly as a nested Java type is named on the
@@ -713,7 +756,108 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
         if depth_of[found.start()] == 0 and found.group(1) in ("type", "interface", "enum", "class"):
             if found.group(2) not in types:
                 types.append(found.group(2))
-    return _Exports(methods, sorted(set(types)))
+    return _Exports(
+        _without_overload_implementations(methods, written_at, text),
+        sorted(set(types)),
+    )
+
+
+# What is written on the one signature of an overload set a caller can never call. It is a
+# visibility because that is the question being answered — whether a caller can reach it —
+# and `private` is the word the scoring rules already read for "they cannot". The method
+# stays on the module under it: a flow is walked through the body, and the body is here.
+NOT_A_CALLER_S_TO_CALL = "private"
+
+
+def _without_overload_implementations(methods, written_at, text):
+    """The same methods, with an overload set's implementation signature hidden from callers.
+
+    TypeScript never exposes it. `export function ring(id: string): string` and `export
+    function ring(id: number): string` written above `export function ring(id: string |
+    number): string { ... }` give a caller two calls they can make, not three, and the
+    third is the one the implementation is written under — a signature `tsc` refuses to
+    let anybody call. Read as a third method it was charged a method and a parameter, the
+    card named a call a reader can go looking for and will never be able to make, and the
+    inflated cost was the denominator leverage is divided by.
+
+    This is a place where measuring both languages by the same rules means reading two
+    shapes differently rather than the same, and the reason is in the languages: every
+    Java overload is genuinely callable, and one TypeScript overload in every set is not.
+
+    What tells them apart is already read — `has_a_body` — and it is asked only where a
+    name is exported more than once, which in TypeScript can be nothing but an overload
+    set. The implementation is kept among the methods rather than dropped, marked as one
+    no caller can reach: a flow is a path through bodies, and dropping it would take the
+    only body this function has off every flow that runs through it.
+
+    Its `@throws` goes on the signatures that carry none of their own, which is what the
+    language service does with it — an overload with no documentation of its own shows the
+    implementation's. Left behind instead, a module that documented a refusal exactly once,
+    where TypeScript wants it written, would be accused of raising one it never promised.
+    """
+    grouped = {}
+    for at, method in enumerate(methods):
+        grouped.setdefault(method.name, []).append(at)
+    hidden = set()
+    promised = {}
+    for name, group in grouped.items():
+        implementing = [at for at in group if methods[at].has_a_body]
+        if len(group) < 2 or not implementing or len(implementing) == len(group):
+            continue
+        hidden.update(implementing)
+        promised[name] = tuple(
+            refusal
+            for at in implementing
+            for refusal in methods[at].documented_refusals
+        )
+        for at in implementing:
+            _decline(
+                text, written_at[at] if at < len(written_at) else 0, name,
+                "it is the implementation signature of an overload set, and TypeScript "
+                "never lets a caller call one: the %d signature(s) written above it are "
+                "what a caller can reach, and this one stays on the module unpriced so "
+                "that a flow still has a body to walk through"
+                % (len(group) - len(implementing)),
+            )
+    if not hidden:
+        return methods
+    return [
+        _hidden_from_callers(method) if at in hidden
+        else _also_documenting(method, promised.get(method.name, ()))
+        for at, method in enumerate(methods)
+    ]
+
+
+def _hidden_from_callers(method):
+    """The same method, marked as one no caller of this module can reach."""
+    return Method(
+        name=method.name,
+        visibility=NOT_A_CALLER_S_TO_CALL,
+        parameters=method.parameters,
+        returns=method.returns,
+        type_parameters=method.type_parameters,
+        annotations=method.annotations,
+        documented_refusals=method.documented_refusals,
+        has_a_body=method.has_a_body,
+        calls=method.calls,
+    )
+
+
+def _also_documenting(method, refusals):
+    """The same method, carrying these refusals where it documents none of its own."""
+    if method.documented_refusals or not refusals:
+        return method
+    return Method(
+        name=method.name,
+        visibility=method.visibility,
+        parameters=method.parameters,
+        returns=method.returns,
+        type_parameters=method.type_parameters,
+        annotations=method.annotations,
+        documented_refusals=refusals,
+        has_a_body=method.has_a_body,
+        calls=method.calls,
+    )
 
 
 def _read_one_export(masked, text, matching, documented, module, position, methods, types,
@@ -887,7 +1031,7 @@ def _function_from(masked, text, position, matching, documented, module, jsx,
             "should" % (name, line_of(text, opened), token)
         )
     closed = after_balanced(masked, opened)
-    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
+    parameters = _parameters_in(masked, text, opened + 1, closed - 1, name, annotated)
     returns, body = _returns_and_body(masked, text, closed, matching, name)
     return Method(
         name=name,
@@ -937,17 +1081,35 @@ def _next_declarator(masked, position):
     `const f = function () {}` and `const g = async () => {}` each write one inside a
     value. And a bracket closing something this list never opened is the brace holding the
     whole declaration, which ends it whatever else is written after.
+
+    A `<` is a bracket only where something closes it on the same line, and that is the
+    whole of how `const a = new Map<string, number>(), b = 2` is told from `const flag =
+    1 < 2, b = (x: number): number => x`. Counted as a bracket outright, the comparison in
+    the second left the depth above zero for the rest of the scan, the comma that
+    separates the two declarators was never seen, and `b` — a function a caller can
+    import — was left out of the interface with no line in any log saying so. Read the
+    other way round, as no bracket at all, the comma inside the first one's type arguments
+    would split a declarator the source never wrote. A line is the bound because a type
+    argument list written inside a value is written on one; a `<` this finds no partner
+    for before the newline is a comparison, and is stepped over as the operator it is.
     """
     depth = 0
     at = position
     while at < len(masked):
         character = masked[at]
-        if character in "([{<":
+        if character == "<":
+            closed = _after_angles(masked, at, _end_of_line(masked, at))
+            if closed is not None:
+                at = closed
+                continue
+            at += 1
+            continue
+        if character in "([{":
             depth += 1
-        elif character in ")]}>" and not ends_an_arrow(masked, at):
-            if character != ">" and depth == 0:
+        elif character in ")]}":
+            if depth == 0:
                 return None
-            depth = max(0, depth - 1)
+            depth -= 1
         elif depth == 0:
             if character == ",":
                 return at + 1
@@ -959,6 +1121,12 @@ def _next_declarator(masked, position):
                 return None
         at += 1
     return None
+
+
+def _end_of_line(masked, position):
+    """Where the line this offset sits on ends, or the end of the text when it is the last."""
+    ended = masked.find("\n", position)
+    return len(masked) if ended < 0 else ended
 
 
 def _binding_from(masked, text, position, matching, documented, module, jsx):
@@ -1049,12 +1217,12 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
                 "parameters should" % (name, line_of(text, opened), token)
             )
     closed = after_balanced(masked, opened)
-    parameters = _parameters_in(masked[opened + 1:closed - 1], text, opened, name, annotated)
+    parameters = _parameters_in(masked, text, opened + 1, closed - 1, name, annotated)
     returns = INFERRED
     token, at, after = _token_at(masked, closed)
     if token == ":":
-        written, at = _up_to_the_arrow(masked, after)
-        returns = normalised(written)
+        _, at = _up_to_the_arrow(masked, after)
+        returns = normalised(_as_written(text, masked, after, at))
         token, at, after = _token_at(masked, at)
     if token != "=>":
         raise ParseFailure(
@@ -1171,7 +1339,7 @@ def _past_type_parameters(masked, text, position):
     return closed, _type_parameters_in(masked[position + 1:closed - 1])
 
 
-def _after_angles(masked, position):
+def _after_angles(masked, position, limit=None):
     """Just past the `>` that closes the `<` here, or None when nothing closes it.
 
     Non-raising, because it is asked the question as well as answered with it: whether a
@@ -1179,10 +1347,16 @@ def _after_angles(masked, position):
     group, and a `<` that closes nowhere is a `<` that opens none. The `>` of an `=>`
     closes none either — `<T = () => void>` writes a default that is a function type —
     which is the same rule every other scanner here reads.
+
+    `limit` is how far the partner may be looked for, and a caller reading a `<` written
+    inside a *value* has to give one: `const flag = 1 < 2` writes a comparison, and asked
+    to search the whole file this would happily pair it with the `>` of some generic
+    fifty lines further down and step over everything in between.
     """
     depth = 0
     at = position
-    while at < len(masked):
+    end = len(masked) if limit is None else min(limit, len(masked))
+    while at < end:
         if masked[at] == "<":
             depth += 1
         elif masked[at] == ">" and not ends_an_arrow(masked, at):
@@ -1257,7 +1431,7 @@ def _returns_and_body(masked, text, position, matching, name):
         opened = _first_brace_at_depth_zero(masked, scan)
         finished = _where_the_signature_ends(masked, scan)
         if finished is not None and (opened is None or finished < opened):
-            return normalised(masked[written:finished]), None
+            return normalised(_as_written(text, masked, written, finished)), None
         if opened is None:
             raise ParseFailure(
                 "the return type of %s on line %d could not be read: nothing closes it"
@@ -1270,7 +1444,10 @@ def _returns_and_body(masked, text, position, matching, name):
             )
         following = _token_at(masked, matching[opened] + 1)[0]
         if masked[written:opened].strip() and following != "{":
-            return normalised(masked[written:opened]), (opened + 1, matching[opened])
+            return (
+                normalised(_as_written(text, masked, written, opened)),
+                (opened + 1, matching[opened]),
+            )
         scan = matching[opened] + 1
 
 
@@ -1329,8 +1506,13 @@ def _first_at_depth_zero(masked, position, wanted):
     return None
 
 
-def _parameters_in(inside, text, position, name, annotated=False):
+def _parameters_in(masked, text, begin, ends_at, name, annotated=False):
     """Every parameter of one function, by the type the source wrote for it.
+
+    Read off the masked text and spelled off the original, which is why this takes two
+    offsets rather than the slice between them: a comma inside a string literal must not
+    split a parameter list, and the type printed on the card must be the one the file
+    wrote. `spans_between_commas` gives the same cuts for both.
 
     A destructured parameter is one parameter: `{ customer, onSignOut }: Props` hands over
     one thing however many names the caller's object is taken apart into, and the type is
@@ -1349,13 +1531,16 @@ def _parameters_in(inside, text, position, name, annotated=False):
     are recorded as unwritten, which is the honest answer this reading can give: a
     parameter crosses the seam there, and no type was read to name.
     """
+    inside = masked[begin:ends_at]
     parameters = []
-    for part in split_on_commas(inside):
-        written = part.strip()
+    for span in spans_between_commas(inside):
+        start, stops = _trimmed(inside, *span)
+        written = inside[start:stops]
         if not written:
             continue
         if written.startswith("..."):
-            written = written[3:].lstrip()
+            start, stops = _trimmed(inside, start + 3, stops)
+            written = inside[start:stops]
         colon = _first_in_the_open(written, ":")
         equals = _first_in_the_open(written, "=")
         if colon is None or (equals is not None and equals < colon):
@@ -1364,16 +1549,63 @@ def _parameters_in(inside, text, position, name, annotated=False):
                 continue
             raise ParseFailure(
                 "a parameter of %s on line %d could not be read: %r has no type written "
-                "on it" % (name, line_of(text, position), written[:40])
+                "on it" % (name, line_of(text, begin), written[:40])
             )
         called = written[:colon].strip().rstrip("?").strip()
         if called == "this":
             # The receiver a method may name. Not a parameter a caller passes at all.
             continue
-        rest = written[colon + 1:]
-        default = _first_in_the_open(rest, "=")
-        parameters.append(normalised(rest if default is None else rest[:default]))
+        default = _first_in_the_open(written[colon + 1:], "=")
+        ends = stops if default is None else start + colon + 1 + default
+        parameters.append(
+            normalised(_as_written(text, masked, begin + start + colon + 1, begin + ends))
+        )
     return tuple(parameters)
+
+
+def _trimmed(inside, start, stops):
+    """The same span with the whitespace at either end of it left out."""
+    start += len(inside[start:stops]) - len(inside[start:stops].lstrip())
+    return start, start + len(inside[start:stops].rstrip())
+
+
+# A string literal, written or blanked. `_mask_quoted` leaves the two quotes exactly where
+# the source wrote them and blanks only what is between them, so one pattern finds a
+# literal in the masked text and in the original alike — which is the whole of how a type
+# is measured off the masked source and then spelled off the real one.
+_A_STRING_LITERAL = re.compile(r"'[^'\n]*'|\"[^\"\n]*\"")
+
+
+def _as_written(text, masked, start, ends_at):
+    """This much of the file as the source spelled it, minus everything masking took out.
+
+    Only the string literals come back, and only the ones the mask left its quotes around.
+    A comment stays blanked, because a comment written inside a type is not part of the
+    type; a template literal and a regular expression stay blanked because neither is
+    legal in one.
+
+    It exists for what a card prints. A type is *measured* off the masked text — a comma
+    or a brace inside a string must never split a parameter list or open a body — and then
+    printed, and printed off the masked text a parameter written `a: 'one' | 'two'` came
+    out as `' ' | ' '`. Nothing moved and no file failed, so the only thing wrong with it
+    was that a reader checking the card against the source would find a type the file does
+    not contain.
+    """
+    return _A_STRING_LITERAL.sub(
+        lambda found: text[start + found.start():start + found.end()],
+        masked[start:ends_at],
+    )
+
+
+def _without_literals(written):
+    """The same written type with every string literal in it replaced by a space.
+
+    For the two readings that want the names in a type rather than its spelling. A literal
+    type names no type at all — `'one' | 'two'` is two values — and read after
+    `_as_written` has put its characters back, `one` and `two` would each be charged to a
+    caller as a type to go and learn.
+    """
+    return _A_STRING_LITERAL.sub(" ", written)
 
 
 def _first_in_the_open(written, wanted, position=0):
@@ -1416,7 +1648,7 @@ def _part_of_an_operator(written, at, wanted):
     )
 
 
-def _fields_in(masked, depth_of):
+def _fields_in(masked, text, depth_of):
     """The values this file holds at module scope, by the name and the type written for it.
 
     Read for one reason, the same one the Java side reads a field for: a held value is what
@@ -1432,14 +1664,26 @@ def _fields_in(masked, depth_of):
         token, _, after = _token_at(masked, match.end())
         if token != ":":
             continue
-        written, _ = _up_to_the_assignment(masked, after)
+        written, ends_at = _up_to_the_assignment(masked, after)
         if written.strip():
-            found.append(Field(match.group(2), normalised(written)))
+            found.append(
+                Field(match.group(2), normalised(_as_written(text, masked, after, ends_at)))
+            )
     return tuple(found)
 
 
 def _up_to_the_assignment(masked, position):
-    """A written type that ends where the value assigned to it begins."""
+    """A written type that ends where the value assigned to it begins.
+
+    A newline ends it, because a `const` with no `=` on it at all is one this reading has
+    to stop somewhere. But a type written over two lines is joined by an operator, and
+    then the newline ends nothing: `const held: Till |\n  Receipt = make()` came back as
+    the type `Till |`, so a call written through `held` drew a fan line to one of the two
+    names the source wrote and the evidence printed on the card was the string `Till |`.
+    So the newline is stepped over whenever a joiner stands on either side of it, which
+    are the only two ways a type can be continued onto the next line at bracket depth
+    zero. The `=` and the `;` still end it, so a type that runs on cannot run away.
+    """
     depth = 0
     at = position
     while at < len(masked):
@@ -1453,10 +1697,43 @@ def _up_to_the_assignment(masked, position):
             depth += 1
         elif character in ")>]}" and not ends_an_arrow(masked, at):
             depth -= 1
+        elif depth == 0 and character == "\n" and _a_type_carries_on_over(masked, at):
+            at += 1
+            continue
         elif depth == 0 and character in "=;\n":
             return masked[position:at], at
         at += 1
     return masked[position:], at
+
+
+# What joins the two halves of a type written over more than one line: a union, an
+# intersection, and the comma between two type arguments. Written at the end of the first
+# line or at the start of the second, which are the two places a formatter puts it.
+_JOINS_TWO_HALVES_OF_A_TYPE = ("|", "&", ",")
+
+
+def _a_type_carries_on_over(masked, newline):
+    """Whether the type being read continues past this newline rather than ending at it."""
+    return (
+        _the_character_before(masked, newline) in _JOINS_TWO_HALVES_OF_A_TYPE
+        or _the_character_after(masked, newline) in _JOINS_TWO_HALVES_OF_A_TYPE
+    )
+
+
+def _the_character_before(masked, position):
+    """The last character written before this one that is not whitespace, or the empty string."""
+    at = position - 1
+    while at >= 0 and masked[at] in " \t\r\n":
+        at -= 1
+    return masked[at] if at >= 0 else ""
+
+
+def _the_character_after(masked, position):
+    """The first character written after this one that is not whitespace, or the empty string."""
+    at = position + 1
+    while at < len(masked) and masked[at] in " \t\r\n":
+        at += 1
+    return masked[at] if at < len(masked) else ""
 
 
 def _jsx_elements_in(masked, jsx):
@@ -1532,6 +1809,19 @@ def _reached_in(masked, jsx):
         match.group(1) for match in _jsx_elements_in(masked, jsx)
     }
     declares = {found.group(2) for found in _DECLARES.finditer(masked)}
+    qualified = sorted(name for name in constructed if "." in name)
+    if qualified:
+        # The floor this reading takes on a dotted name, said out loud once per file
+        # rather than once per element. `<Icons.Chevron />` and `new api.Thing()` each
+        # name a member of something the file holds, and the name written is not one this
+        # graph can resolve to a module — so the fan is shorter than the source here, and
+        # a reader checking one against the file can see where.
+        log.debug(
+            "qualified names read as reaching no module here names=%s reason=%s",
+            ",".join(qualified),
+            "each names a member of something this file holds rather than a module, so "
+            "there is nothing to follow it to",
+        )
     log.debug(
         "reached read receivers=%d called=%d constructed=%d declares=%d raises=%s "
         "throwsNotRead=%d",

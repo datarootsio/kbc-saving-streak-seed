@@ -970,12 +970,7 @@ class Rules:
         # uncounted on such a module; the alternative is a fan line to a card it never
         # calls, whenever a name it inherits happens to be spelled like a member it
         # imports.
-        declares = (
-            set(declared.declares)
-            | {declared.name}
-            | {name.rsplit(".", 1)[-1] for name in nested}
-            | inherited.declares
-        )
+        declares = _the_names_this_body_declares(declared, nested, inherited, language)
         # `local` rather than `member`, and the difference is the whole of what a renamed
         # import is: `import { fetchDeposits as fd }` asks the module for `fetchDeposits`
         # and the body writes `fd`, so the name to look for among the names the body calls
@@ -1175,12 +1170,7 @@ class Rules:
         # imports, which is the one remaining way a name with nothing in front of it can
         # reach another module.
         writes = {method.name for method in declared.methods}
-        declares = (
-            set(declared.declares)
-            | {declared.name}
-            | {name.rsplit(".", 1)[-1] for name in nested}
-            | inherited.declares
-        )
+        declares = _the_names_this_body_declares(declared, nested, inherited, language)
         statically = {}
         for imported in imports:
             # Keyed by the name the body writes, for the reason `reach_of` reads that one:
@@ -1469,6 +1459,30 @@ class Rules:
             {"name": name, "mustBeLearned": name not in already_known}
             for name in sorted(names)
         ]
+
+
+def _the_names_this_body_declares(declared, nested, inherited, language):
+    """Every name this module's own source binds, so that a call to one is not a call out.
+
+    A name a body declares is not a call to an import that shares its spelling, and that
+    is the whole of what this is read for — by `reach_of`, to decide whether a bare call
+    goes anywhere, and by `calls_from`, to decide whether a flow carries on through it.
+
+    Whether the module's *own* name belongs among them is a question about the language
+    and is asked of it. A Java class's name is in scope inside the file that declares it.
+    A TypeScript module's name is the basename of its file, which is a binding nowhere at
+    all — so a file called `format.ts` importing a `format` was credited with declaring
+    the name it imports, the import was never followed, and the module reached nothing
+    while the identical file under any other name reached what it calls.
+    """
+    declares = (
+        set(declared.declares)
+        | {name.rsplit(".", 1)[-1] for name in nested}
+        | inherited.declares
+    )
+    if language.THE_NAME_IS_A_BINDING:
+        declares.add(declared.name)
+    return declares
 
 
 def load(path=None):

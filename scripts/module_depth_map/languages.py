@@ -16,6 +16,11 @@ What a language module has to offer:
   language reports can be refused rather than never firing;
 - `GRAIN`, what a module of it is and why, in one sentence, so that a page saying what it
   read is saying what this run read rather than what this tool can read;
+- `THE_NAME_IS_A_BINDING`, whether the name a module goes by is also a name bound inside
+  its own source — true of a Java class, false of a TypeScript file, whose name is the
+  basename of the file and a binding nowhere in it. The rule that decides whether a bare
+  call goes to a static import asks it, and answered the wrong way a file called
+  `format.ts` never followed its own `import { format }`;
 - `parse(text, path, root)`, the file read into modules, or a `ParseFailure` naming why
   it could not be;
 - `module_id(package, name)`, the id a module is known by;

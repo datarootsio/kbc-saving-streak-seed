@@ -8004,7 +8004,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       "typescript"
     ],
     "notRead": {
-      "because": "The graph covers the application's own source and nothing else. Test code is written to check a module rather than to be one, so scoring it would measure the checking; build output is derived from source that has already been read, so it would draw the same module twice; and an installed dependency is somebody else's source, which nobody in this repository can act on and which would arrive by the tens of thousands of files. Each would put modules on the page that nobody here wrote, and the finding would be buried under them. A directory is named outright and never walked into, which is what keeps a node_modules to one line in the graph instead of everything inside it; a file is matched on what its name ends with, which is how both languages here spell a test and how TypeScript spells a generated declaration. The names here are ones nothing but a tool ever writes: a bare test or tests is deliberately not among them, because that is a legal Java package name and a rule that quietly took a package of the application's own source off the page would be worse than one that misses a directory somebody can add to this list.",
+      "because": "The graph covers the application's own source and nothing else. Test code is written to check a module rather than to be one, so scoring it would measure the checking; build output is derived from source that has already been read, so it would draw the same module twice; and an installed dependency is somebody else's source, which nobody in this repository can act on and which would arrive by the tens of thousands of files. Each would put modules on the page that nobody here wrote, and the finding would be buried under them. A directory is named outright and never walked into, which is what keeps a node_modules to one line in the graph instead of everything inside it; a file is matched on what its name ends with, which is how both languages here spell a test and how TypeScript spells a generated declaration. Every name on the directory list is one a build tool chose rather than one a programmer did: target is Maven's, dist is Vite's, and build and coverage belong to the tools that write them. Each is a legal Java package name in exactly the way a bare test or tests is, so the line here is drawn at who does the naming rather than at what a compiler would allow \u2014 nobody names a package target inside a Maven project, because the build already owns the word. A bare test or tests is a word an application really does name its own packages with, and a rule that quietly took a package of the application's own source off the page would be worse than one that misses a directory somebody can add to this list.",
       "paths": [],
       "rule": "not the application's own source"
     },
@@ -8347,12 +8347,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "found: a call written out in full, package and all (a.b.C.d()), a call through "
     + "something reached through something else (a.b.c()), and a call to a statically "
     + "imported member whose name the module's own body declares, which is read as the "
-    + "declaration it also is. On the TypeScript side there are two more of the same kind: "
+    + "declaration it also is. The TypeScript side misses more of the same kind: "
     + "an import of a directory rather than of a file (./components, where the module is "
-    + "the index inside it), and a value a caller reads rather than calls, which is named "
+    + "the index inside it), a value a caller reads rather than calls, which is named "
     + "on its module and priced nowhere — the same answer the Java side gives a public "
-    + "field. Each leaves a fan shorter than the source, which is the direction this page "
-    + "is willing to be wrong in.");
+    + "field — and a name written with a dot in front of it, which names a member of "
+    + "something the file holds rather than a module here: <Icons.Chevron /> and new "
+    + "api.Thing() are the two spellings of that, and both reach nothing. Each leaves a "
+    + "fan shorter than the source, which is the direction this page is willing to be "
+    + "wrong in.");
   add(fans, "p", null,
     "Readings that go the other way — the ones known, named here rather than left "
     + "to be found. Each one can draw a line to a card the source calls nothing on, and "
