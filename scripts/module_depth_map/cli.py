@@ -58,6 +58,18 @@ def parser():
     it = argparse.ArgumentParser(
         prog="module-depth-map",
         description="Write a graph document of this repository's modules, and a page rendering it.",
+        # Written out rather than generated. argparse brackets everything it has not been
+        # told is `required=True`, and `--snapshot-date` is required without being
+        # argparse's kind of required — see `main`, which refuses it in words rather than
+        # letting argparse end the process from inside a function documented to answer an
+        # exit code. The generated line read `[--snapshot-date YYYY-MM-DD]` four lines
+        # above help text reading "Required", which is this tool's usage line disagreeing
+        # with its own help about the one argument it will not run without. Written here,
+        # the required one is first and unbracketed, and `TheUsageLineSaysWhatTheHelpSays`
+        # holds every option added below to appearing on this line.
+        usage="%(prog)s --snapshot-date " + graph.SNAPSHOT_DATE + " [-h] [--source DIR]\n"
+              "                        [--graph FILE] [--page FILE] [--scoring FILE]\n"
+              "                        [--log-level {DEBUG,INFO,WARNING,ERROR}]",
     )
     it.add_argument(
         "--source",

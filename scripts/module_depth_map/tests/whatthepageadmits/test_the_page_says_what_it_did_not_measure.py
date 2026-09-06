@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import unittest
 
 from ... import cli, graph, page, scoring
 from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
@@ -65,6 +66,40 @@ class TheSnapshotDateIsGivenToTheRunTest(SourceTreeTest):
             with self.subTest(given=given):
                 with self.assertRaises(graph.SnapshotNotADate):
                     graph.build([graph.source_root(tree.root)], scoring.load(), given)
+
+    def test_a_day_written_in_digits_that_are_not_arabic_numerals_is_refused(self):
+        """One day may not have several spellings, or one argument writes two documents.
+
+        `\\d` in a Python pattern matches every Unicode decimal digit there is, and
+        `int()` parses all of them, so a check written with `\\d` reads `٢٠٢٦-٠٩-٠٦` and
+        `２０２６-０９-０６` as dates and the page renders whichever one it was handed. That is
+        the same failure `date.fromisoformat` was avoided for — the same day producing two
+        different documents — arriving by another door, so it gets the same refusal
+        `20260906` gets.
+        """
+        tree = self.source()
+
+        for given in ("٢٠٢٦-٠٩-٠٦",
+                      "２０２６-０９-０６",
+                      "2026-٩٦-06"):
+            with self.subTest(given=given):
+                with self.assertRaises(graph.SnapshotNotADate):
+                    graph.a_snapshot_date(given)
+                with self.assertRaises(graph.SnapshotNotADate):
+                    graph.build([graph.source_root(tree.root)], scoring.load(), given)
+
+    def test_the_seam_says_both_of_the_refusals_it_answers_with(self):
+        """A caller guarding what the contract declares should not meet a third thing.
+
+        `graph.build` is this tool's own seam, and it refuses twice: a snapshot date that
+        is not a day, and two files claiming one module id. A contract naming one of the
+        two is the declared-versus-thrown disagreement this tool reports as a finding on
+        other modules, written into the module that does the reporting.
+        """
+        contract = graph.build.__doc__
+
+        for refusal in ("SnapshotNotADate", "DuplicateModules"):
+            self.assertIn(refusal, contract, refusal)
 
     def test_a_day_there_was_is_read_whichever_year_it_is_in(self):
         """A leap day is a day, and refusing one would be an alarm crying wolf."""
@@ -256,15 +291,147 @@ class ThePageSaysItsOwnLimitsTest(SourceTreeTest):
         else, so a proposal on the page would have to be a proposal in here. The page's
         own prose is about the measures rather than about any module, and the two tests
         above are what hold it to an observation.
+
+        Read over what lands on a card, which is narrower than the document in two
+        directions. It is narrower than every string under a module, because the rest of
+        what a module carries is names read out of the source — a class called `TodoItem`,
+        a method called `rewrite` — and the source's own words are not this page's claims
+        about it; scanning those would fail on a repository this tool is supposed to be
+        able to read. And it is narrower than every string in the document, because prose
+        about a *measure* is allowed sentences prose about a module is not: "nothing to
+        fix" is an accurate thing for a heading to say, and a scan over everything bans
+        it. The exclusion reasons are in scope even though they sit under `scoring`,
+        because every excluded card prints the one that excluded it.
         """
-        for path, said in _every_string_in(self.document):
+        printed_on_a_card = list(_prose_about_a_module_in(self.document["modules"]))
+        printed_on_a_card += list(
+            _prose_about_a_module_in(self.document["scoring"]["exclusions"], "exclusions")
+        )
+
+        self.assertTrue(printed_on_a_card)
+        for path, said in printed_on_a_card:
             for word in WORDS_A_PROPOSAL_IS_WRITTEN_WITH:
                 self.assertNotIn(word, said.lower(), path)
+
+    def test_the_two_refusal_findings_do_not_end_on_the_same_thought(self):
+        """Two findings, and a reader has to be able to tell what is different about them.
+
+        They are the two halves of one disagreement — documented and not raised, raised
+        and not documented — and a card carries one of them without the other beside it.
+        Ending both on "which side is honest is a question for a person" tells a reader
+        holding one card nothing about which half they are holding.
+        """
+        refusals = self.document["scoring"]["refusals"]
+        one = refusals["documentedNeverRaised"]["because"]
+        other = refusals["raisedNeverDocumented"]["because"]
+
+        self.assertNotEqual(_last_sentence_of(one), _last_sentence_of(other))
+        self.assertIn("never arrive", one)
+        self.assertIn("meets it at run time", other)
 
     def test_the_page_proposes_nothing_in_its_own_words_either(self):
         """The two words no denial needs, so finding either is finding a proposal."""
         for word in ("refactor", "rewrite"):
             self.assertNotIn(word, self.rendered.lower())
+
+
+class ThePageSaysItsLimitsOnTheSmallestRunThereIsTest(SourceTreeTest):
+    """One file, one module, nothing excluded: the run every plural on this page breaks on.
+
+    The sentences this section is made of are counted sentences, and a counted sentence
+    is only as good as its singular. Read off the script rather than off a rendering,
+    because the page builds each of them by concatenation in the browser and there is no
+    browser here; what a test can hold is that no verb was written outside the `count`
+    call that decides whether its noun is one thing or several.
+    """
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        self.document = graph.build(
+            [graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT
+        )
+        self.rendered = page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
+    def test_the_run_really_is_the_one_every_plural_breaks_on(self):
+        """The fixture is only worth anything if it is genuinely one of everything."""
+        self.assertEqual(1, self.document["source"]["filesSeen"])
+        self.assertEqual(1, len(self.document["modules"]))
+        self.assertEqual(1, self.document["scoring"]["modulesScored"])
+        self.assertEqual(0, self.document["scoring"]["modulesNeverScored"])
+
+    def test_every_sentence_shaped_n_of_m_counts_its_verb_apart_from_its_noun(self):
+        """"1 of 1 module ... are scored" is what a hardcoded verb renders on this run.
+
+        Folding the verb into the `count` call that pluralises the noun fixes that one
+        and breaks another: in "N of M modules are scored" the noun agrees with M and the
+        verb with N, so one count driving both renders "1 of 74 modules are scored" on a
+        repository with a single scored module. The page counts them apart.
+        """
+        self.assertIn("function verb(n, is, are)", self.rendered)
+        self.assertIn('verb(document_.scoring.modulesScored, "is", "are")', self.rendered)
+        self.assertIn(
+            'verb(document_.scoring.modulesNeverScored, "is", "are")', self.rendered
+        )
+
+    def test_what_was_counted_is_called_a_path_the_way_the_alarm_above_it_does(self):
+        """`filesSeen` counts a directory that would not open, and the alarm box says so.
+
+        A page that calls a directory a file two inches under a box calling it a source
+        path is a page disagreeing with itself about what it read.
+        """
+        self.assertIn('"source path", "source paths"', self.rendered)
+        self.assertIn('count(document_.source.filesUnparsed, "path", "paths")', self.rendered)
+
+    def test_a_run_that_excluded_nothing_says_so_rather_than_listing_empty_rules(self):
+        """Three bullets each reading "0 modules" is a promise the page just broke.
+
+        The sentence over the list says every rule that excluded anything is in it. On a
+        run where no rule excluded anything, the list is not drawn and the section says
+        what happened in words.
+        """
+        self.assertIn("exclusion.modulesExcluded > 0", self.rendered)
+        self.assertIn("if (excludingRules.length > 0)", self.rendered)
+        self.assertIn("Nothing was left out.", self.rendered)
+
+
+class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
+    """`--help` is where a person finds out this tool will not date a page for them."""
+
+    def test_the_one_argument_with_no_default_is_not_drawn_as_an_optional_one(self):
+        """Brackets mean "you may leave this out", and leaving this one out is a refusal.
+
+        argparse brackets everything it has not been told is `required=True`, and this
+        one is refused in words by `main` instead — so the generated line said
+        `[--snapshot-date YYYY-MM-DD]` four lines above help text reading "Required".
+        """
+        usage = cli.parser().format_usage()
+        help_text = cli.parser().format_help()
+
+        self.assertIn("--snapshot-date " + graph.SNAPSHOT_DATE, usage)
+        self.assertNotIn("[--snapshot-date", usage)
+        self.assertIn("Required", help_text)
+
+    def test_every_argument_this_command_takes_is_on_its_usage_line(self):
+        """The usage line is written out by hand, and this is what keeps it true.
+
+        Reads argparse's own list of actions rather than a list of flags repeated here,
+        so that an argument added to the parser and forgotten on the usage line fails
+        rather than going unmentioned. One spelling of each is enough — argparse writes
+        `-h` for the argument that also answers to `--help` — so what is asserted is that
+        every argument is reachable from the line, not that every alias is on it.
+        """
+        parser = cli.parser()
+        usage = parser.format_usage()
+
+        for action in parser._actions:
+            self.assertTrue(
+                any(flag in usage for flag in action.option_strings),
+                action.option_strings,
+            )
 
 
 class ThisRepositoryIsDatedByWhoeverRanTheToolTest(SourceTreeTest):
@@ -278,25 +445,41 @@ class ThisRepositoryIsDatedByWhoeverRanTheToolTest(SourceTreeTest):
         with open(committed, encoding="utf-8") as handle:
             document = json.load(handle)
 
-        self.assertRegex(document["snapshot"]["date"], r"\A\d{4}-\d{2}-\d{2}\Z")
+        # `[0-9]`, not `\d`: `\d` matches every Unicode decimal digit, so a graph dated
+        # `٢٠٢٦-٠٩-٠٦` would satisfy a `\d` pattern here and this test would wave through
+        # the one thing it exists to catch.
+        self.assertRegex(document["snapshot"]["date"], r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
         self.assertEqual(
             document["snapshot"]["date"],
             graph.a_snapshot_date(document["snapshot"]["date"]),
         )
 
 
-def _every_string_in(document, path="document"):
-    """Every string anywhere in the document, with where it was found."""
+# The keys under a module whose value is a sentence this tool wrote about that module:
+# a deletion-test verdict and the reasoning behind it, a finding and why it is one, and
+# the fact about the module a rule matched on. Everything else a module carries is a name
+# read out of the source — its id, its package, its methods, the types crossing its seam —
+# and those are the source's words rather than this page's claims about it.
+PROSE_THIS_TOOL_WROTE_ABOUT_A_MODULE = ("because", "finding", "verdict", "matched")
+
+
+def _prose_about_a_module_in(document, path="modules", key=None):
+    """Every sentence this tool wrote about a module, with where in the document it sits."""
     if isinstance(document, dict):
-        for key, value in document.items():
-            for found in _every_string_in(value, path + "." + str(key)):
+        for name, value in document.items():
+            for found in _prose_about_a_module_in(value, path + "." + str(name), name):
                 yield found
     elif isinstance(document, list):
         for index, value in enumerate(document):
-            for found in _every_string_in(value, "%s[%d]" % (path, index)):
+            for found in _prose_about_a_module_in(value, "%s[%d]" % (path, index), key):
                 yield found
-    elif isinstance(document, str):
+    elif isinstance(document, str) and key in PROSE_THIS_TOOL_WROTE_ABOUT_A_MODULE:
         yield path, document
+
+
+def _last_sentence_of(prose):
+    """What a reader of a card is left with, which is the thing being compared."""
+    return prose.rstrip(".").rsplit(". ", 1)[-1]
 
 
 def _embedded_graph(rendered):

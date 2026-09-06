@@ -465,7 +465,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -473,7 +473,7 @@
           "refusal": "Error"
         },
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -713,7 +713,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -2487,7 +2487,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -3626,7 +3626,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -4047,7 +4047,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -5625,7 +5625,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -6038,7 +6038,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -6642,7 +6642,7 @@
       "excludedBy": null,
       "findings": [
         {
-          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+          "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
           "documented": false,
           "documentedBy": [],
           "finding": "raised but never documented",
@@ -7517,7 +7517,7 @@
       ],
       "modulesWithFindings": 8,
       "raisedNeverDocumented": {
-        "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so.",
+        "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about.",
         "finding": "raised but never documented"
       },
       "refusalsNotChecked": 0,

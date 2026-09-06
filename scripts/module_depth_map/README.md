@@ -18,7 +18,10 @@ is the machine's clock, and reading it would put a value in the output that move
 two runs over unchanged source — and would date the page by when somebody pressed a key
 rather than by what it is a picture of. A run without one is refused with the reason said
 out loud (exit 6), and so is a day there was not: `2026-02-30` and `20260906` are both
-spelling mistakes, and a page dated by one is a dated page that is not dated.
+spelling mistakes, and a page dated by one is a dated page that is not dated. So are
+`٢٠٢٦-٠٩-٠٦` and `２０２６-０９-０６`: Python's `\d` matches every Unicode decimal digit and `int()`
+parses all of them, so a check written with it would let one day have several spellings,
+each writing a different document. The day is read with `[0-9]` for that reason.
 
 Run its tests with the standard library's own runner, also from the repository root:
 
@@ -227,10 +230,14 @@ signature is, and leaving them unmeasured is a decision rather than an oversight
 page says so, and says what it costs: a score is a floor on what an interface asks of a
 caller, never the whole of it. Every other measure here is a floor in the same direction,
 and each names its own blind spots where it is explained. The same section says how much of
-the source the picture was drawn from — files parsed of files seen, modules scored of
-modules drawn — so a reader can weigh what they are looking at, and the two headings under
-it are what was never read at all and what was read and never scored, each with the named
-rule behind it.
+the source the picture was drawn from — source paths parsed of source paths seen, modules
+scored of modules drawn — so a reader can weigh what they are looking at. “Path” rather
+than “file” because a directory the operating system will not open is counted there too,
+and is named in the alarm band above it. The two headings under it are what was never read
+at all and what was read and never scored, each with the named rule behind it — and only
+the rules that excluded something, because a rule listed with nothing to point at is the
+page breaking the promise it made one line earlier. A run where nothing was excluded says
+so in words instead of drawing an empty list.
 
 ## The frontend, at the grain its interfaces are written at
 

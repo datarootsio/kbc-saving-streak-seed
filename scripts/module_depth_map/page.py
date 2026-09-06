@@ -62,12 +62,11 @@ h1 { font-size: 1.6rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 p { margin: 0 0 1rem; }
 .lede { color: var(--ink-soft); max-width: 46rem; }
-/* The day the page is an observation of, drawn in full ink rather than in the soft
-   ink the ledes use: it is the one sentence that decides how much of the rest is
-   still true, and a reader who skims past it reads a picture of a day they have not
-   been told. */
+/* The day the page is an observation of. It is deliberately not a `.lede`: the ledes
+   are drawn in soft ink, and this is the one sentence that decides how much of the rest
+   is still true, so it keeps the body's full ink and only takes the ledes' measure. A
+   reader who skims past it reads a picture of a day they have not been told. */
 .dated { max-width: 46rem; }
-.dated .day { color: var(--ink); }
 .read {
   border: 1px solid var(--edge);
   background: var(--raised);
@@ -473,7 +472,7 @@ _SCRIPT = """
   // to be done. The date is the run's own, carried in the document — nothing here reads a
   // clock, so a page cannot date itself and does not pretend to.
   var dated = add(head, "p", "dated");
-  add(dated, "strong", "day",
+  add(dated, "strong", null,
     "An observation of this repository's source as it stood on "
     + document_.snapshot.date + ".");
   add(dated, "span", null,
@@ -501,7 +500,11 @@ _SCRIPT = """
            : " \u2014 all of it, " + read.join(", ") + " \u2014")
       + " grouped by the package it lives "
       + "in, each drawn as what its interface costs a caller over a fan of everything it "
-      + "coordinates on that caller's behalf, as all three stood on the day above.");
+      // "as the source stood" rather than a count of the things being dated: nothing in
+      // the sentence above was presented as a group, and how many languages it names
+      // changes with the run, so any number written here is false on some run of this
+      // tool. What the day dates is the source, in every branch of the clause above.
+      + "coordinates on that caller's behalf, as the source stood on the day above.");
     var grain = add(head, "p", "lede");
     add(grain, "span", null,
       "A module is anything with an interface and an implementation, and where that sits "
@@ -529,6 +532,12 @@ _SCRIPT = """
   var read = add(root, "div", "read");
   var list = add(read, "dl");
   function count(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  // The other half of the page's grammar, for the sentences shaped "N of M modules are
+  // scored". The noun there agrees with M and the verb with N, and the two are not the
+  // same number: one `count` conjugating both renders "1 of 74 modules are scored" on a
+  // repository with one scored module and "1 of 1 module are scored" on a repository with
+  // one module in it. So the verb is counted apart from the noun it belongs to.
+  function verb(n, is, are) { return n === 1 ? is : are; }
 
   function fact(term, value) {
     var pair = add(list, "div");
@@ -606,19 +615,26 @@ _SCRIPT = """
   // How much of the source is actually behind the picture, read from the document rather
   // than asserted. A page drawn from half the files deserves half the trust, and a reader
   // cannot weigh what they are looking at without being told which half it is.
+  // "source path" rather than "source file", the same word the alarm box above uses and
+  // for the same reason: a directory the operating system will not open is counted here
+  // too, and a page that calls a directory a file two inches under a box that does not is
+  // a page disagreeing with itself about what it read. Each noun below is counted and
+  // each verb is counted separately from it, because "1 of 1 module ... are scored" is
+  // what a hardcoded verb beside a counted noun produces on a one-module run.
   add(unmeasured, "p", null,
     "Every number here was read from " + document_.source.filesParsed + " of "
-    + count(document_.source.filesSeen, "source file", "source files")
+    + count(document_.source.filesSeen, "source path", "source paths")
     + " under the source named above"
     + (document_.source.filesUnparsed > 0
-       ? ", and " + count(document_.source.filesUnparsed, "file", "files")
+       ? ", and " + count(document_.source.filesUnparsed, "path", "paths")
          + " could not be read at all: each is named above this, and every module "
          + "declared inside one of them is missing from this page rather than drawn "
          + "empty. "
        : " \u2014 every one of them. ")
     + document_.scoring.modulesScored + " of "
-    + count(document_.modules.length, "module", "modules")
-    + " drawn here are scored, and what was left out of the scoring, and out of the "
+    + count(document_.modules.length, "module", "modules") + " drawn here "
+    + verb(document_.scoring.modulesScored, "is", "are")
+    + " scored, and what was left out of the scoring, and out of the "
     + "reading altogether, is listed under the two headings that follow.");
 
   // Not the alarm band above: a path a rule declined is not a failure, and painting the
@@ -665,15 +681,36 @@ _SCRIPT = """
   // two.
   var neverScored = add(root, "section", "rules");
   add(neverScored, "h2", null, "What was never scored, and under which rule");
-  add(neverScored, "p", null,
-    document_.scoring.modulesNeverScored + " of " + document_.modules.length
-    + " modules are drawn but never scored, each by a named rule in "
-    + document_.scoring.configuration + ". They are shallow by construction, and ranking "
-    + "them beside the modules that are not would bury the finding. Every rule that "
-    + "excluded anything is here with the count it excluded, and every excluded card "
-    + "carries the rule that excluded it and the fact about the module that matched, so "
-    + "\u201cwhy is this one not scored?\u201d is a question with an answer a reader can "
-    + "point at and argue with:");
+  // A rule that excluded nothing on this run is not listed. The sentence below promises
+  // "every rule that excluded anything ... with the count it excluded", and a bullet
+  // under it reading "0 modules" is a rule the reader is told about and cannot point at
+  // a single card for: the page contradicting itself inside two lines. On a run where
+  // nothing was excluded there is no list at all, and the section says so in words rather
+  // than rendering "0 of 1 modules are drawn but never scored" over three empty rules.
+  var excludingRules = document_.scoring.exclusions.filter(function (exclusion) {
+    return exclusion.modulesExcluded > 0;
+  });
+  if (document_.scoring.modulesNeverScored === 0) {
+    add(neverScored, "p", null,
+      "Nothing was left out. Every module drawn on this page carries a bar: none of the "
+      + count(document_.scoring.exclusions.length, "rule", "rules") + " in "
+      + document_.scoring.configuration + " that decline to price a module matched "
+      + "anything this run read. What those rules are, and what each of them would have "
+      + "excluded, is in that file.");
+  } else {
+    add(neverScored, "p", null,
+      document_.scoring.modulesNeverScored + " of "
+      + count(document_.modules.length, "module", "modules") + " "
+      + verb(document_.scoring.modulesNeverScored, "is", "are")
+      + " drawn but never scored, each by a named rule in "
+      + document_.scoring.configuration + ". Anything a rule declines to price is shallow "
+      + "by construction, and ranking it beside the modules that are not would bury the "
+      + "finding. Every rule "
+      + "that excluded anything is here with the count it excluded, and every excluded "
+      + "card carries the rule that excluded it and the fact about the module that "
+      + "matched, so \u201cwhy is this one not scored?\u201d is a question with an answer "
+      + "a reader can point at and argue with:");
+  }
 
   var rules = add(root, "section", "rules");
   add(rules, "h2", null, "What the bars measure");
@@ -992,16 +1029,24 @@ _SCRIPT = """
     + "not a proposal to delete it — nothing here is ranked, and no module here is "
     + "proposed for change.");
 
-  var named = add(neverScored, "ul");
+  // Every rule's reason, keyed by rule, because a card excluded by one prints it. Built
+  // from all of them and not only from `excludingRules`: a rule that excluded nothing has
+  // no card to print on, and one that did has one whether or not this list drew a bullet
+  // for it.
   var because = {};
   document_.scoring.exclusions.forEach(function (exclusion) {
     because[exclusion.rule] = exclusion.because;
-    var item = add(named, "li");
-    add(item, "strong", null, exclusion.rule);
-    add(item, "span", null,
-      " \\u2014 " + count(exclusion.modulesExcluded, "module", "modules") + " \\u2014 "
-      + exclusion.because);
   });
+  if (excludingRules.length > 0) {
+    var named = add(neverScored, "ul");
+    excludingRules.forEach(function (exclusion) {
+      var item = add(named, "li");
+      add(item, "strong", null, exclusion.rule);
+      add(item, "span", null,
+        " \\u2014 " + count(exclusion.modulesExcluded, "module", "modules") + " \\u2014 "
+        + exclusion.because);
+    });
+  }
 
   // The scale every bar shares, taken from the document rather than worked out here, so
   // that two bars are comparable against a number a reader can find in the graph.

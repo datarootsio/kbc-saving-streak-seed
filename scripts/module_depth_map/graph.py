@@ -58,7 +58,11 @@ SCHEMA = "module-depth-map/10"
 # here rather than each spelling it out.
 SNAPSHOT_DATE = "YYYY-MM-DD"
 
-_A_DATE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
+# `[0-9]` rather than `\d`, which in Python matches every Unicode decimal digit there is:
+# `\d{4}-\d{2}-\d{2}` reads `٢٠٢٦-٠٩-٠٦` and `２０２６-０９-０６` as dates, `int()` then parses
+# both, and one day ends up with several spellings each writing a different document. That
+# is the same thing `date.fromisoformat` was avoided for, arriving by another door.
+_A_DATE = re.compile(r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -89,11 +93,14 @@ class SnapshotNotADate(Exception):
     that nothing else can check: every number there can be held against the source, and
     "2026-13-40" cannot be held against anything. A page carrying it would be a dated
     page that is not dated, which is worse than one that was never written.
+
+    The value refused is inside `reason` rather than beside it. Every caller of this says
+    what happened by printing the reason, and the reason already names what it was handed;
+    a second copy of it would be a second thing to keep true and nothing would read it.
     """
 
-    def __init__(self, given, reason):
+    def __init__(self, reason):
         super().__init__(reason)
-        self.given = given
         self.reason = reason
 
 
@@ -114,16 +121,14 @@ def a_snapshot_date(given):
     """
     if not isinstance(given, str) or not _A_DATE.match(given):
         raise SnapshotNotADate(
-            given,
-            "the snapshot date %r is not a day written %s"
-            % (given, SNAPSHOT_DATE),
+            "the snapshot date %r is not a day written %s" % (given, SNAPSHOT_DATE)
         )
     year, month, day = (int(part) for part in given.split("-"))
     try:
         datetime.date(year, month, day)
     except ValueError as impossible:
         raise SnapshotNotADate(
-            given, "the snapshot date %s is not a day there was: %s" % (given, impossible)
+            "the snapshot date %s is not a day there was: %s" % (given, impossible)
         ) from impossible
     return given
 
@@ -295,7 +300,9 @@ def build(roots, rules, snapshot, roots_not_read=()):
     available here is the machine's own clock — which is the one source of a value this
     tool may not carry, because it would move the bytes between two runs over unchanged
     source and would date the page by when it was generated rather than by what it is an
-    observation of. A run with no date to put on it is a run that does not happen.
+    observation of. A run with no date to put on it is a run that does not happen: a
+    `snapshot` that is not a day is refused with `SnapshotNotADate`, before a file is
+    opened.
 
     `roots_not_read` is what the caller decided not to hand over and why, each as a
     `{"root", "reason"}` pair. It exists because a page has to be able to say that half an
@@ -313,8 +320,12 @@ def build(roots, rules, snapshot, roots_not_read=()):
 
     `rules` is asked for rather than defaulted. Falling back to `scoring.load()` here put
     a second home for the `--scoring` default behind the one the command line already
-    has, and made a `ConfigurationRefused` come out of the call the caller guards for
-    duplicate module ids — the one failure this function is documented to raise.
+    has, and made a `ConfigurationRefused` come out of the call — a third failure, on top
+    of the two this function is documented to raise.
+
+    Refuses with exactly two exceptions, and a caller reaching this seam is guarding
+    against both or against neither: `SnapshotNotADate`, when `snapshot` is not a day
+    that was, and `DuplicateModules`, when two source files claim one module id.
     """
     # Read before a file is opened, so that a run which cannot be dated costs nobody a
     # walk of the source. Read here as well as on the command line because this is the
@@ -322,9 +333,9 @@ def build(roots, rules, snapshot, roots_not_read=()):
     # typing the argument, and there is one reading of what a date is rather than two.
     dated = a_snapshot_date(snapshot)
     log.debug(
-        "snapshot date given date=%s reason=%s",
+        "snapshot date given date=%s reason=handed to this run; no clock is read "
+        "anywhere in this tool",
         dated,
-        "handed to this run; no clock is read anywhere in this tool",
     )
     modules = []
     unparsed = []
