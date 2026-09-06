@@ -689,6 +689,60 @@ class TheCoverageSentenceSendsAReaderTheWayThePageIsDrawnTest(SourceTreeTest):
         )
 
 
+class TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest(SourceTreeTest):
+    """The end-of-run warning reports the two numbers the page's coverage sentence reports.
+
+    It belongs beside that sentence rather than with the rest of the run's log lines,
+    because it is the same finding said twice: "N of M source paths, K could not be read"
+    is what the counts box shows, what the coverage paragraph says, and what this line
+    warns. A run that calls an unopenable directory a file in its log while the page it
+    just wrote calls it a path is one thing under two names, and a reader holding the log
+    beside the page cannot tell whether the two counts are even about the same thing.
+
+    The pronoun is counted for the same reason every other pronoun on the page is: one
+    unreadable path is not "them".
+    """
+
+    def tree_with_one_locked_directory(self):
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        tree.java("shop.locked", "Hidden", "public class Hidden {}")
+        locked = os.path.join(tree.root, "shop", "locked")
+        os.chmod(locked, 0o000)
+        self.addCleanup(os.chmod, locked, 0o755)
+        return tree
+
+    def run_over(self, root):
+        return cli.main(
+            ["--source", root,
+             "--graph", os.path.join(self.scratch, "out", "graph.json"),
+             "--page", os.path.join(self.scratch, "out", "page.html"),
+             "--snapshot-date", A_SNAPSHOT]
+        )
+
+    def warning_from_a_run_that_could_not_read_everything(self):
+        tree = self.tree_with_one_locked_directory()
+        with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
+            self.assertEqual(0, self.run_over(tree.root))
+        said = [line for line in logged.output if "the page is drawn from" in line]
+        self.assertEqual(1, len(said), logged.output)
+        return said[0]
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_what_could_not_be_read_is_called_a_path_the_way_the_page_calls_it_one(self):
+        warning = self.warning_from_a_run_that_could_not_read_everything()
+
+        self.assertIn("1 of 2 source paths", warning)
+        self.assertNotIn("source files", warning)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_one_unreadable_path_is_referred_to_in_the_singular(self):
+        warning = self.warning_from_a_run_that_could_not_read_everything()
+
+        self.assertIn("every module declared inside it is missing from the page", warning)
+        self.assertNotIn("inside them", warning)
+
+
 class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
     """`--help` is where a person finds out this tool will not date a page for them."""
 
