@@ -655,23 +655,46 @@ _SCRIPT = """
   // too, and a page that calls a directory a file two inches under a box that does not is
   // a page disagreeing with itself about what it read. Each noun below is counted and
   // each verb is counted separately from it, because "1 of 1 module ... are scored" is
-  // what a hardcoded verb beside a counted noun produces on a one-module run.
+  // what a hardcoded verb beside a counted noun produces on a one-module run — and
+  // every pronoun beside them goes through `word` for the same reason: "1 path ... each
+  // is named above this ... inside one of them" is the same disagreement one part of
+  // speech over, and it is this paragraph that rendered it.
+  //
+  // The handoff at the end names three places, not two, because there are three ways
+  // something is missing from this page and they do not all go to the same section. A
+  // path a rule declined to read is under the first heading. A module that was read and
+  // then not priced is under the second. A path the operating system refused is under
+  // neither: it is a failure rather than a rule's decision, so it is in the band above
+  // this and in no list below. The clause here read "what was left out of the reading
+  // altogether is under 'What was not read at all'" — and "altogether" is what made
+  // it checkable and false, because on a run with an unreadable path that heading
+  // answers "Nothing under the source read above matched that rule".
   add(unmeasured, "p", null,
     "Every number here was read from " + document_.source.filesParsed + " of "
     + count(document_.source.filesSeen, "source path", "source paths")
     + " under the source named above"
     + (document_.source.filesUnparsed > 0
        ? ", and " + count(document_.source.filesUnparsed, "path", "paths")
-         + " could not be read at all: each is named above this, and every module "
-         + "declared inside one of them is missing from this page rather than drawn "
-         + "empty. "
-       : " \u2014 every one of them. ")
+         + " could not be read at all: "
+         + word(document_.source.filesUnparsed, "it is", "each of them is")
+         + " named in the band above this, and every module declared inside "
+         + word(document_.source.filesUnparsed, "it", "them")
+         + " is missing from this page rather than drawn empty. "
+       : " \u2014 "
+         + word(document_.source.filesSeen, "the only one there was", "every one of them")
+         + ". ")
     + document_.scoring.modulesScored + " of "
     + count(document_.modules.length, "module", "modules") + " drawn here "
     + verb(document_.scoring.modulesScored, document_.modules.length, "is", "are")
-    + " scored. What was left out of the reading altogether is under “"
-    + HEADING_NOT_READ + "”, and what was read and then left out of the scoring is "
-    + "under “" + HEADING_NEVER_SCORED + "”.");
+    + " scored. What a rule declined to read is under \u201c" + HEADING_NOT_READ
+    + "\u201d, and what was read and then left out of the scoring is under \u201c"
+    + HEADING_NEVER_SCORED + "\u201d"
+    + (document_.source.filesUnparsed > 0
+       ? ", and what could not be read at all is under neither of them: a path the "
+         + "operating system refused is a failure rather than a rule declining it, so "
+         + word(document_.source.filesUnparsed, "it is", "each one is")
+         + " named in the band above this and in no list below."
+       : "."));
 
   // Not the alarm band above: a path a rule declined is not a failure, and painting the
   // two the same colour would have a `node_modules` reading as source this tool could not
@@ -747,16 +770,33 @@ _SCRIPT = """
       + (document_.source.notRead.paths.length > 0
          ? " What was left out of the reading is a different list and a shorter answer: "
            + "the " + count(document_.source.notRead.paths.length, "path", "paths")
-           + " under “" + HEADING_NOT_READ + "” above, which no rule here "
+           + " under \u201c" + HEADING_NOT_READ + "\u201d above, which no rule here "
            + "declined to price because nothing here read "
            + word(document_.source.notRead.paths.length, "it", "them") + "."
+         : "")
+      // And the third way something is missing, which no heading below covers: a path
+      // that would not open. A run whose only oddity is an unreadable directory reached
+      // this sentence with nothing after "Nothing was left out of the scoring." at all,
+      // having just drawn an alarm band naming the path — the same denial the scoping
+      // above was written to stop, one kind of exclusion over.
+      + (document_.source.filesUnparsed > 0
+         ? " And " + count(document_.source.filesUnparsed, "path", "paths")
+           + " could not be read at all, named in the band above this: whatever is "
+           + "declared inside " + word(document_.source.filesUnparsed, "it", "them")
+           + " is priced by no rule here, because nothing here could open "
+           + word(document_.source.filesUnparsed, "it", "them") + "."
          : ""));
   } else {
     add(neverScored, "p", null,
       document_.scoring.modulesNeverScored + " of "
       + count(document_.modules.length, "module", "modules") + " "
       + verb(document_.scoring.modulesNeverScored, document_.modules.length, "is", "are")
-      + " drawn but never scored, each by a named rule in "
+      + " drawn but never scored, "
+      // "each" distributes over more than one thing, and one excluded module is not more
+      // than one thing. The verb in this sentence was counted two attempts ago and the
+      // determiner beside it was not, which is that fix stopping one word short: a run
+      // with a single unpriced module read as though it had several.
+      + word(document_.scoring.modulesNeverScored, "by", "each by") + " a named rule in "
       + document_.scoring.configuration + ". Anything a rule declines to price is shallow "
       + "by construction, and ranking it beside the modules that are not would bury the "
       + "finding. Every rule "

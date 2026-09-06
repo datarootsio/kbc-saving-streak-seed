@@ -252,11 +252,17 @@ scored of modules drawn — so a reader can weigh what they are looking at. “P
 than “file” because a directory the operating system will not open is counted there too,
 and is named in the alarm band above it — and the box of counts says it the same way, for
 the same reason: one name for one thing, or the page disagrees with itself about what it
-read. The two headings under it are what was never read
-at all and what was read and never scored, each with the named rule behind it — and only
-the rules that excluded something, because a rule listed with nothing to point at is the
-page breaking the promise it made one line earlier. A run where nothing was excluded says
-so in words instead of drawing an empty list.
+read. The same sentence hands a reader on to the two headings under it, by name and in the
+order the page draws them: “What was not read at all”, which is the paths a rule declined,
+and “What was never scored, and under which rule”, which is the modules that were read and
+then not priced — each with the named rule behind it, and only the rules that excluded
+something, because a rule listed with nothing to point at is the page breaking the promise
+it made one line earlier. A path the operating system refused is under neither of them: it
+is a failure rather than a rule's decision, so it is named in the alarm band and the
+sentence says so instead of sending a reader to a heading that answers "nothing". A run
+where nothing was excluded says so in words instead of drawing an empty list, and says it
+of the scoring rather than of everything, because a run can decline a path and exclude no
+module.
 
 ## The frontend, at the grain its interfaces are written at
 

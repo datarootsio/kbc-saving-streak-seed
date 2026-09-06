@@ -54,6 +54,19 @@ DEFAULT_GRAPH = os.path.join("docs", "module-depth-map.json")
 DEFAULT_PAGE = os.path.join("docs", "module-depth-map.html")
 
 
+def a_word(n, one, many):
+    """The word `n` governs, without `n` in front of it: `word` on the page, in Python.
+
+    Here for the one log line that reports the same two numbers the page's counts box and
+    its coverage sentence report, so that a reader holding the log beside the page reads
+    one thing under one name. Both the noun and the pronoun go through it, because a
+    sentence that counts one of them and hardcodes the other is the disagreement in half:
+    "0 of 1 source paths ... every module declared inside it" was this line, beside a page
+    saying "0 of 1 source path" about the identical number.
+    """
+    return one if n == 1 else many
+
+
 def parser():
     it = argparse.ArgumentParser(
         prog="module-depth-map",
@@ -283,22 +296,26 @@ def main(argv=None):
         )
 
     if document["source"]["filesUnparsed"]:
-        # "source paths", the same two words the counts box and the page's own coverage
+        # "source path", the same two words the counts box and the page's own coverage
         # sentence use for these identical two numbers. A directory the operating system
         # will not open is counted here, and a run that calls it a file in its log while
-        # the page it just wrote calls it a path is one thing under two names. The pronoun
-        # is counted too: one unreadable path left "every module in them". The tail names
-        # the page outright rather than saying "from it": with the pronoun above counted,
-        # a run with one unreadable path had two "it"s in one clause standing for two
-        # different things.
+        # the page it just wrote calls it a path is one thing under two names. Every word
+        # the count governs is counted with it — the noun as well as the pronoun. Counting
+        # the pronoun alone left "0 of 1 source paths ... inside it" in the log beside
+        # "0 of 1 source path" on the page it had just written, which is the same one
+        # thing under two names the wording was changed for. The tail names the page
+        # outright rather than saying "from it": with the pronoun counted, a run with one
+        # unreadable path had two "it"s in one clause standing for two different things.
+        seen = document["source"]["filesSeen"]
         unparsed = document["source"]["filesUnparsed"]
         log.warning(
-            "the page is drawn from %d of %d source paths: %d could not be read, and every "
+            "the page is drawn from %d of %d source %s: %d could not be read, and every "
             "module declared inside %s is missing from the page",
             document["source"]["filesParsed"],
-            document["source"]["filesSeen"],
+            seen,
+            a_word(seen, "path", "paths"),
             unparsed,
-            "it" if unparsed == 1 else "them",
+            a_word(unparsed, "it", "them"),
         )
     return 0
 

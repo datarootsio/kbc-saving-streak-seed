@@ -37,6 +37,27 @@ WORDS_A_PROPOSAL_IS_WRITTEN_WITH = (
     "todo",
 )
 
+# Sentences this page really has drawn, each one found by a reader rather than imagined
+# here: a pronoun or a noun written flat beside a number that counts, and a claim about
+# what is missing that is false on some run the tool can produce. They are banned by their
+# exact words rather than by a rule, because there is no rule a test in this suite can
+# apply — the sentences only exist once a browser has joined a dozen strings, and there is
+# no browser here. What this list is worth is that none of them can come back quietly.
+PHRASES_THIS_PAGE_HAS_ACTUALLY_RENDERED_WRONG = (
+    # "1 path under the source read above matched that rule, and nothing inside them"
+    "and nothing inside them is drawn here",
+    # "1 path could not be read at all: each is named above this"
+    "could not be read at all: each is named above this",
+    # "... and every module declared inside one of them is missing from this page"
+    "every module declared inside one of them",
+    # "1 of 1 module is drawn but never scored, each by a named rule"
+    "drawn but never scored, each by a named rule",
+    # true only of the paths a rule declined, and claimed of every path not read
+    "was left out of the reading altogether",
+    # drawn directly beneath a list of what was left out
+    "Nothing was left out.",
+)
+
 
 class TheSnapshotDateIsGivenToTheRunTest(SourceTreeTest):
     """The day the document is an observation of is an argument, never a reading of a clock."""
@@ -491,6 +512,47 @@ class ThePageSaysItsLimitsOnTheSmallestRunThereIsTest(SourceTreeTest):
             self.assertEqual(4, len(handed), call)
             self.assertEqual(['"is"', '"are"'], handed[2:], call)
 
+    def test_no_sentence_asks_a_pronoun_to_agree_with_nothing(self):
+        """`word` is `verb`'s counterpart, and it gets the same enumeration for the same reason.
+
+        A pronoun agrees with its antecedent the way a noun agrees with its number, and
+        the page has one helper for both so that neither can be written the other way by
+        accident. The helper only helps where it is called, though: three separate
+        readings of this page found a pronoun beside a counted noun that had never been
+        routed through it at all. So every call is read, and each one has to hand over a
+        number out of the document and two spellings of the word — a call handing a
+        literal would be a pronoun that agrees with the same thing on every run, which is
+        the defect with a helper wrapped round it.
+        """
+        calls = re.findall(r"\bword\(([^)]*)\)", self.rendered)
+        calls = [call for call in calls if call != "n, one, many"]
+
+        self.assertTrue(calls)
+        for call in calls:
+            handed = [part.strip() for part in call.split(",")]
+            self.assertEqual(3, len(handed), call)
+            self.assertTrue(handed[0].startswith("document_."), call)
+            self.assertTrue(handed[1].startswith('"') and handed[2].startswith('"'), call)
+
+    def test_the_run_that_read_one_path_is_not_told_it_read_every_one_of_them(self):
+        """"1 of 1 source path under the source named above \u2014 every one of them."
+
+        The clause is there to say nothing under the source went unread, and on a run of
+        a single path there is no "them" for it to have read all of. Same shape as every
+        other plural on this page, in the branch that renders when nothing failed to open.
+        """
+        self.assertIn(
+            'word(document_.source.filesSeen, "the only one there was", '
+            '"every one of them")',
+            self.rendered,
+        )
+        self.assertNotIn('\u2014 every one of them. "', self.rendered)
+
+    def test_no_sentence_this_page_has_got_wrong_before_is_written_that_way_again(self):
+        """The words themselves, because the rule behind them is not one a test here can apply."""
+        for phrase in PHRASES_THIS_PAGE_HAS_ACTUALLY_RENDERED_WRONG:
+            self.assertNotIn(phrase, self.rendered, phrase)
+
     def test_what_was_counted_is_called_a_path_the_way_the_alarm_above_it_does(self):
         """`filesSeen` counts a directory that would not open, and the alarm box says so.
 
@@ -555,6 +617,19 @@ class ThePageSaysItsLimitsWhenNothingCouldBeScoredTest(SourceTreeTest):
             "function verb(n, of, is, are) { return n === 1 || of === 1 ? is : are; }",
             self.rendered,
         )
+
+    def test_one_unpriced_module_is_not_told_that_each_of_it_has_a_rule(self):
+        """"1 of 1 module is drawn but never scored, each by a named rule in ..."
+
+        "Each" distributes over more than one thing. The verb in that sentence was
+        counted an attempt before the determiner beside it was, which is the same fix
+        stopping one word short — and this fixture, the one module no rule would price,
+        is the run it stops short on.
+        """
+        self.assertIn(
+            'word(document_.scoring.modulesNeverScored, "by", "each by")', self.rendered
+        )
+        self.assertNotIn("each by a named rule", self.rendered)
 
 
 class ThePageDoesNotDenyAnExclusionItHasJustListedTest(SourceTreeTest):
@@ -668,15 +743,41 @@ class TheCoverageSentenceSendsAReaderTheWayThePageIsDrawnTest(SourceTreeTest):
         self.assertIn('add(neverScored, "h2", null, HEADING_NEVER_SCORED)', self.rendered)
 
     def test_the_sentence_names_the_headings_rather_than_counting_them(self):
+        """Named, and each named as what its section actually holds.
+
+        "What was left out of the reading altogether" was the first half of this sentence
+        until a run with an unreadable path showed the word "altogether" claiming more
+        than the heading under it answers — see
+        `ThePageDoesNotSendAReaderToAHeadingThatAnswersNothingTest`. The heading is still
+        named rather than pointed at; what it is named as is now what it holds.
+        """
         self.assertNotIn("the two headings that follow", self.rendered)
-        self.assertIn("What was left out of the reading altogether is under", self.rendered)
+        self.assertIn("What a rule declined to read is under", self.rendered)
+
+    def test_the_readme_calls_the_sections_what_the_page_heads_them(self):
+        """A name written once on the page and paraphrased in the README is a name in two places.
+
+        The point of hoisting the two headings into constants was that each is written
+        once and cannot drift from the sentence that names it. The README describing the
+        same two sections as "what was never read at all and what was read and never
+        scored" — neither of which is a heading this page draws — is a third copy of the
+        name, and the copy a maintainer reads before they change anything.
+        """
+        headings = re.findall(r'var HEADING_[A-Z_]+ = "([^"]+)";', self.rendered)
+        readme = os.path.join(os.path.dirname(page.__file__), "README.md")
+        with open(readme, encoding="utf-8") as handle:
+            written = handle.read()
+
+        self.assertEqual(2, len(headings), headings)
+        for heading in headings:
+            self.assertIn(heading, written, heading)
 
     def test_the_sentence_names_them_in_the_order_the_page_draws_them(self):
         """Reading first and scoring second, because that is the order the sections come in."""
         sentence = self.rendered[
-            self.rendered.index("What was left out of the reading altogether is under") :
+            self.rendered.index("What a rule declined to read is under") :
         ]
-        sentence = sentence[: sentence.index("”.") + 2]
+        sentence = sentence[: sentence.index("document_.source.filesUnparsed > 0")]
 
         self.assertLess(
             sentence.index("HEADING_NOT_READ"),
@@ -687,6 +788,88 @@ class TheCoverageSentenceSendsAReaderTheWayThePageIsDrawnTest(SourceTreeTest):
             self.rendered.index('add(declined, "h2", null, HEADING_NOT_READ)'),
             self.rendered.index('add(neverScored, "h2", null, HEADING_NEVER_SCORED)'),
         )
+
+
+class ThePageDoesNotSendAReaderToAHeadingThatAnswersNothingTest(SourceTreeTest):
+    """A path that would not open and no path a rule declined: the run the handoff sentence lied on.
+
+    There are three ways something is missing from this page and only two headings under
+    it. A path a rule declined to read goes under the first; a module read and then not
+    priced goes under the second; a path the operating system refused goes under neither,
+    because it is a failure rather than a decision, and the page names it in an alarm band
+    at the top instead. The sentence that hands a reader on used to claim the first heading
+    held "what was left out of the reading altogether" — so on this run it sent a reader to
+    a section whose whole text is "Nothing under the source read above matched that rule".
+
+    `ThePageDoesNotDenyAnExclusionItHasJustListedTest` above cannot see it: its fixture has
+    a declined `node_modules` and nothing unreadable, which is the other half of the same
+    question and the half that heading really does answer.
+    """
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        # One directory the operating system will not open, holding the only source there
+        # is. Nothing here is named on `sourcesNotRead`, so no rule declined anything and
+        # the heading below is empty on this run.
+        tree.java("shop.locked", "Hidden", "public class Hidden {}")
+        locked = os.path.join(tree.root, "shop", "locked")
+        os.chmod(locked, 0o000)
+        self.addCleanup(os.chmod, locked, 0o755)
+        self.document = graph.build(
+            [graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT
+        )
+        self.rendered = page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_the_run_really_is_one_with_an_unreadable_path_and_no_declined_one(self):
+        """The fixture is worth nothing unless the two kinds of missing really are apart."""
+        self.assertEqual(1, self.document["source"]["filesSeen"])
+        self.assertEqual(1, self.document["source"]["filesUnparsed"])
+        self.assertEqual([], self.document["source"]["notRead"]["paths"])
+        self.assertEqual([], self.document["modules"])
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_the_unreadable_path_is_the_one_the_alarm_band_will_name(self):
+        """What the band above draws, so that the sentence below really is about it."""
+        unparsed = self.document["source"]["unparsed"]
+
+        self.assertEqual(1, len(unparsed))
+        self.assertEqual(os.path.join("shop", "locked"), unparsed[0]["path"])
+
+    def test_no_heading_is_promised_more_than_the_section_under_it_holds(self):
+        """"Altogether" is what made the clause checkable, and what made it false.
+
+        The heading it named lists the paths a *rule* declined. A reader sent there by a
+        sentence about everything left out of the reading meets a section denying there
+        was anything.
+        """
+        self.assertNotIn("was left out of the reading altogether", self.rendered)
+        self.assertIn("What a rule declined to read is under", self.rendered)
+        self.assertIn(
+            "what was read and then left out of the scoring is under", self.rendered
+        )
+
+    def test_the_sentence_says_where_a_path_that_would_not_open_is_instead(self):
+        """The third place, said on the runs where there is a third place to say."""
+        self.assertIn("what could not be read at all is under neither of them", self.rendered)
+        self.assertIn(
+            'word(document_.source.filesUnparsed, "it is", "each one is")', self.rendered
+        )
+
+    def test_the_scoring_summary_accounts_for_a_path_that_would_not_open_too(self):
+        """"Nothing was left out of the scoring." on its own, under a band naming a path.
+
+        The reconciliation clause beside it was guarded on the paths a rule declined and
+        said nothing about the paths that would not open, so this run — which has one of
+        the second and none of the first — got the bare sentence and no account of the
+        band it had just been shown.
+        """
+        self.assertIn("document_.source.filesUnparsed > 0", self.rendered)
+        self.assertIn("could not be read at all, named in the band above this", self.rendered)
+        self.assertIn("is priced by no rule here, because nothing here could open", self.rendered)
 
 
 class TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest(SourceTreeTest):
@@ -706,6 +889,13 @@ class TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest(SourceTreeTest):
     def tree_with_one_locked_directory(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        return self.locked(tree)
+
+    def tree_that_is_nothing_but_a_locked_directory(self):
+        """One path, and it would not open: the run where every word in the line is singular."""
+        return self.locked(self.tree("fixture"))
+
+    def locked(self, tree):
         tree.java("shop.locked", "Hidden", "public class Hidden {}")
         locked = os.path.join(tree.root, "shop", "locked")
         os.chmod(locked, 0o000)
@@ -720,8 +910,8 @@ class TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest(SourceTreeTest):
              "--snapshot-date", A_SNAPSHOT]
         )
 
-    def warning_from_a_run_that_could_not_read_everything(self):
-        tree = self.tree_with_one_locked_directory()
+    def warning_from_a_run_that_could_not_read_everything(self, tree=None):
+        tree = tree if tree is not None else self.tree_with_one_locked_directory()
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             self.assertEqual(0, self.run_over(tree.root))
         said = [line for line in logged.output if "the page is drawn from" in line]
@@ -742,6 +932,22 @@ class TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest(SourceTreeTest):
         self.assertIn("every module declared inside it is missing from the page", warning)
         self.assertNotIn("inside them", warning)
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_the_noun_the_count_governs_is_counted_along_with_the_pronoun(self):
+        """"0 of 1 source paths ... inside it" is half a fix, and the half a reader sees.
+
+        The page this same run writes says "0 of 1 source path" about the identical
+        number, so counting the pronoun and leaving the noun flat put the two words back
+        into disagreement in the one place the wording exists to keep them together.
+        """
+        warning = self.warning_from_a_run_that_could_not_read_everything(
+            self.tree_that_is_nothing_but_a_locked_directory()
+        )
+
+        self.assertIn("the page is drawn from 0 of 1 source path:", warning)
+        self.assertNotIn("source paths", warning)
+        self.assertIn("every module declared inside it is missing from the page", warning)
+
 
 class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
     """`--help` is where a person finds out this tool will not date a page for them."""
@@ -760,23 +966,48 @@ class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
         self.assertNotIn("[--snapshot-date", usage)
         self.assertIn("Required", help_text)
 
+    def how_argparse_would_write_it(self):
+        """The same parser's usage line, generated, with the hand-written one taken off.
+
+        The point of comparison is argparse itself rather than a list of flags repeated
+        in this test. Everything the hand-written line has to say about an argument — its
+        flag, its metavar, the choices it prints between braces — is something argparse
+        already knows how to write, and a copy of that knowledge here would be a third
+        place to keep in step with the other two.
+        """
+        twin = cli.parser()
+        twin.usage = None
+        return twin.format_usage()
+
     def test_every_argument_this_command_takes_is_on_its_usage_line(self):
         """The usage line is written out by hand, and this is what keeps it true.
 
         Reads argparse's own list of actions rather than a list of flags repeated here,
         so that an argument added to the parser and forgotten on the usage line fails
-        rather than going unmentioned. One spelling of each is enough — argparse writes
-        `-h` for the argument that also answers to `--help` — so what is asserted is that
-        every argument is reachable from the line, not that every alias is on it.
+        rather than going unmentioned. Each argument is looked for as argparse would have
+        written it, brackets aside — flag, metavar and choices together — because a
+        substring test on the flag alone let two drifts past: an option whose name is a
+        prefix of one already on the line (`--log` beside `--log-level`) read as present
+        without being written anywhere, and a metavar or a choice added to an existing
+        option left the usage line printing the old spelling four lines above the new one
+        in the option list, which is the usage-versus-help disagreement this whole line
+        was hand-written to end.
         """
         parser = cli.parser()
         usage = parser.format_usage()
+        generated = self.how_argparse_would_write_it()
+        # One bracketed group per optional argument, which is every argument this command
+        # has: argparse brackets what it has not been told is required, and `main` is what
+        # requires `--snapshot-date` rather than argparse.
+        written = {}
+        for group in re.findall(r"\[([^\[\]]+)\]", generated):
+            written[group.split()[0]] = group
 
+        self.assertEqual(len(parser._actions), len(written), generated)
         for action in parser._actions:
-            self.assertTrue(
-                any(flag in usage for flag in action.option_strings),
-                action.option_strings,
-            )
+            flag = action.option_strings[0]
+            self.assertIn(flag, written, generated)
+            self.assertIn(written[flag], usage, written[flag])
 
 
 class TheDocumentedWayToRegenerateDoesNotAgeTest(unittest.TestCase):
