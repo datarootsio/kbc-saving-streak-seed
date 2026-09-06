@@ -15,7 +15,7 @@ a reader to mistake the score for the whole picture.
 
 **Blocked by:** 06 (Behind the shape).
 
-**Status:** needs-review
+**Status:** needs-info
 
 - [x] The snapshot date is supplied when the tool runs and never read from the system clock
 - [x] The page shows the snapshot date it was given
@@ -588,3 +588,234 @@ branch — and the two defects above were reproduced afterwards from an extracte
 ticket/09's `scripts/` tree. This commit was made from a temporary `git worktree` on
 ticket/09 so that the main checkout was left exactly as it was found, on
 ticket/07-flows-through-the-modules with a clean tree.
+
+## Review feedback - attempt 4
+
+All seven acceptance criteria are met on this repository and I exercised every one of them
+myself, and all four items from attempt 3 are genuinely fixed — I reproduced each attempt-3
+repro step, each now behaves as asked, and I mutation-tested all four guards and all four
+bite. The checkboxes stay ticked for that reason. What sends this back is three defects in
+the prose and the log line this attempt itself wrote, two of them self-contradictions the
+page makes on a run the tool can produce with one `chmod`. This tool's whole claim is that
+every sentence on it can be checked, and the ticket's subject is the page admitting its own
+limits, so a limit the page states and then denies is this ticket's own business rather
+than a nit.
+
+### 1. "What was left out of the reading altogether is under 'What was not read at all'" is false whenever a path could not be read
+
+`scripts/module_depth_map/page.py:672-674`. A path the operating system refused goes into
+the alarm band (`page.py:585-596`, `source.unparsed`). It never goes under the heading
+`HEADING_NOT_READ`, which lists only what a *rule* declined (`source.notRead.paths`). So on
+any run with an unreadable path the page points a reader at a section that denies there was
+anything. Reproduce with one unreadable directory and nothing else:
+
+    T=$(mktemp -d); mkdir -p $T/src/shut
+    printf 'package shop;\npublic class Hidden {}\n' > $T/src/shut/Hidden.java
+    chmod 000 $T/src/shut
+    python3 scripts/module-depth-map.py --source $T/src --snapshot-date 2001-02-03 \
+        --graph $T/g.json --page $T/p.html
+
+The rendered page then reads, in this order:
+
+    1 source path could not be read; nothing declared inside is drawn below
+      src/shut — directory could not be read: Permission denied
+    ...
+    Every number here was read from 0 of 1 source path under the source named above, and
+    1 path could not be read at all: each is named above this, ... What was left out of
+    the reading altogether is under “What was not read at all”, and what was read and then
+    left out of the scoring is under “What was never scored, and under which rule”.
+
+    What was not read at all
+    ...
+    Nothing under the source read above matched that rule: the directories this tool was
+    pointed at hold the application's own source and nothing else.
+
+Two things are wrong at once. The sentence contradicts itself: it says the unreadable path
+is "named above this" and then says what was left out of the reading is *under* a heading
+below. And the heading it names answers "Nothing". The word "altogether" is what makes it
+checkable and wrong — it claims to account for everything left out of the reading, and the
+section it names accounts for none of it.
+
+Attempt 3 replaced the vaguer "the two headings that follow" with a named heading, which was
+the right move and is what made this clause falsifiable. This is the same shape as attempt
+3's defect 1 — the page's own summary denying, one block later, something it has just drawn
+— one door over. `ThePageDoesNotDenyAnExclusionItHasJustListedTest` uses a `node_modules`
+fixture (a *declined* path) and never a `chmod 000` one, so it cannot see this. A fixture
+with an unreadable path and no declined path is what would.
+
+Note the same run's last section is bare: "Nothing was left out of the scoring." with no
+reconciliation clause, because that clause is guarded on `source.notRead.paths.length > 0`
+and says nothing about `source.unparsed`.
+
+### 2. The end-of-run WARNING calls one path "paths" while the page it just wrote calls it "path"
+
+`scripts/module_depth_map/cli.py:296`. The comment directly above it (`cli.py:284-293`) says
+this line uses "'source paths', the same two words the counts box and the page's own
+coverage sentence use for these identical two numbers", and the commit that wrote it
+(`be55187`) is titled "Hold the end-of-run warning to the words the page uses for the same
+two numbers". The pronoun was counted; the noun was not. On the fixture in point 1:
+
+    WARNING module_depth_map.cli the page is drawn from 0 of 1 source paths: 1 could not
+    be read, and every module declared inside it is missing from the page
+
+while the page written by that same run says:
+
+    Every number here was read from 0 of 1 source path under the source named above ...
+
+One thing under two names, in the two places that report it, which is exactly what attempt
+3's smaller thing A asked to have closed. `TheRunSaysWhatItCouldNotReadInThePagesOwnWordsTest`
+asserts `"1 of 2 source paths"` against a two-path fixture, so the singular is uncovered.
+
+### 3. The coverage paragraph counts its nouns and hardcodes its pronouns, in both branches
+
+`scripts/module_depth_map/page.py:663-668`. `function word(n, one, many)` was added at
+`page.py:550` in this attempt for precisely this, and the paragraph eleven lines below it
+does not use it:
+
+- with one unreadable path (fixture in point 1): "... and **1 path** could not be read at
+  all: **each** is named above this, and every module declared inside **one of them** is
+  missing from this page ...". `cli.py:296` now says "inside **it**" about the same number.
+- with no unreadable path and one source path: "read from **1 of 1 source path** under the
+  source named above — every **one of them**." Reproduce with a tree holding a single
+  `Till.java`.
+
+This is the "fix applied at one of its two sites" pattern attempts 2 and 3 both sent this
+back for. Neither reading is false, which is why it is third rather than first, but it is
+the same defect class as the fix this attempt shipped, in the same paragraph.
+
+### Smaller things, none of them blocking on their own
+
+- `page.py:757-759` — "1 of 1 module **is** drawn but never scored, **each** by a named rule
+  in ...". The verb goes through `verb()`; the distributive determiner beside it does not.
+  Reproduce with a tree holding only `public record Receipt(long cents) {}`.
+- `cli.py:69-72` with `tests/whatthepageadmits/test_the_page_says_what_it_did_not_measure.py:763-779`
+  — the guard on the hand-written usage line is `any(flag in usage ...)`, a plain substring
+  test. Two drifts get past it: a new option whose name is a *prefix* of one already on the
+  line (adding `--log` leaves the suite green with `--log` absent from the usage line), and
+  metavar or choices drift (adding `TRACE` to `--log-level`'s `choices` leaves `--help`
+  printing `[--log-level {DEBUG,INFO,WARNING,ERROR}]` above `--log-level {TRACE,DEBUG,...}`
+  in the option list, suite green). That is the usage-versus-help disagreement attempt 1's
+  smaller item 1 was about. Matching on `flag + " "`, or comparing against `format_usage()`
+  of an argparse-generated parser, would close it.
+- `page.py:672, 673, 674, 750` — the curly quotes around the two heading names are
+  written as raw literal characters in the Python source, whereas every other quoted
+  phrase in this file spells them as backslash-u escapes (see `page.py:489` and
+  `page.py:765`). Renders identically; it is a convention break this attempt introduced.
+- `scripts/module_depth_map/README.md:255-256` — calls the two sections "what was never read
+  at all and what was read and never scored". Neither is the heading the page draws. The
+  point of `HEADING_NOT_READ` / `HEADING_NEVER_SCORED` was that the name is written once so
+  it cannot drift; the README is a third copy of it.
+- The new attempt-4 assertions are substring scans of the emitted *JavaScript source*
+  (`assertIn('word(document_.source.notRead.paths.length, "it", "them")', self.rendered)`)
+  rather than of rendered prose. They bite on a straight revert, which is why my mutations
+  all failed — but they cannot see a pronoun that was never routed through `word()` at all,
+  which is defect 3 above. `test_no_sentence_asks_the_verb_to_conjugate_on_one_number`
+  (line 474) does the stronger thing for `verb()` by enumerating every call in the script;
+  there is no equivalent for `word()`, and nothing enumerates hardcoded pronouns.
+
+### Things I checked and am not asking for
+
+Named so the next attempt does not spend time on them. All of these are right.
+
+- **All four attempt-3 items are fixed**, and each guard bites. I reverted each fix in the
+  working tree, ran the suite, and restored: the bare "Nothing was left out." → 3 failures;
+  a hardcoded plural pronoun at `page.py:697` → 1 failure; `source files` in `cli.py` → 1
+  failure; a hardcoded plural pronoun in `cli.py` → 3 errors. `git status --short` was empty
+  afterwards and the suite was green again.
+- **Attempt 2's point 3 is closed.** I injected "This module should be refactored." into
+  `scoring.json`'s `refusals.raisedNeverDocumented.because` and the suite failed with
+  `AssertionError: 'refactor' unexpectedly found in ... : modules[2].findings[0].because`.
+  The refusal prose that lands on eight cards is genuinely in scope now.
+- **Attempt 2's point 1 is closed.** Both `README.md:11` and `scripts/module-depth-map.py:4`
+  print `--snapshot-date <the day you are dating it>`, and `TheDocumentedWayToRegenerateDoesNotAgeTest`
+  holds it there.
+- **Attempt 1's defect 1 stays closed.** `_A_DATE` is `[0-9]`-based; `٢٠٢٦-٠٩-٠٦`,
+  `２０２６-０９-０６` and `2026-٠٩-06` are all refused.
+- **Attempt 2's point 6 stays closed.** `0 of 1 module drawn here is scored` on the
+  lone-record fixture.
+- **`main` guarding one of `build`'s two refusals.** The comment at `cli.py:196-204` explains
+  why `SnapshotNotADate` cannot arrive there, and the explanation is true.
+- **The two refusal `because` sentences** now end on different thoughts, which is what
+  attempt 1 asked for.
+- **The zero-amount deposit refusal leaves no WARN from `io.dataroots.savingstreak`.** It is
+  pre-existing — `git diff ticket/08-the-frontend-honestly..ticket/09-what-the-page-admits --
+  backend frontend` is empty — and belongs to whichever ticket owns the deposits refusal
+  path, not to this one.
+
+### What I ran
+
+Everything below on `ticket/09-what-the-page-admits` at `a4569e3`, working tree clean before
+and after.
+
+- `cd backend && ./mvnw test` → exit 0, `Tests run: 113, Failures: 0, Errors: 0`, BUILD
+  SUCCESS. `cd frontend && npm run typecheck` → exit 0 (Node 24.16.0 from nvm on PATH;
+  system node is v16).
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` → **858 tests,
+  OK**, before my mutations and again after restoring them.
+- `python3 scripts/module-depth-map.py --snapshot-date 2026-09-06 --log-level DEBUG` → exit
+  0, and `git status --short` printed nothing afterwards, so the committed
+  `docs/module-depth-map.{json,html}` are byte-identical to a fresh run. Read from
+  `logs/09-what-the-page-admits.review.4.run.debug.log`: `run started snapshotDate=2026-09-06 ...`,
+  DEBUG `snapshot date given date=2026-09-06 reason=handed to this run; no clock is read
+  anywhere in this tool`, `graph built snapshotDate=2026-09-06 ... filesSeen=74 filesParsed=74
+  filesUnparsed=0 pathsNotRead=0 packages=9 modules=74 scored=38 neverScored=36`, and
+  `run finished snapshotDate=2026-09-06 ... flows=3 flowsTraced=3`.
+- **Refusals**, fourteen over the real repository, each a WARN naming its reason, each exit 6,
+  and no output file written in any (`logs/09-what-the-page-admits.review.4.refusals.log`):
+  `٢٠٢٦-٠٩-٠٦`, `２０２６-０９-０６`, `2026-٠٩-06`, `20260906`, `2026-W37-1`, `''` and `today`
+  refused with "is not a day written YYYY-MM-DD"; `2026-13-01` and `2026-00-01` with "month
+  must be in 1..12"; `2026-02-30`, `2026-01-00` and `2026-02-29` with "day is out of range
+  for month"; no argument at all with "no snapshot date given, so there is nothing to date
+  this page with". `2024-02-29` accepted, exit 0. Driven at the seam too: `graph.a_snapshot_date`
+  refuses `None` and the integer `20260906`, and `SnapshotNotADate` carries no `.given`.
+- **Determinism**: two runs at `2001-02-03` `cmp`-identical in both files; `2001-02-03`
+  against `2027-01-01` identical once the date is masked; today's real date `2026-09-06`
+  appears nowhere in a run dated `2001-02-03`; the only date-shaped string in that graph is
+  `2001-02-03`. `grep -rE '\.now\(|\.today\(|time\.time|new Date|Date\.now|datetime'` over
+  the tool finds `datetime` used only to build `datetime.date(year, month, day)`, and the
+  generated page contains no `new Date`, `Date.now`, `toLocaleDate` or `getFullYear`.
+- **Playwright** (chromium, sync API, `console`/`pageerror`/`requestfailed` subscribed before
+  every navigation) over the committed page and eight fixtures — one module; one module plus
+  `node_modules`; one `chmod 000` directory; two `chmod 000` directories; a `chmod 000` file;
+  one unreadable directory and nothing else; a declined path plus an excluded record; an
+  empty tree; a lone record. Light and dark, and the committed page also at 900/1024/1280/1440.
+  **Zero console messages, zero page errors, zero failed requests on every load**, and
+  `scrollWidth == clientWidth` at every width (`...review.4.browser.log`,
+  `...review.4.edge.browser.log`, `...review.4.narrow.browser.log`,
+  `...review.4.panels.browser.log`, `...review.4.onlylocked.browser.log` hold only my own
+  lines).
+- Screenshots read, not merely taken: `...review.4.browser.log.repo.light.top.png` and
+  `...nodemod.dark.top.png` (the bold dated sentence directly under the `h1`, "Snapshot
+  2026-09-06" the first fact in the counts box, "Source paths parsed 74 of 74"),
+  `...review.4.limits.dark.png` ("What this page does not measure" naming the invariants and
+  the ordering constraints, above every section that explains a measure),
+  `...review.4.narrow.browser.log.w900.png`, `...review.4.panel.AccountsService.png`.
+- **All 74 module panels** opened one at a time and their dialog text plus the page body —
+  154,267 characters, `...review.4.panels.browser.log.alltext.txt` — scanned for 19
+  prescriptive words. One hit, and it is the page's own denial ("no module here is named as
+  one that ought to change"). Separately all 7,664 strings in `docs/module-depth-map.json`:
+  **zero hits**. Criterion 7 holds.
+- **Exclusion accounting**: `data carrier 26 + generated repository 9 + entry point 1 = 36`,
+  equal to `scoring.modulesNeverScored`; all 36 never-scored modules carry an `excludedBy`
+  with both `rule` and `matched`; `74 - 36 = 38 = modulesScored`; every rule used on a card
+  is a rule declared in `scoring.exclusions`. Criterion 4 holds.
+- **Grammar in every branch I could produce**: `38 of 74 modules drawn here are scored`,
+  `1 of 1 module drawn here is scored`, `1 of 2 modules drawn here is scored`,
+  `0 of 1 module drawn here is scored`, `0 of 0 modules drawn here are scored`; never-scored
+  `36 of 74 modules are drawn but never scored`, `1 of 2 modules is drawn but never scored`,
+  `1 of 1 module is drawn but never scored`; declined paths `1 path ... nothing inside it`
+  and `2 paths ... nothing inside them`; alarm band `1 source path could not be read` and
+  `2 source paths could not be read`; CLI `inside it` and `inside them`. The disagreements
+  are the three above and the `each` at `page.py:757`.
+- `--help` prints `usage: module-depth-map --snapshot-date YYYY-MM-DD [-h] [--source DIR] ...`,
+  unbracketed and first, agreeing with the "Required" in its own help text.
+- The running application was exercised as well, though this branch touches no Java or
+  TypeScript: `GET /api/customers` → 200; `POST /api/savings-accounts/1/deposits` with
+  `{"amount":"3.00","fromCurrentAccountId":1}` → 201, leaving `INFO i.d.s.deposits.DepositsService :
+  deposit accepted depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=3.00
+  pointsEarned=3 depositedAt=2026-09-06T17:23:16.531Z` in
+  `logs/09-what-the-page-admits.app.4.backend.log`, preceded by the two DEBUG lines behind it
+  ("deposit takes its moment from the application clock ...", "deposit records what remains
+  of it ..."); the same with `0.00` → 400 with "A deposit has to be an amount of more than
+  zero, and 0.00 is not.". `grep -cE 'ERROR|Exception:'` over that log → **0**. Vite on 5173
+  → 200, its log clean.
