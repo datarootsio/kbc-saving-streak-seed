@@ -15,7 +15,7 @@ a reader to mistake the score for the whole picture.
 
 **Blocked by:** 06 (Behind the shape).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The snapshot date is supplied when the tool runs and never read from the system clock
 - [x] The page shows the snapshot date it was given
