@@ -11,11 +11,11 @@ frontend as one tidy box would be a picture that lies by omission.
 
 **Blocked by:** 03 (Reach, and the fan).
 
-Status: needs-review
+Status: needs-info
 
 - [x] Frontend source is analysed at file grain and appears on the page beside the backend modules
-- [x] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
-- [x] What a frontend module exports, and what it reaches, are both derived from the source
+- [ ] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
+- [ ] What a frontend module exports, and what it reaches, are both derived from the source
 - [x] A large frontend module presenting a small interface is not reported as deep on account of its size
 - [x] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
 - [x] Frontend source the tool cannot parse is reported loudly and named, as backend source is
@@ -786,3 +786,318 @@ And the properties this branch must not have broken, all checked by me:
   :5173 signed in and showed both savings accounts and the rewards catalogue. (The application still
   logs no `io.dataroots.savingstreak` WARN when it refuses; that is the pre-existing gap already
   recorded at the end of ticket 07 and is not this branch's doing.)
+
+## Review feedback - attempt 4
+
+**All eight points from attempt 3 are genuinely fixed.** I reproduced every one against this branch
+and every one now behaves; the list is under "What I confirmed fixed" at the bottom so you do not
+redo any of it. Both lab checks, the 718-test suite, determinism, the no-regression diff against
+ticket/07 and the page itself are all green, and the fixtures are real: restoring `21e302b`'s
+`typescriptsource.py`, `javasource.py`, `scoring.py`, `page.py` and `languages.py` under this
+branch's tests fails **20 of the 141** tests in `tests/thefrontendhonestly`, one per point you fixed.
+That is good work. Five of the seven criteria are met and I saw them work.
+
+What sends this back is two criteria I cannot tick, and the reason is a different one from the last
+three rounds. This is not about legal TypeScript being *refused* any more — I could not break that.
+It is about the fan and the card saying things the source does not say. Every point below I
+reproduced myself against this branch with the exact source shown, and **every one is latent on this
+repository** (I checked: `docs/module-depth-map.json` holds no punctuation in any `nested`, no type
+spelled two ways, and all three frontend fan lines are truthful). Latent is how attempts 1, 2 and 3
+were sent back too.
+
+The standard is the page's own sentence, printed directly above its list of over-readings:
+
+> A floor whose edge a reader cannot see is not one they can trust, and neither is a page that
+> promises a floor while holding a reading that is not one.
+
+### Blocks "what it reaches ... derived from the source"
+
+**1. `_reached_in` builds `called` with none of the guards `_calls_in` applies, so a fan line's
+evidence is a false statement about the source.** `_reached_in` (typescriptsource.py:1803-1808)
+filters only `_NOT_A_CALL` and a leading dot. `_calls_in` (1873) additionally filters
+`_PRECEDED_BY_NEW` and a declaration, and the Java side refuses exactly this reading in
+`_declares_rather_than_calls` (javasource.py:1676, applied at 1376 and 1562), whose own comment at
+javasource.py:112 calls reading a declaration as a call the failure that file exists to prevent.
+
+(a) A construction reported as a call:
+
+    $ cat /tmp/src/failed.ts
+    export class SignInFailed extends Error {}
+    $ cat /tmp/src/use.ts
+    import { SignInFailed } from './failed'
+    export function go(ok: boolean): number { if (!ok) { throw new SignInFailed() } return 1 }
+
+    src/use reach: [('module', 'failed', 'calls SignInFailed, which this file imports from it')]
+
+The file calls nothing. It constructs. `calls_from` reads the same site as `builds one`, so the fan
+and the flow contradict each other about one line of source. This is attempt 2's point 8 in a new
+spelling — that one was `new api.Thing()` on a namespace import and is still correctly refused; a
+named import is not.
+
+(b) A name that appears **only inside a type declaration** reported as a call, which invents the fan
+line outright:
+
+    $ cat /tmp/src/repo.ts
+    export function save(id: string): void {}
+    $ cat /tmp/src/api.ts
+    import { save } from './repo'
+    export interface Api { save(id: string): void }
+    export function nothing(): number { return 1 }
+
+    src/api reach 1 -> src/repo, 'calls save, which this file imports from it'
+
+`save` is a member signature in an interface. The truthful reach is 0. Neither shape is on the page's
+list of readings that go the other way, so a reader auditing a fan against the source finds a line
+the list does not account for.
+
+**2. `_read_one_export`'s `type`/`interface`/`enum` branch takes the next token as a name without
+checking it is one** (typescriptsource.py:890-894), so punctuation is recorded as a type the module
+declares and drawn on its card:
+
+    export type { Deposit } from './api'   -> nested = ['{']
+    export type * from './other'           -> nested = ['*', 'from']
+    export default class { ... }           -> nested = ['{']
+
+(The `from` comes from the `_DECLARES` sweep at line 752.) All three compile. `nested` is published in
+the graph and rendered on the card as "nested: …", so the page names a type called `{` that a reader
+can go looking for and will never find — the objection attempt 1 raised as its point 6 and attempt 3
+as its point 4.
+
+**3. A `<` comparison against a capitalised imported name in a `.tsx` file is read as a JSX
+construction** (`_A_JSX_ELEMENT`, typescriptsource.py:214):
+
+    $ cat /tmp/src/f.tsx
+    import { Max } from './limits'
+    export function F(n: number): number { if (0 < Max && n > 1) { return 1 } return 0 }
+
+    src/f reach: [('module', 'limits', 'builds one')]
+
+`_opens_type_arguments` finds no identifier behind the `<` and `0` is not in `")]"`, so the name is
+taken for an element. The file builds nothing. A comparison against an imported constant is ordinary
+code.
+
+**4. The page names a floor the tool does not have** (page.py:722, repeated in README.md). The fan
+paragraph lists, among the readings that leave a fan shorter than the source, "an import of a
+directory rather than of a file (./components, where the module is the index inside it)". But
+`followed` already returns the `<specifier>/index` candidate, and I checked end to end:
+
+    src/components/index.ts   export function Card(): number { return 1 }
+    src/App.ts                import { Card } from './components'  ...  return Card()
+
+    src/App reach 1 -> src/components/index, 'calls Card, which this file imports from it'
+
+An entry in the page's own list of known gaps that is not real devalues the rest of the list, which is
+the one thing on that page a reader is invited to check the fans against.
+
+### Blocks "the same rules as for backend modules"
+
+**5. `normalised` was extended for `|` and `&` on this attempt and never taught `{`, `}` or `=>`**
+(javasource.py:2263), which are TypeScript's commonest type punctuation and which that function is now
+applied to. Its own docstring names "one type spelled two ways" as the hazard it exists to prevent:
+
+    export function a(x: { id: number }): void {}
+    export function b(x: {id: number}): void {}
+    -> parameters '{ id: number }' and '{id: number}'      <- two strings, one type
+
+    export function e(f: (a: number) => number): void {}
+    export function g(f: (a: number)=>number): void {}
+    -> '(a: number) => number' and '(a: number)=>number'
+
+Worse, the existing `" [" -> "["` rule fires on a leading brace with nothing balancing the trailing
+one, so the card prints a spelling that is in neither the source nor any normal form:
+
+    export function c(x: { [k: string]: number }): void {}
+    -> parameter '{[k: string]: number }'
+
+That last one is attempt 3's point 8 exactly — a type printed as something the file does not
+contain — and it was the one you fixed by spelling types off the original text. This is the other
+half of it.
+
+**6. `async` is missing from `_NOT_A_CALL`** (typescriptsource.py:242), so an async arrow is read as a
+call to a name called `async`. Confirmed against the parser directly:
+
+    export const go = async (id: string): Promise<number> => { return 1 }
+    -> declared.called == ('async',)
+
+`await`, `typeof`, `void`, `catch` and the rest are all on that list. It draws a fan line in any file
+that also imports something called `async`, which is legal — `async` is only contextually reserved.
+
+**7. A `new X` written without argument brackets swallows the next call's brackets and reverses
+evaluation order**, which is the order a flow is walked in. `_calls_in` (typescriptsource.py:1909)
+calls `after_balanced(body, match.end(1))` directly; javasource.py:1577 has `_after_the_arguments` for
+exactly this and checks that a `(` actually follows. Confirmed against the parser:
+
+    export function f(): number {
+      const t = new Thing
+      other(1)
+      return 1
+    }
+    -> evaluation order [(None, 'other', False), (None, 'Thing', True)]     <- reversed
+    -> with `new Thing()` written instead: [(None, 'Thing', True), (None, 'other', False)]  (right)
+
+**8. `_receivers_in` reads the whitespace a masked regular expression leaves as a gap between a
+receiver and its dot** (typescriptsource.py:1848). Confirmed:
+
+    export function f(s: string): boolean { return /x/.test(s) }
+    -> declared.receivers == ('return',)
+
+Harmless only because nothing can import a name called `return`; the same shape after any other masked
+construct attaches a real name to a call the source never wrote on it.
+
+### Smaller, and worth fixing while you are in here
+
+**9. A default run now refuses entirely when either default root is absent** (cli.py:91-94). I copied
+`backend/` and `scripts/` into an empty directory with no `frontend/` and ran the tool with no
+arguments:
+
+    WARNING module_depth_map.cli refused to run: no such source directory frontend/src
+
+and neither output was written. Before this branch the single default always existed. A `--source` the
+operator typed is worth refusing for; a default the tool chose is not. The `sourcesNotRead` shape
+already in the document is the natural place to say a default was skipped and why.
+
+**10. `tests/thisrepository/test_this_repository_is_read_whole.py` is still pointed at
+`BACKEND_SOURCE` only** — all three classes, at lines 17, 86 and 264. That is the suite the spec
+names for "the properties that must hold on the real repository": every source file parsed or
+reported, every module scored or excluded by a named rule. This branch adds a second language to the
+default graph and did not widen the one suite whose job is that nothing in this repository goes
+missing. The determinism and committed-output suites *were* widened in the same diff; this one was
+not, so a frontend file that silently stopped parsing would pass it.
+
+**11. A multi-line type argument list in a declarator emits a phantom decline.** Found by me, not by
+the code review. `_next_declarator`'s new "a `<` is a bracket only where its partner is on the same
+line" rule (typescriptsource.py:1084-1094) is a documented trade, and the trade is sound — but it
+costs a false line in the log `_decline`'s docstring calls the complete list of what was skipped:
+
+    export const p = new Map<
+      string,
+      number
+    >(), q = (x: number): number => x
+
+    DEBUG ... export not read as a method line=1 export=p reason=what is assigned to it is a value ...
+    DEBUG ... export not read as a method line=3 export=number reason=nothing is assigned to it here
+
+There is no export called `number`. `q` is still measured and nothing moves, so this is cosmetic —
+listed so it is not rediscovered as a mystery. `{ [k: string]: number }` in an annotation does the
+same with `export=(`.
+
+**12. Two countable claims in the source are wrong by inspection.** `typescriptsource.py:74` says
+"Ten names come from the Java reading" over an import list of thirteen. `README.md` says two exports
+are failed by name on purpose (`export declare`, `export namespace`) while `_NOT_READ_HERE`
+(typescriptsource.py:317) holds three — `module` too, so `export module Foo {}` fails a file under a
+rule the README does not mention. In a file whose whole standard is that a reader can check every
+sentence against the source, these are the cheapest possible things to falsify.
+
+### How to know you are done
+
+Every point above is a fixture the suite does not have — the 718 tests pass with all twelve present.
+`tests/thefrontendhonestly` is good work, so add to it rather than starting over. Hold at minimum:
+
+- `throw new SignInFailed()` on a named import — reaching its module with evidence that says *builds*
+  rather than *calls*, or reaching nothing, but never "calls" for a construction;
+- `export interface Api { save(id: string): void }` beside `import { save } from './repo'` —
+  asserting reach 0;
+- `export type { X } from './o'`, `export type * from './o'` and `export default class { }` —
+  asserting `nested` holds no punctuation;
+- `if (0 < Max && n > 1)` in a `.tsx` against an imported `Max` — asserting it builds nothing;
+- `{ id: number }` and `{id: number}`, and `(a: A) => B` and `(a: A)=>B`, each coming out as one
+  string; and `{ [k: string]: number }` printed as the source wrote it;
+- `export const go = async () => {}` — asserting nothing called `async` is on the reading;
+- `new Thing` with no brackets followed by another call — asserting source order;
+- `return /x/.test(s)` — asserting no receiver called `return`;
+- a default run with one default root absent — asserting the other is still drawn;
+- and widen `test_this_repository_is_read_whole.py` to both roots.
+
+Then re-check page.py:722's fan paragraph and the matching README list against what the code
+actually misses, and fix the two counts in point 12.
+
+### What I confirmed fixed, so you do not redo it
+
+Every point from attempt 3, reproduced by me on this branch:
+
+1. `export function List(items: string[]): JSX.Element { return <ul>{items.map(i => <li key={i} />)}</ul> }`
+   parses — `filesUnparsed=0` — and so does the self-closing element followed by `{x ? <Bar /> : null}`.
+2. Two byte-identical modules differing only in file name, one named `format.ts` after a `format` it
+   imports: both reach `src/util` with "calls format, which this file imports from it".
+3. `export const flag = 1 < 2, b = (x: number): number => x` measures `b`;
+   `new Map<string, number>(), b = 2` still reads right.
+4. The overload set is two methods at cost 4, not three at cost 6, and the implementation is declined
+   by name with a reason. `@throws` above the second signature lands on that one only; above the
+   implementation it lands on both.
+5. `const held: Till |\n  Receipt = make()` puts both names on the seam and reaches both modules.
+6. `string|null` and `string | null` are one string.
+7. `<Icons.Chevron />` is read, said at DEBUG (`qualified names read as reaching no module here
+   names=Icons.Chevron`), and named on the page's fan paragraph beside `new api.Thing()`.
+8. `'one' | 'two' | 'three'` and `Record<'a'|'b', number>` print as the source wrote them, and charge
+   no type a reader cannot find.
+
+And the properties this branch must not have broken, all checked by me:
+
+- `cd backend && ./mvnw test` — exit 0, 113 tests, BUILD SUCCESS.
+- `cd frontend && npm run typecheck` — exit 0 (Node 24.16.0 on PATH; system node is v16).
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — **718 tests, OK**.
+- Restoring `21e302b`'s five source files under this branch's tests fails **20 of the 141** tests in
+  `tests/thefrontendhonestly`. The fixtures are real. Tree restored, `git status` clean.
+- Two fresh runs are `cmp`-identical to each other **and** to the committed
+  `docs/module-depth-map.{json,html}`; neither holds an absolute path; `git status` clean after a run;
+  0.6s.
+- Diffed all 74 modules against `ticket/07:docs/module-depth-map.json`: **no backend module moved**,
+  exactly three added (`frontend/src/App`, `frontend/src/api`, `frontend/src/main`), flows identical.
+- 500 lines of padding on a copy of the real `App.tsx` moved `lines` 1545 -> 2046 and **nothing else**
+  on any of the three modules.
+- `frontend/src/App` is 1545 lines — 5.4x the next longest file — at interface cost 1 over a fan of 1,
+  leverage 1.0, and ranks **4th** by leverage behind Java modules of 60, 67 and 149 lines. Size is not
+  depth here, which is the whole point of the ticket.
+- The same shape in both languages: a Java `Till` and a TypeScript `till`, two methods, one documented
+  refusal, three collaborators — **cost 7, refusalCost 2, reach 4, leverage 0.57, verdict "earns its
+  keep" on both sides**, same refusals and findings, only the languages' own spellings differing.
+- `typesEveryCallerAlreadyKnows` is `{"java": [43], "typescript": [21]}`; a Java domain type named
+  `Response` is charged for (cost 4, mustBeLearned true).
+- 90 files of legal TypeScript I wrote as three sweeps (50 general, 20 idiomatic React, 20 aimed at
+  this attempt's own changes) plus 16 combinatorial JSX/masking lines and all 30 real third-party
+  `.ts`/`.tsx` files under `frontend/node_modules` — every one compiled by
+  `frontend/node_modules/.bin/tsc --noEmit --strict --jsx react-jsx`, exit 0 — all read,
+  `filesUnparsed=0`. **I could not make this reading refuse legal TypeScript.** That part is done.
+- The compounded participant edit the last three reviews said would take 1545 lines off the page —
+  five components exported from a copy of the real `App.tsx`, `import './index.css'` moved second of
+  four with no semicolons, and a new `{xs.map(x => <span key={x} data-chip={x} />)}{xs.length} /
+  {xs.length}` component — gives `filesUnparsed=0`, `src/App` cost 25 with seven methods, and `main`
+  still reaching `App`.
+- Exclusions: `node_modules`, `dist`, `build`, `coverage`, `__tests__`, `*.test.ts`, `*.spec.tsx`,
+  `*.d.ts` each named with the rule and what matched; two genuinely broken files failed by name with
+  true reasons plus `WARNING ... the page is drawn from 1 of 3 source files`;
+  `--source frontend/node_modules` gives `path=the root itself` and 0 modules. `scoring.json`'s
+  `because` now says which side of its own argument `build`/`target`/`dist`/`coverage` fall on.
+- The page driven with Playwright (chromium; console, pageerror and requestfailed subscribed; log at
+  `.scratch/module-depth-map/logs/08-the-frontend-honestly.review.4.browser.log`) at 1024, 1280 and
+  1440 wide, light and dark: **zero console errors, zero pageerrors, zero failed requests**,
+  `scrollWidth == clientWidth` at every width, 74 cards, 9 package sections. `frontend/src` draws
+  first with three FILE cards; `App` is a sliver of a bar over a fan of 1, `api` the widest bar (49)
+  with a gold refusal band over no fan. All three panels open and **Escape closes each** (the card
+  opens the panel on a double-click debounce — wait for `dialog.behind[open]`, 400ms is not enough).
+  Flows mark **12 / 13 / 9** and Clear resets to 0.
+- Page edge cases, all rendering clean with no console error and no "null" in the text: a java-only
+  run ("written in java", longest module `ScheduledJobs` at 284 lines), a declined root ("Nothing was
+  read."), and a run with two unparseable files (both named with their reasons).
+- The running application is untouched by this branch (`git diff --name-only ticket/07..HEAD --
+  backend frontend` is empty) and still works. Over HTTP against the running API: 404 "No customer
+  banks here under that email address", 200 for `anke.peeters@example.be`, 201 for a 7.00 deposit,
+  400 "A deposit has to be an amount of more than zero, and 0.00 is not.", 201 for a 3.00 withdrawal
+  allocating against deposit 1, 400 "Cinema ticket costs 100 points, and this account has 27.",
+  400 "There is nothing called \"NOT_A_REWARD\" in the rewards catalogue.", and 201 for a
+  CHARITY_DONATION claim — with `i.d.s.deposits.DepositsService : deposit accepted depositId=1
+  savingsAccountId=1 fromCurrentAccountId=1 amount=7.00 pointsEarned=7`,
+  `i.d.s.deposits.WithdrawalsService : withdrawal accepted withdrawalId=1 ... amount=3.00` and
+  `i.d.savingstreak.rewards.RewardsService : claim issued redemptionId=1 savingsAccountId=1
+  reward=CHARITY_DONATION pointsSpent=10` in
+  `.scratch/module-depth-map/logs/08-the-frontend-honestly.app.4.backend.log`.
+- The tool's own logging follows CLAUDE.md: no `print` anywhere in `scripts/module_depth_map`, a
+  `module_depth_map.*` logger per file, one INFO per business event with the values behind it
+  (`largest module=... lines=1545 interfaceCost=1 reach=1 leverage=1.0`), WARNING with a reason on
+  every refusal (`could not parse ... reason=...`, `source not read ... rule=... matched=...`), DEBUG
+  for the inputs behind a decision (`interface read name=... cost=...`, `export not read as a method
+  ... reason=...`). No WARNING or ERROR from `module_depth_map` over the real source.
+- The application still logs no `io.dataroots.savingstreak` WARN when it refuses — the reason for
+  every 400 and 404 above is only visible through Spring's `ExceptionHandlerExceptionResolver` at
+  DEBUG. That is the pre-existing gap recorded at the end of ticket 07 and named by the attempt-3
+  reviewer; this branch touches no application source and it is not this branch's doing.
