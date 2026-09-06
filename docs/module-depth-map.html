@@ -7926,10 +7926,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
         "Clock",
         "Collection",
         "Comparable",
-        "Date",
         "Double",
         "Duration",
-        "Error",
         "Exception",
         "Float",
         "Instant",
@@ -7943,7 +7941,6 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
         "Number",
         "Object",
         "Optional",
-        "Record",
         "RuntimeException",
         "Set",
         "Short",
@@ -8214,12 +8211,33 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "counts " + document_.scoring.weights.typeToLearn + " — or "
     + document_.scoring.weights.typeEveryCallerAlreadyKnows + ", when "
     + document_.scoring.configuration + " lists its name under "
-    + "typesEveryCallerAlreadyKnows. That list is the whole of "
+    + "typesEveryCallerAlreadyKnows for the language that module is written in. Those "
+    + "lists are the whole of "
     + "the difference: this tool reads one source tree and never resolves a name, so a "
     + "type is one to learn because the list does not hold it and for no other reason — "
     + "not because anything here found out where it was declared. Reachable means "
     + document_.scoring.reachableFromOutside.join(", ") + ". Every bar is drawn to the same "
     + "scale, so two of them can be compared by eye.");
+  // One list per language, and each of them printed. A card's language is on the card,
+  // and without the lists beside it a reader who saw one language's Response charged for
+  // and another's charged nothing had nothing on the page that told them why. Rendered
+  // from the document rather than described, so it is the list that decided the cards.
+  var known = document_.scoring.typesEveryCallerAlreadyKnows;
+  var spoken = Object.keys(known).sort();
+  add(rules, "p", null,
+    "There is one list per language, because what a caller already holds is a fact about "
+    + "the language they are calling from rather than about this application: a "
+    + "TypeScript Response is the one a fetch hands back, and a Java one would be "
+    + "whatever this application declared under that name. So the same word on two cards "
+    + "can be free on one and cost " + document_.scoring.weights.typeToLearn
+    + " on the other, and the card says which language it was read in.");
+  spoken.forEach(function (language) {
+    var line = add(rules, "p", "known");
+    add(line, "strong", null, language);
+    add(line, "span", null,
+      " — " + count(known[language].length, "name", "names") + " a caller writing it "
+      + "is charged nothing for: " + known[language].join(", ") + ".");
+  });
   add(rules, "p", null,
     "What a bar leaves out is part of the interface too, and is not measured: the "
     + "invariants a module states in prose, the order its calls have to be made in, "

@@ -169,9 +169,9 @@ def _files_under(root, declined):
     # twenty-six dependency modules on the page, scored, drawn and reported as this
     # application's own source, with the rule that exists to stop exactly that reporting
     # nothing at all.
-    here = os.path.basename(os.path.abspath(root.path))
-    if here in declined.directories:
-        return found, unreadable, [("", "a directory named %s" % here)]
+    named = os.path.basename(os.path.abspath(root.path))
+    if named in declined.directories:
+        return found, unreadable, [("", "a directory named %s" % named)]
 
     def refuse(error):
         unreadable.append(
@@ -977,7 +977,10 @@ def _scoring(rules, modules):
         "reachableFromOutside": sorted(rules.reachable_from_outside),
         # One list per language, as the file writes it: what a caller already knows is
         # a fact about the language they are calling from, and a reader checking a card's
-        # types against this has to be able to see which list decided it.
+        # types against this has to be able to see which list decided it. The page prints
+        # both, under "What the bars measure" and beside the language each belongs to,
+        # because a reader who met the same word free on one card and charged on another
+        # had nothing on the page that told them why.
         "typesEveryCallerAlreadyKnows": {
             name: sorted(names) for name, names in sorted(rules.already_known.items())
         },

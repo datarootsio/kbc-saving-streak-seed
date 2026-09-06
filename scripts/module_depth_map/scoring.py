@@ -334,6 +334,12 @@ def _familiar_by_language(value):
     whose seam is spelled with a domain type called `Response` was charged nothing for it
     off a name that meant `fetch`'s.
 
+    Splitting the list is not a licence to widen either half. `Date`, `Error` and `Record`
+    went onto the Java list when the split was written, and each is at least as likely to
+    be a domain name in a banking application as `Response` is — the very hazard the split
+    exists to remove. They are off it again, and the Java list is the one this repository
+    was measured with before a second language was read at all.
+
     Every language this tool reads has to be named, and nothing else may be. A missing
     language would charge its callers for learning every type they meet, which is a
     position this file is entitled to hold and has to state rather than fall into; a

@@ -36,11 +36,23 @@ Two readings are looser than the Java side's and are named rather than left to b
 because JSX is prose and source in the same file and this reading does not tell them
 apart:
 
-- **JSX text is read as source.** `<p>Deposits</p>` is scanned for calls like anything
-  else. It can only *add* a name to what a module reaches, and only when that name is one
-  the file also imports, so the risk is a fan line to a card the source calls nothing on.
-  Masking it instead would need a JSX parser, and a JSX parser that got it wrong would
-  blank real code — the failure that costs a module rather than adding to one.
+- **JSX text is read as source, and only for what it can add.** `<p>Deposits</p>` is
+  scanned for calls like anything else. That reading can only *add* a name to what a
+  module reaches, and only when that name is one the file also imports, so the risk is a
+  fan line to a card the source calls nothing on. Masking it instead would need a JSX
+  parser, and a JSX parser that got it wrong would blank real code — the failure that
+  costs a module rather than adding to one.
+
+  What is *not* read out of prose is a statement. An `import`, an `export` and a
+  declaration are statements; TypeScript cannot write one inside JSX text, where the only
+  code an element holds is an expression between braces; and each of those three sweeps
+  can take something away — the first two by failing the file, the third by deciding a
+  name is the module's own rather than one it imported. `_jsx_prose_in` finds the runs of
+  prose those three step over. It blanks nothing, so a run it misses is read exactly as it
+  is read here and a run of code it wrongly calls prose costs a sweep its reading rather
+  than costing the file — which is why it is allowed to be a reading of JSX where a mask
+  would not be. Without it, one lowercase English word in a sentence of visible copy took
+  every line of the file it was written in off the page.
 - **A quote in prose is not a string.** A `'` or `"` opens a string only when a matching
   one follows it on the same line, and only when it is not written against the end of a
   word: JavaScript strings do not span lines, nothing JavaScript compiles puts a string
@@ -51,7 +63,9 @@ apart:
   braces included.
 """
 
+import bisect
 import logging
+import os
 import posixpath
 import re
 
@@ -158,6 +172,18 @@ _IMPORT_FROM = re.compile(
 # `import './index.css'`: a file brought in for what loading it does, naming nothing.
 _IMPORT_ONLY = re.compile(r"(?<![\w$.])import[ \t\r\n]+(['\"])([^'\"\n]*)\1")
 
+# `export { ring } from './till'`, `export { type Deposit } from './api'`, `export * as api
+# from './api'`. Read for one reason: what a re-export names is declared in the file the
+# specifier points at, so nothing between the two words is a declaration of this file's.
+# The clause between them is a brace group or a `*` rather than anything at all, so that a
+# `export default connect(App)` written above an ordinary import cannot be read as one
+# statement running from the first word to the second's specifier.
+_EXPORT_FROM = re.compile(
+    r"(?<![\w$.])export[ \t\r\n]+(?:type[ \t\r\n]+)?"
+    r"(?:\{[^{}'\"]*\}|\*(?:[ \t\r\n]+as[ \t\r\n]+[A-Za-z_$][\w$]*)?)[ \t\r\n]*"
+    r"(?<![\w$.])from(?![\w$])[ \t\r\n]*(['\"])([^'\"\n]*)\1"
+)
+
 # Every `import` the two patterns above have to account for between them. `import(...)`
 # is a dynamic import — an expression, not a statement naming anything at read time — and
 # `import.meta` is not an import at all, so both are held out by what follows the word.
@@ -205,10 +231,14 @@ _A_CALL = re.compile(
 # `new SignInFailed(...)`: building a collaborator is coordinating it.
 _CONSTRUCTED = re.compile(r"(?<![\w$.])new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
 
-# What stands in front of a name that is being built rather than called on. `new api.Thing()`
-# writes exactly the characters a call on `api` writes, and is neither: it builds the thing
-# the name qualifies, and nothing at all is called on `api`.
-_PRECEDED_BY_NEW = re.compile(r"(?<![\w$.])new$")
+# What a name is written out of, so that a run of them can be read backwards from a point
+# in the file rather than by anchoring a pattern to the end of a copy of everything before
+# it. `text[:position]` copies the whole prefix, and asked once per call site, receiver and
+# element it made this reading quadratic in the size of a file: 0.34s over 31 KB, 1.26s
+# over 63, 4.95s over 126 — four times the work for twice the input, where the tool's own
+# story asks for a run measured in seconds. The two readings below give the same answers in
+# the length of one word.
+_PART_OF_A_NAME = frozenset("_$")
 
 # `<App />`, `<StrictMode>`: a JSX element naming a component is that component being
 # used, which is what it compiles to — `createElement(App)` — and is coordination the
@@ -223,9 +253,6 @@ _PRECEDED_BY_NEW = re.compile(r"(?<![\w$.])new$")
 # same answer `new api.Thing()` gets and for the same reason. That is a floor rather than
 # a fan line nobody can check, and it is named on the page beside the other floors.
 _A_JSX_ELEMENT = re.compile(r"<[ \t\r\n]*([A-Z][\w$]*(?:\.[A-Za-z_$][\w$]*)*)(?=[ \t\r\n/>])")
-
-# The name a `<` that opens a type argument list stands behind.
-_A_NAME_BEHIND_IT = re.compile(r"[A-Za-z_$][\w$]*$")
 
 # What a value can end with, other than a name: a closing bracket, a digit, or the quote
 # that closes a literal. A `<` written after one of them is an operator on that value
@@ -256,10 +283,10 @@ _DOCUMENTED_REFUSAL = re.compile(
 # `AmountOfMoney.of` and `prices.of` are two — and holding it out took every call to one
 # of them off every fan.
 _NOT_A_CALL = frozenset(
-    ["as", "async", "await", "case", "catch", "class", "delete", "do", "else", "for",
-     "function", "if", "import", "in", "infer", "instanceof", "keyof", "new", "return",
-     "satisfies", "super", "switch", "this", "throw", "typeof", "void", "while", "with",
-     "yield"]
+    ["as", "async", "await", "case", "catch", "class", "default", "delete", "do", "else",
+     "for", "function", "if", "import", "in", "infer", "instanceof", "keyof", "new",
+     "return", "satisfies", "super", "switch", "this", "throw", "typeof", "void", "while",
+     "with", "yield"]
 )
 
 # The words a call cannot be written *against*, because none of them holds anything. A
@@ -347,6 +374,17 @@ _NOT_READ_HERE = ("declare", "namespace", "module")
 # about what a caller of it must learn. Stepped over so the declaration behind them is
 # read on its own terms.
 _MODIFIES_A_DECLARATION = ("async", "abstract")
+
+# And the words themselves, named rather than left to the pattern above. `[\s\w$]*` admits
+# any run of words at all, which is not what the sentence above says and not what a reader
+# checking a card can rely on: a `/** @throws Boom */` written over `let pending` was read
+# as documenting the `export function` two lines below it, and the module was then found
+# to document a refusal it never raises — a finding against a module that had said nothing
+# whatsoever. A declaration with no assignment carries no punctuation, so only the words
+# can tell it from the keywords that really do stand between a block and its declaration.
+_WORDS_A_DECLARATION_OPENS_WITH = frozenset(
+    ("export", "default", "function", "const", "let", "var") + _MODIFIES_A_DECLARATION
+)
 
 # The words a declaration can carry where its own name would otherwise be written, and
 # which are therefore not one. `export default class extends Base {}` writes one of them,
@@ -535,9 +573,14 @@ def parse(text, path, root=None):
     # `<Customer>` is an element or a generic's type arguments. The extension is the
     # whole of the rule, exactly as it is for `tsc`.
     jsx = path.endswith(".tsx")
-    _refuse_unreadable_imports(masked, text)
+    # Where this file writes prose rather than source. Read once and handed to the three
+    # sweeps that look for a statement keyword, because a statement is the one thing JSX
+    # text cannot hold — see `_jsx_prose_in`, which is also where the reason the other
+    # readings are not given it is written down.
+    prose = _jsx_prose_in(masked, jsx)
+    _refuse_unreadable_imports(masked, text, prose)
     imports = _imports_in(masked, text, where)
-    exports = _exports_in(masked, text, matching, depth_of, documented, name, jsx)
+    exports = _exports_in(masked, text, matching, depth_of, documented, name, jsx, prose)
 
     declared = DeclaredType(
         name=name,
@@ -549,7 +592,7 @@ def parse(text, path, root=None):
         methods=exports.methods,
         fields=_fields_in(masked, text, depth_of),
         constructors=(),
-        **_reached_in(masked, jsx),
+        **_reached_in(masked, jsx, prose),
     )
     types = [declared] + [
         DeclaredType(
@@ -616,13 +659,21 @@ def _place_of(path, root):
     are files the directory *is* the package a reader navigates. The name is the file's,
     without the extension, so that the id a caller's import resolves to and the id the
     graph holds are one string.
+
+    A module id is spelled with forward slashes whatever the filesystem spells a path
+    with, because it is the string an import specifier resolves to: `./api` means the same
+    thing on every machine, and an id carrying a `\\` would match no import written
+    anywhere. `graph._relative` hands this reading paths already spelled that way, and the
+    separator is taken out here as well rather than left to that: a module id is the whole
+    of how a TypeScript fan line is drawn, and a reading whose answer depends on which
+    machine it ran on is one this page cannot be checked against.
     """
     if root is None:
         raise ParseFailure(
             "this file was read with no source root, and a TypeScript module is the path "
             "it sits at rather than anything written inside it"
         )
-    directory, _, base = path.rpartition("/")
+    directory, _, base = path.replace(os.sep, "/").rpartition("/")
     name = base
     for suffix in SUFFIXES:
         if name.endswith(suffix):
@@ -715,7 +766,7 @@ def _renamed(part):
     return words[0], words[0]
 
 
-def _refuse_unreadable_imports(masked, text):
+def _refuse_unreadable_imports(masked, text, prose=()):
     """Fail the file if it wrote an import neither pattern above accounts for.
 
     `import` is reserved: outside a string or a comment it opens a statement naming a
@@ -723,6 +774,16 @@ def _refuse_unreadable_imports(masked, text):
     reading has no account of, and passing over it would take a module's whole reach with
     it — silently, since a module reaching nothing is exactly what a shallow module looks
     like.
+
+    `prose` is where this file writes JSX text, and a word standing in one of those runs
+    is not a statement — TypeScript has no way to write one there. Without this, one
+    lowercase English word inside a `<p>` failed the whole file: `<p>You can import your
+    statements here.</p>` is a sentence a banking application's sign-in screen could
+    perfectly well carry, `tsc --strict` compiles it without a word, and this tool took
+    all 1545 lines of the file it was written in off the page for "an import that names
+    no module" on a line holding no import. Only the failure is withheld; both patterns
+    above still read whatever is written there, so a real import in a run this reading
+    got wrong is read exactly as it always was.
 
     Two things wearing the word are held out by `_AN_IMPORT` itself rather than being
     read: `import.meta` is not an import at all, and `import('./api')` is an expression
@@ -736,14 +797,23 @@ def _refuse_unreadable_imports(masked, text):
         for found in pattern.finditer(masked):
             accounted.add(found.start())
     for found in _AN_IMPORT.finditer(masked):
-        if found.start() not in accounted:
-            raise ParseFailure(
-                "the import on line %d could not be read: it names no module in either "
-                "of the two forms this tool reads" % line_of(text, found.start())
+        if found.start() in accounted:
+            continue
+        if _falls_inside(prose, found.start()):
+            log.debug(
+                "word not read as an import line=%d reason=%s",
+                line_of(text, found.start()),
+                "it stands in a run of JSX text, which is prose rather than source, and "
+                "no statement can be written there",
             )
+            continue
+        raise ParseFailure(
+            "the import on line %d could not be read: it names no module in either "
+            "of the two forms this tool reads" % line_of(text, found.start())
+        )
 
 
-def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
+def _exports_in(masked, text, matching, depth_of, documented, module, jsx, prose=()):
     """What a caller of this file can reach, and the types the file declares.
 
     Read from the `export` keyword outwards, because that is the whole of a TypeScript
@@ -756,6 +826,14 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
     measured, which is the same answer the Java side gives to a public field and to a type
     declared inside a module. Both are logged with the reason, so the floor's edge can be
     read rather than discovered.
+
+    `prose` is where this file writes JSX text. A declaration is a statement and an
+    `export` opens one, and neither can be written inside JSX text, so both sweeps here
+    step over a word standing in a run of it. Without that, the stock entry-point shape —
+    top-level JSX, which is written in exactly one kind of file and this repository's
+    `main.tsx` is that file — failed for the word `export` in `<main>Use the export
+    button</main>`, and a `<p>` carrying the words `const total` put a binding on the
+    module that no line of it declares.
     """
     methods = []
     types = []
@@ -766,7 +844,7 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
     # written that way reads as presenting nothing, which is the finding this page exists
     # to make and would then be making about nothing.
     declared_at = {}
-    for found in _DECLARES.finditer(masked):
+    for found in _declarations_in(masked, prose):
         if depth_of[found.start()] == 0 and found.group(2) not in declared_at:
             declared_at[found.group(2)] = (found.group(1), found.end(1))
     # Where each method's `export` was written, kept beside the methods themselves so that
@@ -776,12 +854,20 @@ def _exports_in(masked, text, matching, depth_of, documented, module, jsx):
     for found in _AN_EXPORT.finditer(masked):
         if depth_of[found.start()] != 0:
             continue
+        if _falls_inside(prose, found.start()):
+            log.debug(
+                "word not read as an export line=%d reason=%s",
+                line_of(text, found.start()),
+                "it stands in a run of JSX text, which is prose rather than source, and "
+                "no statement can be written there",
+            )
+            continue
         _read_one_export(
             masked, text, matching, documented, module, found.end(), methods, types, jsx,
             declared_at,
         )
         written_at.extend([found.start()] * (len(methods) - len(written_at)))
-    for found in _DECLARES.finditer(masked):
+    for found in _declarations_in(masked, prose):
         # A type the file declares but does not export is still a type declared inside
         # this module, and is named on it exactly as a nested Java type is named on the
         # class that holds it.
@@ -1144,6 +1230,55 @@ def _bindings_from(masked, text, position, matching, documented, module, jsx):
     return methods
 
 
+# The bracket pairs a scan counts, openers and closers in the same order. Two sets rather
+# than one, because the two questions this file asks are different ones. A scan reading a
+# *type* — a return type, a written annotation, a generic's arguments — counts angle
+# brackets, since `Map<string, number>` is one type and the comma inside it separates
+# nothing. A scan reading a *value* does not: `1 < 2` is a comparison, and counted as a
+# bracket it left the depth above zero for the rest of the statement.
+_BRACKETS_OF_A_TYPE = ("(<[{", ")>]}")
+_BRACKETS_OF_A_VALUE = ("([{", ")]}")
+_ANGLES = ("<", ">")
+
+
+def _at_each_depth(masked, position, brackets, limit=None):
+    """Every offset from `position` on, with the bracket depth it is written at.
+
+    The one loop this file counts brackets in. Seven scanners below re-implemented it,
+    differing only in which characters they counted, what they stopped at and whether they
+    took a bound — and four review findings are what the differences between them cost: a
+    return type written as a function type failed its whole file, a parameter list holding
+    an `=>` collapsed to one parameter, a comparison in a declarator list lost every
+    declarator after it, and a wrapped annotation was recorded truncated. Each was one
+    scanner disagreeing with the others about a character.
+
+    An opening bracket comes back at the depth in front of it and a closing one at the
+    depth behind it, so the `)` that closes a group opened at depth 0 comes back as 0 and
+    one that closes nothing comes back as -1 — which is how a caller reading inside a
+    group knows it has run out of one.
+
+    The `>` of an `=>` closes nothing, and that rule lives here now rather than in five of
+    the seven places it used to. `ends_an_arrow` is asked about every closing bracket and
+    answers for no other, so a scan that does not count angle brackets at all is unchanged
+    by it.
+    """
+    opening, closing = brackets
+    depth = 0
+    at = position
+    end = len(masked) if limit is None else min(limit, len(masked))
+    while at < end:
+        character = masked[at]
+        if character in opening:
+            yield at, character, depth
+            depth += 1
+        elif character in closing and not ends_an_arrow(masked, at):
+            depth -= 1
+            yield at, character, depth
+        else:
+            yield at, character, depth
+        at += 1
+
+
 def _next_declarator(masked, position):
     """Where the declarator after this one starts, or None when this was the last of them.
 
@@ -1178,38 +1313,26 @@ def _next_declarator(masked, position):
     the log `_decline` calls the complete list of what was skipped carried a line about an
     export called `number` that this file does not contain.
     """
-    depth = 0
-    at = position
     ends_at = _end_of_the_declaration(masked, position)
-    while at < len(masked):
-        character = masked[at]
-        if character == "<":
-            closed = (
-                _after_angles(masked, at, ends_at)
-                if _A_NAME_BEHIND_IT.search(masked[:at].rstrip()) is not None
-                else None
-            )
-            if closed is not None:
-                at = closed
-                continue
-            at += 1
+    skip_to = position
+    for at, character, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_VALUE):
+        if at < skip_to:
             continue
-        if character in "([{":
-            depth += 1
-        elif character in ")]}":
-            if depth == 0:
-                return None
-            depth -= 1
-        elif depth == 0:
-            if character == ",":
-                return at + 1
-            if character == ";":
-                return None
-            if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(
-                masked, at
-            ):
-                return None
-        at += 1
+        if character == "<" and _the_name_before(masked, at)[0]:
+            closed = _after_angles(masked, at, ends_at)
+            if closed is not None:
+                skip_to = closed
+            continue
+        if depth < 0:
+            return None
+        if depth or character in "([{":
+            continue
+        if character == ",":
+            return at + 1
+        if character == ";":
+            return None
+        if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(masked, at):
+            return None
     return None
 
 
@@ -1222,24 +1345,15 @@ def _end_of_the_declaration(masked, position):
     happily with the `>` of some generic further down the file and steps over everything
     in between, which is the whole reason `_after_angles` asks for one.
     """
-    depth = 0
-    at = position
-    while at < len(masked):
-        character = masked[at]
-        if character in "([{":
-            depth += 1
-        elif character in ")]}":
-            if depth == 0:
-                return at
-            depth -= 1
-        elif depth == 0:
-            if character == ";":
-                return at
-            if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(
-                masked, at
-            ):
-                return at
-        at += 1
+    for at, character, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_VALUE):
+        if depth < 0:
+            return at
+        if depth or character in "([{":
+            continue
+        if character == ";":
+            return at
+        if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(masked, at):
+            return at
     return len(masked)
 
 
@@ -1269,11 +1383,11 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
         # calling it hands back, so the signature below is where the interface is read —
         # and it is what a parameter written with no type of its own is typed by, which is
         # why whichever reading follows is told about it.
-        while token is not None and token != "=":
-            token, at, after = _token_at(masked, after)
-        if token is None:
+        assigned = _the_assignment_after(masked, after)
+        if assigned is None:
             _decline(text, start, name, "nothing is assigned to it here")
             return None
+        token, at, after = _token_at(masked, assigned)
     if token != "=":
         _decline(text, start, name, "nothing is assigned to it here")
         return None
@@ -1290,10 +1404,16 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
         return _arrow_from(masked, text, at, matching, documented, module, name, jsx,
                            position, annotated)
     if token and re.match(r"[A-Za-z_$][\w$]*$", token):
-        after_the_name = _token_at(masked, after)[0]
+        after_the_name, _, after_the_arrow = _token_at(masked, after)
         if after_the_name == "=>":
             # `const of = value => ...`: one parameter with no brackets around it and no
-            # type written on it.
+            # type written on it. Its body is read the same way a bracketed arrow's is.
+            token, body_at, _ = _token_at(masked, after_the_arrow)
+            body = (
+                (body_at + 1, matching[body_at])
+                if token == "{" and body_at in matching
+                else _the_expression_after(masked, after_the_arrow)
+            )
             return Method(
                 name=name,
                 visibility="public",
@@ -1301,11 +1421,47 @@ def _binding_from(masked, text, position, matching, documented, module, jsx):
                 returns=INFERRED,
                 documented_refusals=_documented_before(masked, position, documented, module),
                 has_a_body=True,
-                calls=(),
+                calls=_calls_in(masked[body[0]:body[1]], jsx),
             )
     _decline(text, start, name, "what is assigned to it is a value rather than a "
              "function, and what a caller reads off a module is priced nowhere here — "
              "the same answer the Java side gives a public field")
+    return None
+
+
+def _the_expression_after(masked, position):
+    """A concise arrow's body: the expression from here to the end of this declarator.
+
+    `() => get('x')` is a function with a body, and the body is the expression. It ends
+    where the declarator does — at the comma before the next one where the source wrote a
+    list, and at the end of the declaration otherwise — because an arrow written concisely
+    has no brace to end it.
+    """
+    comma = _next_declarator(masked, position)
+    ends_at = _end_of_the_declaration(masked, position) if comma is None else comma - 1
+    return position, max(position, ends_at)
+
+
+def _the_assignment_after(masked, position):
+    """Where the `=` assigning a value to this binding is written, or None if there is none.
+
+    Angle brackets are brackets here, because what stands between the `:` and the `=` is a
+    *type*, and a type may write an `=` of its own: `export const ring: <T = string>(a: T)
+    => T = (a) => a` writes two, and the first is a generic's default. Walked token by
+    token to the first `=` instead, the default was taken for the assignment, `ring` came
+    out as a value rather than a function, and the declined log — the line `_decline`'s
+    docstring calls the complete list of what was skipped — said something untrue about
+    the file.
+
+    The declaration is the bound. A `let` may be written with a type and no value at all,
+    and without one the search ran off to whatever `=` was written next in the file.
+    """
+    ends_at = _end_of_the_declaration(masked, position)
+    for at, character, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_TYPE, ends_at):
+        if depth < 0:
+            return None
+        if depth == 0 and character == "=" and not _part_of_an_operator(masked, at, "="):
+            return at
     return None
 
 
@@ -1344,9 +1500,15 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
             "should" % (name, line_of(text, at), token)
         )
     token, body_at, _ = _token_at(masked, after)
-    body = None
     if token == "{" and body_at in matching:
         body = (body_at + 1, matching[body_at])
+    else:
+        # A concise arrow: `() => get('x')` has a body and it is the expression itself.
+        # Read as no body at all, the method reported calling nothing while the module
+        # reported calling `get` — so a fan drawn off the module and a flow walked out of
+        # the method disagreed about one line of source, with nothing anywhere saying the
+        # body had not been read. Concise arrows are how a frontend writes its handlers.
+        body = _the_expression_after(masked, after)
     return Method(
         name=name,
         visibility="public",
@@ -1357,7 +1519,7 @@ def _arrow_from(masked, text, position, matching, documented, module, name, jsx,
             masked, position if documented_at is None else documented_at, documented, module
         ),
         has_a_body=True,
-        calls=_calls_in(masked[body[0]:body[1]], jsx) if body is not None else (),
+        calls=_calls_in(masked[body[0]:body[1]], jsx),
     )
 
 
@@ -1403,18 +1565,10 @@ def _up_to_the_arrow(masked, position):
     closed the group its own `(` had opened, and the arrow that ends the type was never
     found.
     """
-    depth = 0
-    at = position
-    while at < len(masked):
+    for at, _, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_TYPE):
         if depth == 0 and masked.startswith("=>", at):
             return masked[position:at], at
-        character = masked[at]
-        if character in "(<[{":
-            depth += 1
-        elif character in ")>]}" and not ends_an_arrow(masked, at):
-            depth -= 1
-        at += 1
-    return masked[position:], at
+    return masked[position:], len(masked)
 
 
 def _rename(method, name):
@@ -1467,17 +1621,9 @@ def _after_angles(masked, position, limit=None):
     to search the whole file this would happily pair it with the `>` of some generic
     fifty lines further down and step over everything in between.
     """
-    depth = 0
-    at = position
-    end = len(masked) if limit is None else min(limit, len(masked))
-    while at < end:
-        if masked[at] == "<":
-            depth += 1
-        elif masked[at] == ">" and not ends_an_arrow(masked, at):
-            depth -= 1
-            if depth == 0:
-                return at + 1
-        at += 1
+    for at, character, depth in _at_each_depth(masked, position, _ANGLES, limit):
+        if character == ">" and depth == 0:
+            return at + 1
     return None
 
 
@@ -1598,25 +1744,15 @@ def _first_at_depth_zero(masked, position, wanted):
     zero, this returned None, and `_returns_and_body` failed the file for a return type
     "nothing closes" — 1545 lines off the page for source `tsc` compiles without a word.
     """
-    depth = 0
-    at = position
-    while at < len(masked):
-        character = masked[at]
-        if character == wanted and depth == 0:
+    for at, character, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_TYPE):
+        if depth == 0 and character == wanted:
             return at
-        if character in "(<[":
-            depth += 1
-        elif character in ")>]" and not ends_an_arrow(masked, at):
-            depth -= 1
-            if depth < 0:
-                return None
-        elif character == "{":
-            if depth == 0:
-                return at if wanted == "{" else None
-            depth += 1
-        elif character == "}":
-            depth -= 1
-        at += 1
+        if depth == 0 and character == "{":
+            # A brace outside every bracket is the body, or the type the body follows.
+            # Either way the signature has ended and whatever was wanted is not in it.
+            return None
+        if depth < 0 and character in ")>]":
+            return None
     return None
 
 
@@ -1737,19 +1873,11 @@ def _first_in_the_open(written, wanted, position=0):
     An `=` that is part of an operator is not an assignment: `(cb: (a: A) => void = noop)`
     writes three of them and only the last is the default.
     """
-    depth = 0
-    at = position
-    while at < len(written):
-        character = written[at]
+    for at, character, depth in _at_each_depth(written, position, _BRACKETS_OF_A_VALUE):
+        if depth < 0:
+            return None
         if depth == 0 and character == wanted and not _part_of_an_operator(written, at, wanted):
             return at
-        if character in "([{":
-            depth += 1
-        elif character in ")]}":
-            depth -= 1
-            if depth < 0:
-                return None
-        at += 1
     return None
 
 
@@ -1798,26 +1926,18 @@ def _up_to_the_assignment(masked, position):
     are the only two ways a type can be continued onto the next line at bracket depth
     zero. The `=` and the `;` still end it, so a type that runs on cannot run away.
     """
-    depth = 0
-    at = position
-    while at < len(masked):
+    for at, character, depth in _at_each_depth(masked, position, _BRACKETS_OF_A_TYPE):
         if masked.startswith("=>", at):
             # The arrow inside a written function type, which assigns nothing and closes
             # nothing: `const ring: () => void = ...` writes one before the `=` that does.
-            at += 2
+            # Its `>` closes nothing either, and `_at_each_depth` is where that is settled.
             continue
-        character = masked[at]
-        if character in "(<[{":
-            depth += 1
-        elif character in ")>]}" and not ends_an_arrow(masked, at):
-            depth -= 1
-        elif depth == 0 and character == "\n" and _a_type_carries_on_over(masked, at):
-            at += 1
+        if depth or character not in "=;\n":
             continue
-        elif depth == 0 and character in "=;\n":
-            return masked[position:at], at
-        at += 1
-    return masked[position:], at
+        if character == "\n" and _a_type_carries_on_over(masked, at):
+            continue
+        return masked[position:at], at
+    return masked[position:], len(masked)
 
 
 # What joins the two halves of a type written over more than one line: a union, an
@@ -1862,7 +1982,7 @@ def _jsx_elements_in(masked, jsx):
         return []
     found = []
     for match in _A_JSX_ELEMENT.finditer(masked):
-        if _opens_type_arguments(masked[:match.start()]):
+        if _opens_type_arguments(masked, match.start()):
             log.debug(
                 "angle brackets not read as an element name=%s reason=%s",
                 match.group(1),
@@ -1874,8 +1994,53 @@ def _jsx_elements_in(masked, jsx):
     return found
 
 
-def _opens_type_arguments(before):
-    """Whether the `<` after this text is anything other than a tag opening.
+def _the_name_before(text, position):
+    """The name written just in front of this offset, and where the text in front ends.
+
+    ("" , ends_at) when what stands there is not a name — punctuation, a digit, or the
+    start of the file. `ends_at` is where the text in front ends once its whitespace is
+    stepped over, so a caller that wants the character rather than the name can read it
+    without slicing anything.
+
+    A run of name characters that opens with a digit is not a name from its first
+    character, and the leading digits are stepped over exactly as a `$`-anchored pattern
+    steps over them: `1 < 2` writes no name in front of the `<`, which is the whole of how
+    a comparison in a declarator list is told from a type argument list.
+    """
+    at = position
+    while at > 0 and text[at - 1] in " \t\r\n":
+        at -= 1
+    ends_at = at
+    while at > 0 and (text[at - 1].isalnum() or text[at - 1] in _PART_OF_A_NAME):
+        at -= 1
+    while at < ends_at and text[at].isdigit():
+        at += 1
+    return text[at:ends_at], ends_at
+
+
+def _preceded_by_new(text, position):
+    """Whether the word `new` is written just in front of this offset.
+
+    `new api.Thing()` writes exactly the characters a call on `api` writes, and is
+    neither: it builds the thing the name qualifies, and nothing at all is called on `api`.
+    """
+    at = position
+    while at > 0 and text[at - 1] in " \t\r\n":
+        at -= 1
+    if at < 3 or text[at - 3:at] != "new":
+        return False
+    before = text[at - 4] if at >= 4 else ""
+    return not (before.isalnum() or before in "_$.")
+
+
+def _a_member_is_read_at(text, position):
+    """Whether a dot stands just in front of this offset, so a receiver holds what follows."""
+    _, ends_at = _the_name_before(text, position)
+    return ends_at > 0 and text[ends_at - 1] == "."
+
+
+def _opens_type_arguments(masked, position):
+    """Whether the `<` at this offset is anything other than a tag opening.
 
     What stands in front of it is the whole of the answer, the same way it is for a slash
     that might open a regular expression, and the question it really answers is whether a
@@ -1896,16 +2061,220 @@ def _opens_type_arguments(before):
     opening tag as surely as it ends a type argument list, and `<div><Card /></div>` is how
     the nesting is written.
     """
-    trimmed = before.rstrip()
-    if not trimmed:
+    name, ends_at = _the_name_before(masked, position)
+    if name:
+        return name not in _BEFORE_A_REGEX
+    if not ends_at:
         return False
-    name = _A_NAME_BEHIND_IT.search(trimmed)
-    if name is not None:
-        return name.group(0) not in _BEFORE_A_REGEX
-    return trimmed[-1] in _A_VALUE_CAN_END_WITH
+    return masked[ends_at - 1] in _A_VALUE_CAN_END_WITH
 
 
-def _reached_in(masked, jsx):
+# The name a JSX tag is written with: an HTML element, a component, or a member of one.
+# Wider than `_A_JSX_ELEMENT`'s, which asks a different question — that one is about which
+# names a file *uses*, so only a capitalised name can be one; this is about where the prose
+# in a file starts and stops, and `<p>` opens a run of prose exactly as `<Card>` does.
+_A_TAG_NAME = re.compile(r"[A-Za-z_$][\w$.\-]*")
+
+# What may stand immediately after a tag's name: whitespace before an attribute, the slash
+# of a self-closing tag, or the bracket that ends the tag. Anything else means the `<` was
+# never a tag — `<T,>(each: T) => each` is a generic arrow written in a `.tsx` file, and
+# the comma is the whole of what says so.
+_ENDS_A_TAG_NAME = frozenset(" \t\r\n/>")
+
+# How far this reading will follow one element into another before giving up on it. A
+# bound rather than a recursion the interpreter ends for us, and a file nested deeper than
+# this is read as though it held no JSX prose at all — which costs the statement sweeps
+# below their exemption and costs nothing else.
+_AS_DEEP_AS_JSX_IS_FOLLOWED = 200
+
+
+def _jsx_prose_in(masked, jsx):
+    """Every run of JSX text in this file, as spans of it.
+
+    JSX is prose and source in the same file, and this reading has no grammar to tell the
+    two apart. What it has is the difference between the two kinds of reading it takes.
+    A call, an element and a `throw` are *expressions*, and one found in prose can only
+    add a name to what a module reaches, which is the trade the top of this file names.
+    `import`, `export` and a declaration are *statements*, and TypeScript cannot write a
+    statement inside JSX text: the only code an element holds is an expression between
+    braces. So one of those words standing in a run of prose is prose, and a sweep that
+    fails the file for it has misread the file rather than found unreadable source.
+
+    That is what this is for and the whole of what it is for. **Nothing here blanks
+    anything.** A run of prose this misses is read exactly as it is read today, and a run
+    of code this wrongly calls prose costs a statement sweep its reading rather than
+    costing the file its place on the page. Both directions are recoverable, which is why
+    this is allowed to be a reading of JSX rather than a parser of it.
+
+    A `<` opens an element only in a file JSX is legal in, only where no value is already
+    written in front of it, and only when a tag name or a fragment's `>` follows. An
+    element whose closing tag this never meets yields nothing at all, so the generic arrow
+    `<T extends object>(each: T) => each` — which wears an opening tag's shape and closes
+    nowhere — leaves this reading exactly where it found it.
+    """
+    if not jsx:
+        return ()
+    prose = []
+    position = 0
+    while True:
+        opening = masked.find("<", position)
+        if opening < 0:
+            return tuple(prose)
+        if _opens_type_arguments(masked, opening):
+            position = opening + 1
+            continue
+        found = []
+        ends_at = _after_the_element(masked, opening, found, 0)
+        if ends_at is None:
+            position = opening + 1
+            continue
+        prose.extend(found)
+        position = ends_at
+
+
+def _after_the_element(masked, position, prose, depth):
+    """Just past the JSX element opening at `position`, or None if this is not one.
+
+    The prose of its children is appended to `prose` as it is read. None is the answer to
+    every doubt: a tag whose name is not one, an attribute list nothing closes, a brace
+    group nothing closes, a closing tag naming something else and prose running off the
+    end of the file all come back as "this was not an element", and the caller carries on
+    from the character after the `<` as though it had never asked.
+    """
+    if depth > _AS_DEEP_AS_JSX_IS_FOLLOWED:
+        return None
+    at = _past_the_blanks(masked, position + 1)
+    if at < len(masked) and masked[at] == ">":
+        name = ""                                            # `<>`, a fragment.
+        at += 1
+    else:
+        named = _A_TAG_NAME.match(masked, at)
+        if named is None:
+            return None
+        name = named.group(0)
+        if named.end() >= len(masked) or masked[named.end()] not in _ENDS_A_TAG_NAME:
+            return None
+        at = _after_the_attributes(masked, named.end())
+        if at is None:
+            return None
+        if masked[at - 2:at] == "/>":
+            return at
+    return _after_the_children(masked, at, name, prose, depth)
+
+
+def _after_the_attributes(masked, position):
+    """Just past the `>` or `/>` that ends this tag, or None if nothing does.
+
+    An attribute's value can be a brace group holding any expression there is, so brace
+    groups are stepped over whole rather than read. A quoted value is already blank by the
+    time this runs, its own quotes left standing, so nothing written in one can be taken
+    for punctuation of the tag.
+    """
+    while position < len(masked):
+        if masked[position] == "{":
+            position = _after_the_braces(masked, position)
+            if position is None:
+                return None
+            continue
+        if masked[position] == ">":
+            return position + 1
+        position += 1
+    return None
+
+
+def _after_the_children(masked, position, name, prose, depth):
+    """Just past the tag closing this element, or None if this reading never met it."""
+    while True:
+        run = position
+        while position < len(masked) and masked[position] not in "<{":
+            position += 1
+        if position >= len(masked):
+            return None
+        if position > run:
+            prose.append((run, position))
+        if masked[position] == "{":
+            position = _after_the_braces(masked, position)
+            if position is None:
+                return None
+            continue
+        after = _past_the_blanks(masked, position + 1)
+        if after < len(masked) and masked[after] == "/":
+            closed = masked.find(">", after)
+            if closed < 0 or masked[after + 1:closed].strip() != name:
+                return None
+            return closed + 1
+        position = _after_the_element(masked, position, prose, depth + 1)
+        if position is None:
+            return None
+
+
+def _after_the_braces(masked, position):
+    """Just past the brace closing the group at `position`, or None if nothing closes it."""
+    closed = after_balanced(masked, position, "{", "}")
+    return closed if masked[closed - 1:closed] == "}" else None
+
+
+def _past_the_blanks(masked, position):
+    """The first offset at or after `position` that is not whitespace."""
+    while position < len(masked) and masked[position] in " \t\r\n":
+        position += 1
+    return position
+
+
+def _falls_inside(spans, position):
+    """Whether this offset falls inside one of these spans, which must not overlap.
+
+    The one span that could hold the offset is found rather than looked for. Asked once
+    per declaration, import and export over a file carrying a run of prose for every
+    paragraph in it, walking the whole list each time would be the same quadratic shape
+    `_the_name_before` exists to keep out of this reading. `_jsx_prose_in` builds its
+    spans in the order they are written and never overlapping; `_merged` is what any
+    other caller hands over.
+    """
+    at = bisect.bisect_right(spans, (position, float("inf")))
+    return at > 0 and spans[at - 1][1] > position
+
+
+def _merged(spans):
+    """These spans in order, with any that overlap joined into one."""
+    joined = []
+    for start, ends_at in sorted(spans):
+        if joined and start <= joined[-1][1]:
+            joined[-1] = (joined[-1][0], max(joined[-1][1], ends_at))
+            continue
+        joined.append((start, ends_at))
+    return joined
+
+
+def _declarations_in(masked, prose):
+    """Every `_DECLARES` match that names something this file's own source declares.
+
+    A `_DECLARES` match is not always a declaration, and both ways it is not put a name on
+    a card that no line of the file introduces.
+
+    `import type Customer from './api'`, `import { type Deposit } from './api'` and
+    `export { type Deposit } from './api'` each write `type` in front of a name whose
+    declaration is in the file the specifier points at. Read as declarations of this one,
+    `Customer` went onto the card as a type this module declares — a name a reader can go
+    looking for and will never find here — and, because the same reading decides which
+    names a body declares for itself, a value import of that name had its fan line
+    suppressed.
+
+    A word standing in a run of JSX prose is not a declaration either, for the reason
+    `_jsx_prose_in` gives: a statement cannot be written there.
+    """
+    elsewhere = _merged(
+        found.span()
+        for pattern in (_IMPORT_FROM, _IMPORT_ONLY, _EXPORT_FROM)
+        for found in pattern.finditer(masked)
+    )
+    for found in _DECLARES.finditer(masked):
+        if _falls_inside(prose, found.start()) or _falls_inside(elsewhere, found.start()):
+            continue
+        yield found
+
+
+def _reached_in(masked, jsx, prose=()):
     """What this file's implementation reaches for, by name and never by volume.
 
     The same five readings the Java side takes, over the whole file rather than over one
@@ -1924,15 +2293,19 @@ def _reached_in(masked, jsx):
     plain = _THROUGH_THIS.sub("", masked)
     receivers = _receivers_in(plain)
     called = set()
-    declares = {found.group(2) for found in _DECLARES.finditer(masked)}
+    # Read through `_declarations_in` rather than off the pattern, because a name this
+    # module does not declare, taken for one it does, takes a fan line off this module
+    # rather than adding one — the one direction the trade at the top of this file says
+    # reading JSX text as source is never allowed to go, and the same is true of a name a
+    # specifier hands on from another file.
+    declares = {found.group(2) for found in _declarations_in(masked, prose)}
     for found in _A_CALL.finditer(masked):
         name = found.group(1)
         if name in _NOT_A_CALL:
             continue
-        before = masked[:found.start(1)].rstrip()
-        if before.endswith("."):
+        if _a_member_is_read_at(masked, found.start(1)):
             continue
-        if _PRECEDED_BY_NEW.search(before):
+        if _preceded_by_new(masked, found.start(1)):
             # `new SignInFailed()` puts a name in front of brackets with nothing but
             # `new` in front of the name, so it reads as a bare call to something spelled
             # `SignInFailed`. It is a construction, reported as one below, and read as a
@@ -2032,7 +2405,7 @@ def _receivers_in(plain):
     """
     found = set()
     for match in _A_RECEIVER_CALL.finditer(plain):
-        if _PRECEDED_BY_NEW.search(plain[:match.start(1)].rstrip()):
+        if _preceded_by_new(plain, match.start(1)):
             log.debug(
                 "name not read as a receiver name=%s reason=%s",
                 match.group(1),
@@ -2068,7 +2441,7 @@ def _calls_in(body, jsx):
     found = []
     for match in _A_RECEIVER_CALL.finditer(body):
         receiver, name = match.group(1), match.group(2)
-        if _PRECEDED_BY_NEW.search(body[:match.start(1)].rstrip()):
+        if _preceded_by_new(body, match.start(1)):
             continue
         if receiver in _NOT_A_RECEIVER:
             # The same reading `_receivers_in` declines, declined here too so that a flow
@@ -2083,8 +2456,7 @@ def _calls_in(body, jsx):
         name = match.group(1)
         if name in _NOT_A_CALL:
             continue
-        before = body[:match.start(1)].rstrip()
-        if before.endswith(".") or _PRECEDED_BY_NEW.search(before):
+        if _a_member_is_read_at(body, match.start(1)) or _preceded_by_new(body, match.start(1)):
             continue
         if _declares_rather_than_calls(body, match):
             continue
@@ -2112,6 +2484,18 @@ def _refusals_documented_in(text, documentation):
     return ends_at_of, names_of
 
 
+def _nothing_but_a_declaration_between(written):
+    """Whether nothing but the words a declaration opens with stands in this gap.
+
+    Punctuation is a whole statement standing between a JSDoc block and what follows it,
+    and so is any other word: `let pending` between the two is a declaration of its own,
+    and the block above it belongs to it rather than to whatever is written next.
+    """
+    if not _NOTHING_BUT_WORDS.fullmatch(written):
+        return False
+    return all(word in _WORDS_A_DECLARATION_OPENS_WITH for word in written.split())
+
+
 def _documented_before(masked, at, documented, module):
     """The refusals the JSDoc immediately above this declaration promises, if there is one.
 
@@ -2129,7 +2513,7 @@ def _documented_before(masked, at, documented, module):
         # and a block above that documents that rather than this. Another comment in
         # between is already blanked to spaces by the time this reads, so a JSDoc with a
         # plain note under it still documents the declaration below both.
-        if ends_at <= at and _NOTHING_BUT_WORDS.fullmatch(masked[ends_at:at]):
+        if ends_at <= at and _nothing_but_a_declaration_between(masked[ends_at:at]):
             best = index
     if best is None:
         return ()

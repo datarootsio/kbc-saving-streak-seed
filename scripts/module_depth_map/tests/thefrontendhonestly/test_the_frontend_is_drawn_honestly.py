@@ -3120,3 +3120,640 @@ class ThreeExportsAreFailedByNameOnPurposeTest(SourceTreeTest):
         self.assertIn("Fourteen names come from the Java reading", source)
         self.assertIn("Six are the", source)
         self.assertIn("The other eight are punctuation", source)
+
+
+class ProseInsideJsxIsNotAStatementTest(SourceTreeTest):
+    """A word in visible copy is not source, and failing a file for one is a bug.
+
+    `README.md` promises that legal TypeScript is never failed, and says why it matters
+    more here than on the Java side: a failed file is a whole module off the page and every
+    fan line into it gone with it. One lowercase English word in a paragraph of JSX broke
+    that promise twice — `import` at any depth, and `export` at the top level, which is the
+    shape an entry point is written in.
+
+    The near-misses are held here beside the shapes that failed, because a fix that turned
+    the sweeps off would pass a test written only about the failures and would lose every
+    real import and export in the frontend.
+    """
+
+    def read(self, *sources):
+        tree = self.tree("web")
+        for name, body in sources:
+            tree.typescript("", name, body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        self.assertEqual(0, document["source"]["filesUnparsed"])
+        return {module["id"]: module for module in document["modules"]}
+
+    def test_the_word_import_in_a_paragraph_does_not_fail_the_file(self):
+        """The edit that found this: one sentence of copy on a bank's sign-in screen."""
+        modules = self.read(
+            ("help.tsx",
+             "export default function Help(): JSX.Element {\n"
+             "  return <p>You can import your statements here.</p>\n"
+             "}\n"),
+        )
+
+        self.assertEqual(["Help"], [each["name"] for each in modules["web/help"]["interface"]["methods"]])
+
+    def test_the_word_import_written_over_several_lines_of_prose_is_prose_too(self):
+        self.read(
+            ("help.tsx",
+             "export function Help(): JSX.Element {\n"
+             "  return (\n    <p>\n      You can import your statements here.\n    </p>\n  )\n}\n"),
+        )
+
+    def test_the_word_import_nested_inside_another_element_is_prose_too(self):
+        self.read(
+            ("help.tsx",
+             "export function Help(): JSX.Element {\n"
+             "  return <div><p>please import <b>and export</b> it</p></div>\n"
+             "}\n"),
+        )
+
+    def test_the_word_export_in_top_level_jsx_does_not_fail_the_entry_point(self):
+        """Top-level JSX is written in exactly one kind of file, and this is that file."""
+        modules = self.read(
+            ("entry.tsx",
+             "import { createRoot } from 'react-dom/client'\n"
+             "createRoot(document.getElementById('root')!).render(\n"
+             "  <main>Use the export button</main>,\n"
+             ")\n"),
+        )
+
+        self.assertEqual([], modules["web/entry"]["interface"]["methods"])
+
+    def test_the_same_prose_inside_a_component_body_is_read_the_same_way(self):
+        """The asymmetry the review names: the two shapes fail through different sweeps."""
+        modules = self.read(
+            ("f.tsx",
+             "export function F(): JSX.Element {\n"
+             "  return <p>use the export button</p>\n"
+             "}\n"),
+        )
+
+        self.assertEqual(["F"], [each["name"] for each in modules["web/f"]["interface"]["methods"]])
+
+    def test_a_capitalised_word_was_never_the_problem(self):
+        self.read(("a.tsx", "export function H(): JSX.Element {\n  return <p>Import statements</p>\n}\n"))
+
+    def test_a_plural_was_never_the_problem_either(self):
+        self.read(("b.tsx", "export function H(): JSX.Element {\n  return <li>Imports and exports</li>\n}\n"))
+
+    def test_the_same_words_inside_a_string_are_masked_as_they_always_were(self):
+        self.read(
+            ("c.tsx",
+             "export function H(): JSX.Element {\n  return <p>{'You can import things'}</p>\n}\n"),
+        )
+
+    def test_the_same_words_inside_a_comment_are_masked_as_they_always_were(self):
+        self.read(("d.ts", "// you can import things\nexport function H(): number {\n  return 1\n}\n"))
+
+    def test_a_real_import_and_a_real_export_beside_the_prose_are_still_read(self):
+        """The fix must not be the sweeps turned off, which is what a blanket one would be."""
+        modules = self.read(
+            ("api.ts", "export function go(): number {\n  return 1\n}\n"),
+            ("h.tsx",
+             "import './index.css'\n"
+             "import { go } from './api'\n"
+             "export function H(): JSX.Element {\n"
+             "  return <p>You can import and export things here.</p>\n"
+             "}\n"
+             "export function used(): number {\n  return go()\n}\n"),
+        )
+
+        self.assertEqual(
+            ["H", "used"],
+            sorted(each["name"] for each in modules["web/h"]["interface"]["methods"]),
+        )
+        self.assertEqual(
+            ["web/api"],
+            [each["moduleId"] for each in modules["web/h"]["reach"]["reaches"]],
+        )
+
+    def test_an_import_this_reading_really_cannot_read_still_fails_the_file(self):
+        """The sweep is withheld inside prose and nowhere else."""
+        tree = self.tree("web")
+        tree.typescript("", "m.tsx", "export function H(): JSX.Element {\n  return <p>hello</p>\n}\nimport oops\n")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+        self.assertIn("import", document["source"]["unparsed"][0]["reason"])
+
+    def test_the_same_prose_in_a_ts_file_is_not_prose_at_all(self):
+        """JSX is legal in a `.tsx` file and nowhere else, which is `tsc`'s own rule."""
+        tree = self.tree("web")
+        tree.typescript("", "l.ts", "const x = 1\nimport oops\n")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        self.assertEqual(1, document["source"]["filesUnparsed"])
+
+    def test_a_declaration_cannot_be_written_in_prose_either(self):
+        """`declares` decides which names are followed back to an import, so prose in it
+        takes a fan line off a module rather than adding one — the direction the trade at
+        the top of the reading says it is never allowed to go."""
+        modules = self.read(
+            ("api.ts", "export function total(): number {\n  return 1\n}\n"),
+            ("card.tsx",
+             "import { total } from './api'\n"
+             "export function Card(): JSX.Element {\n"
+             "  return <p>the const total is shown below {total()}</p>\n"
+             "}\n"),
+        )
+
+        self.assertEqual(
+            ["web/api"],
+            [each["moduleId"] for each in modules["web/card"]["reach"]["reaches"]],
+        )
+
+    def test_a_generic_arrow_wearing_a_tags_shape_is_left_where_it_was_found(self):
+        """`<T extends object>` opens no element, and nothing closes it as one.
+
+        An element whose closing tag this reading never meets yields no prose at all,
+        which is what keeps a mistaken tag from swallowing the rest of a file.
+        """
+        modules = self.read(
+            ("g.tsx", "export const first = <T extends object>(each: T[]): T => each[0]\n"),
+        )
+
+        self.assertEqual(["first"], [each["name"] for each in modules["web/g"]["interface"]["methods"]])
+
+    def test_the_reading_says_out_loud_which_words_it_stepped_over(self):
+        with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
+            typescriptsource.parse(
+                "export function H(): JSX.Element {\n"
+                "  return <p>You can import and export things here.</p>\n"
+                "}\n",
+                "h.tsx",
+                graph.source_root(self.scratch),
+            )
+
+        said = "\n".join(logged.output)
+        self.assertIn("word not read as an import", said)
+        self.assertIn("no statement can be written there", said)
+
+    def test_the_reading_says_out_loud_which_export_it_stepped_over(self):
+        """Top level, because that is the only depth an export is looked for at."""
+        with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
+            typescriptsource.parse(
+                "import { createRoot } from 'react-dom/client'\n"
+                "createRoot(document.getElementById('root')!).render(\n"
+                "  <main>Use the export button</main>,\n"
+                ")\n",
+                "entry.tsx",
+                graph.source_root(self.scratch),
+            )
+
+        said = "\n".join(logged.output)
+        self.assertIn("word not read as an export", said)
+        self.assertIn("no statement can be written there", said)
+
+
+class ATypeAnotherFileDeclaresIsNotThisModulesTest(SourceTreeTest):
+    """A name on a card has to be one a reader can go and look up in this file.
+
+    `import type Customer from './api'` writes `type` in front of a name, and the name is
+    declared in the file the specifier points at. Read as a declaration of this one, it
+    went onto the card as a type this module declares — and, because the same reading
+    decides which names a body declares for itself, a value import of that name had its
+    fan line suppressed.
+    """
+
+    def module(self, *sources):
+        tree = self.tree("web")
+        for name, body in sources:
+            tree.typescript("", name, body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {each["id"]: each for each in document["modules"]}
+
+    def test_a_type_only_default_import_names_no_type_on_the_card(self):
+        modules = self.module(
+            ("api.ts", "export type Customer = { id: number }\nexport function go(): number {\n  return 1\n}\n"),
+            ("u.ts", "import type Customer from './api'\nexport function f(c: Customer): void {}\n"),
+        )
+
+        self.assertEqual([], modules["web/u"]["nested"])
+
+    def test_a_type_only_braced_import_names_none_either(self):
+        modules = self.module(
+            ("api.ts", "export type Customer = { id: number }\n"),
+            ("u.ts", "import type { Customer } from './api'\nexport function f(c: Customer): void {}\n"),
+        )
+
+        self.assertEqual([], modules["web/u"]["nested"])
+
+    def test_an_inline_type_specifier_leaves_the_value_beside_it_reaching(self):
+        modules = self.module(
+            ("api.ts", "export type Customer = { id: number }\nexport function go(): number {\n  return 1\n}\n"),
+            ("u.ts",
+             "import { type Customer, go } from './api'\n"
+             "export function f(c: Customer): number {\n  return go()\n}\n"),
+        )
+
+        self.assertEqual([], modules["web/u"]["nested"])
+        self.assertEqual(
+            ["web/api"], [each["moduleId"] for each in modules["web/u"]["reach"]["reaches"]]
+        )
+
+    def test_a_type_this_file_really_declares_is_still_on_the_card(self):
+        modules = self.module(
+            ("u.ts", "type Customer = { id: number }\nexport function f(c: Customer): void {}\n"),
+        )
+
+        self.assertEqual(["Customer"], modules["web/u"]["nested"])
+
+    def test_a_module_named_after_a_type_it_imports_still_reaches_it(self):
+        """The name in a specifier is not a binding of this file's, whatever it is."""
+        modules = self.module(
+            ("api.ts", "export function total(): number {\n  return 1\n}\n"),
+            ("total.ts", "import { total } from './api'\nexport function f(): number {\n  return total()\n}\n"),
+        )
+
+        self.assertEqual(
+            ["web/api"], [each["moduleId"] for each in modules["web/total"]["reach"]["reaches"]]
+        )
+
+
+class ABlockDocumentsTheDeclarationUnderItTest(SourceTreeTest):
+    """A machine that accused a module which said nothing at all would stop being read.
+
+    What may stand between a JSDoc block and the declaration it documents was written as
+    "any run of words", which is not what the sentence beside it says. A block over `let
+    pending` was then read as documenting the `export function` two lines below it, and
+    the module was found to document a refusal it never raises — with the refusal's weight
+    added to the interface cost that leverage is divided by.
+    """
+
+    def module(self, body):
+        tree = self.tree("web")
+        tree.typescript("", "x.ts", body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        return {each["id"]: each for each in document["modules"]}["web/x"]
+
+    def test_a_block_over_a_declaration_with_no_value_documents_that_one(self):
+        module = self.module(
+            "/**\n * @throws Boom\n */\nlet pending\n\nexport function f(): void {}\n"
+        )
+
+        self.assertEqual([], module["interface"]["refusals"])
+        self.assertEqual([], module["findings"])
+
+    def test_a_block_over_the_declaration_itself_still_documents_it(self):
+        module = self.module(
+            "/**\n * @throws Boom\n */\n"
+            "export function f(a: number): number {\n"
+            "  if (a === 0) {\n    throw new Boom()\n  }\n  return a\n}\n"
+        )
+
+        self.assertEqual(
+            [("Boom", True, True)],
+            [(each["name"], each["documented"], each["raised"])
+             for each in module["interface"]["refusals"]],
+        )
+        self.assertEqual([], module["findings"])
+
+    def test_a_block_over_a_const_bound_arrow_still_documents_it(self):
+        module = self.module(
+            "/**\n * @throws Boom\n */\n"
+            "export const f = (a: number): number => {\n"
+            "  if (a === 0) {\n    throw new Boom()\n  }\n  return a\n}\n"
+        )
+
+        self.assertEqual(
+            [("Boom", True, True)],
+            [(each["name"], each["documented"], each["raised"])
+             for each in module["interface"]["refusals"]],
+        )
+
+    def test_the_keywords_an_export_is_written_with_still_stand_between(self):
+        module = self.module(
+            "/**\n * @throws Boom\n */\n"
+            "export default async function f(): Promise<void> {\n  throw new Boom()\n}\n"
+        )
+
+        self.assertEqual(
+            [("Boom", True, True)],
+            [(each["name"], each["documented"], each["raised"])
+             for each in module["interface"]["refusals"]],
+        )
+
+    def test_a_declaration_of_another_kind_in_between_takes_the_block_with_it(self):
+        module = self.module(
+            "/**\n * @throws Boom\n */\ninterface Held {\n  a: number\n}\n\nexport function f(): void {}\n"
+        )
+
+        self.assertEqual([], module["interface"]["refusals"])
+
+
+class AWrittenTypeMayCarryAnEqualsOfItsOwnTest(SourceTreeTest):
+    """An interface cheaper than the source makes it is the one direction this must not err in.
+
+    `_binding_from` walked token by token to the first `=` after the annotation, and a
+    generic default writes one inside the type: `export const ring: <T = string>(a: T) => T
+    = (a) => a` came out as a value rather than a function, so a function a caller can
+    import left the interface entirely — and the declined log, which `_decline` calls the
+    complete list of what was skipped, said something untrue about the file.
+    """
+
+    def methods(self, body):
+        tree = self.tree("web")
+        tree.typescript("", "y.ts", body)
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.assertEqual([], document["source"]["unparsed"])
+        module = {each["id"]: each for each in document["modules"]}["web/y"]
+        return [each["name"] for each in module["interface"]["methods"]]
+
+    def test_a_generic_default_in_an_annotation_is_not_the_assignment(self):
+        self.assertEqual(
+            ["ring"], self.methods("export const ring: <T = string>(a: T) => T = (a) => a\n")
+        )
+
+    def test_a_generic_default_that_is_itself_a_function_type_is_not_either(self):
+        self.assertEqual(
+            ["ring"], self.methods("export const ring: <T = () => void>(a: T) => T = (a) => a\n")
+        )
+
+    def test_a_plain_annotated_arrow_is_still_read(self):
+        self.assertEqual(
+            ["ring"], self.methods("export const ring: (a: number) => number = (a) => a\n")
+        )
+
+    def test_an_annotated_value_is_still_declined(self):
+        self.assertEqual([], self.methods("export const total: number = 1\n"))
+
+    def test_a_binding_with_a_type_and_no_value_reads_no_assignment_further_down(self):
+        self.assertEqual(
+            ["f"],
+            self.methods("let pending: number\nexport function f(): void {}\nconst other = 1\n"),
+        )
+
+
+class AConciseArrowHasABodyTest(SourceTreeTest):
+    """A flow and a fan reading one line two ways is the disagreement neither may have.
+
+    `() => get('x')` is a function with a body, and the body is the expression. Read as no
+    body at all, the method reported calling nothing while the module reported calling
+    `get`, so a fan drawn off the module and a flow walked out of the method disagreed —
+    with nothing in any log saying the body had not been read. Concise arrows are how a
+    frontend writes its handlers and its small wrappers.
+    """
+
+    def calls(self, body):
+        parsed = typescriptsource.parse(body, "l.ts", graph.source_root(self.scratch))
+        declared = parsed.types[0]
+        return (
+            [[(call.receiver, call.name, call.builds) for call in each.calls]
+             for each in declared.methods],
+            sorted(declared.called),
+        )
+
+    def test_a_concise_arrow_reads_the_same_calls_as_a_braced_one(self):
+        self.assertEqual(
+            self.calls("export const load = () => { return get('x') }\n"),
+            self.calls("export const load = () => get('x')\n"),
+        )
+
+    def test_a_concise_arrow_with_a_bare_parameter_reads_them_too(self):
+        self.assertEqual(
+            self.calls("export const load = id => { return get(id) }\n"),
+            self.calls("export const load = id => get(id)\n"),
+        )
+
+    def test_a_concise_default_export_reads_them_too(self):
+        methods, called = self.calls("export default () => get('x')\n")
+
+        self.assertEqual([[(None, "get", False)]], methods)
+        self.assertEqual(["get"], called)
+
+    def test_a_concise_arrow_stops_where_the_next_declarator_starts(self):
+        methods, _ = self.calls(
+            "export const load = () => get('x'), other = () => put('y')\n"
+        )
+
+        self.assertEqual([[(None, "get", False)], [(None, "put", False)]], methods)
+
+    def test_a_flow_walked_through_a_concise_arrow_reaches_what_the_fan_says(self):
+        tree = self.tree("web")
+        tree.typescript("", "api.ts", "export function get(k: string): number {\n  return 1\n}")
+        tree.typescript("", "load.ts", "import { get } from './api'\nexport const load = () => get('x')")
+        configuration = _committed()
+        configuration["flows"] = [
+            {
+                "flow": "a load",
+                "because": "the one flow this fixture has",
+                "entryPoint": {"module": "web/load", "method": "load"},
+            }
+        ]
+        rules = scoring.load(
+            self.tree("rules").raw("scoring.json", _as_json(configuration))
+        )
+
+        document = graph.build([graph.source_root(tree.root)], rules)
+
+        self.assertEqual(
+            ["web/load", "web/api"],
+            [step["moduleId"] for step in document["flows"][0]["path"]],
+        )
+
+
+class OneListPerLanguageIsOneListPerLanguageTest(SourceTreeTest):
+    """The split exists to stop a domain name being charged nothing off a platform one.
+
+    Widening either half is that hazard back again. `Date`, `Error` and `Record` went onto
+    the Java list when the split was written, and each is at least as likely to be a domain
+    name in a banking application as `Response` — the name the split's own argument is
+    written about.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.known = _committed()["interfaceCost"]["typesEveryCallerAlreadyKnows"]
+
+    def test_the_java_list_holds_no_name_a_domain_is_likely_to_want(self):
+        for name in ("Date", "Error", "Record", "Response"):
+            self.assertNotIn(name, self.known["java"])
+
+    def test_a_java_module_is_charged_for_a_domain_type_of_one_of_those_names(self):
+        tree = self.tree("fixture")
+        tree.java("shop", "Till", "public class Till {\n    public Record ring(Date given) {\n        return null;\n    }\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        module = {each["id"]: each for each in document["modules"]}["shop.Till"]
+
+        self.assertEqual(
+            [{"name": "Date", "mustBeLearned": True}, {"name": "Record", "mustBeLearned": True}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+
+    def test_a_typescript_caller_still_gets_its_own_platform_types_free(self):
+        tree = self.tree("web")
+        tree.typescript("", "api.ts", "export function ring(given: Date): Response {\n  return null as any\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        module = {each["id"]: each for each in document["modules"]}["web/api"]
+
+        self.assertEqual(
+            [{"name": "Date", "mustBeLearned": False}, {"name": "Response", "mustBeLearned": False}],
+            module["interface"]["typesCrossingTheSeam"],
+        )
+
+    def test_the_page_prints_each_list_beside_the_language_it_belongs_to(self):
+        """A reader meeting the same word free on one card and charged on another has to
+        be able to see, on the page, which list decided each."""
+        tree = self.tree("mixed")
+        tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
+        tree.typescript("", "till.ts", "export function ring(): void {}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        rendered = page.render(document, graph.serialise(document)).decode("utf-8")
+
+        self.assertIn("There is one list per language", rendered)
+        self.assertIn("typesEveryCallerAlreadyKnows for the language", rendered)
+        # The names themselves are rendered in the browser, off the document the page
+        # carries, so what is asserted here is that the renderer reads that document and
+        # that the document holds a list for each language read.
+        self.assertIn("document_.scoring.typesEveryCallerAlreadyKnows", rendered)
+        self.assertIn('known[language].join(", ")', rendered)
+        self.assertEqual(
+            ["java", "typescript"],
+            sorted(document["scoring"]["typesEveryCallerAlreadyKnows"]),
+        )
+        for language, names in document["scoring"]["typesEveryCallerAlreadyKnows"].items():
+            self.assertIn(language, rendered)
+            for name in names:
+                self.assertIn('"%s"' % name, rendered)
+
+
+class OneScannerCountsTheBracketsTest(SourceTreeTest):
+    """Seven near-identical scanners, differing about characters, cost four findings.
+
+    Each re-implemented the same loop and disagreed with the others about something: the
+    `>` of an `=>`, whether a brace is a bracket or a stop, whether a bound was taken.
+    They read `_at_each_depth` now, so a rule about a character is written once and every
+    reading gets it.
+    """
+
+    def read(self, body, name="x.ts"):
+        parsed = typescriptsource.parse(body, name, graph.source_root(self.scratch))
+        return parsed.types[0].methods[0]
+
+    # The seven the review named, each of which used to carry the loop itself.
+    SCANNERS = (
+        "_next_declarator", "_end_of_the_declaration", "_up_to_the_arrow", "_after_angles",
+        "_first_at_depth_zero", "_first_in_the_open", "_up_to_the_assignment",
+    )
+
+    def test_no_scanner_counts_the_brackets_for_itself(self):
+        with open(typescriptsource.__file__, encoding="utf-8") as handle:
+            source = handle.read()
+        bodies = dict(
+            re.findall(r"\ndef (_\w+)\(.*?\n((?:.|\n)*?)(?=\ndef |\n_[A-Z])", source)
+        )
+
+        for name in self.SCANNERS:
+            self.assertIn(name, bodies, "%s is gone rather than fixed" % name)
+            self.assertIn("_at_each_depth(", bodies[name], name)
+            self.assertNotIn("depth += 1", bodies[name], name)
+            self.assertNotIn("depth -= 1", bodies[name], name)
+
+    def test_every_scanner_agrees_that_the_arrow_of_a_function_type_closes_nothing(self):
+        """One shape per scanner that used to get this wrong, and one that never did."""
+        self.assertEqual(
+            "[boolean, () => void]", self.read("export function f(): [boolean, () => void] {\n  return [true, () => {}]\n}").returns
+        )
+        self.assertEqual(
+            ("() => void", "number"),
+            self.read("export function f(cb: () => void, ms: number): void {}").parameters,
+        )
+        self.assertEqual(
+            "Promise<() => void>",
+            self.read("export function f(): Promise<() => void> {\n  return null as any\n}").returns,
+        )
+        self.assertEqual(
+            ("Map<string, () => string>", "number"),
+            self.read("export function ring(m: Map<string, () => string>, n: number): void {}").parameters,
+        )
+
+    def test_a_declarator_list_still_splits_where_the_source_split_it(self):
+        parsed = typescriptsource.parse(
+            "export const flag = 1 < 2, b = (x: number): number => x\n",
+            "x.ts",
+            graph.source_root(self.scratch),
+        )
+
+        self.assertEqual(["b"], [each.name for each in parsed.types[0].methods])
+
+    def test_a_destructured_parameter_still_finds_the_type_written_after_it(self):
+        self.assertEqual(("Props",), self.read("export function B({ a, b }: Props): void {}").parameters)
+
+
+class AModuleIdIsSpelledWithForwardSlashesTest(SourceTreeTest):
+    """A TypeScript module id is the string an import specifier resolves to.
+
+    `./api` means the same thing on every machine, so an id carrying the filesystem's own
+    separator would match no import written anywhere and every TypeScript fan line would
+    disappear. The Java side is immune, because its id comes off the `package` line.
+    """
+
+    def test_a_nested_file_is_named_with_forward_slashes(self):
+        tree = self.tree("web")
+        tree.typescript("parts/deep", "card.ts", "export function ring(): void {}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load())
+
+        self.assertEqual(
+            ["web/parts/deep/card"], [each["id"] for each in document["modules"]]
+        )
+        for module in document["modules"]:
+            self.assertNotIn("\\", module["id"])
+
+    def test_the_path_the_walk_hands_the_reading_is_spelled_that_way_too(self):
+        self.assertEqual(
+            "parts/deep/card.ts",
+            graph._relative(
+                os.path.join(self.scratch, "parts", "deep", "card.ts"), self.scratch
+            ),
+        )
+
+    def test_the_reading_takes_the_separator_out_itself_as_well(self):
+        """So that the id does not depend on which walk handed the path over."""
+        root = graph.source_root(self.scratch)
+        one = typescriptsource.parse("export function f(): void {}", "parts/card.ts", root)
+        other = typescriptsource.parse(
+            "export function f(): void {}", os.path.join("parts", "card.ts"), root
+        )
+
+        self.assertEqual(
+            typescriptsource.module_id(one.package, one.types[0].name),
+            typescriptsource.module_id(other.package, other.types[0].name),
+        )
+
+
+class AFileIsReadInTimeThatFollowsItsSizeTest(SourceTreeTest):
+    """The tool's own story says a run finishes in seconds, so the reading has to.
+
+    Two backwards readings — is `new` written in front of this name, and does a value
+    stand in front of this `<` — were `$`-anchored patterns searched over a fresh copy of
+    every character before the offset, once per call site, receiver and JSX element. That
+    is quadratic in the size of a file: 0.34s over 31 KB, 1.26s over 63, 4.95s over 126.
+    Both read backwards a word at a time now.
+
+    A wall clock is the honest test of a complexity, and the bound here is loose enough
+    that only a return to quadratic can cross it: the linear reading does this file in
+    well under half a second on the machine this was written on, and the quadratic one
+    took five seconds.
+    """
+
+    def test_a_quarter_of_a_megabyte_is_read_in_seconds_rather_than_minutes(self):
+        import time
+
+        written = "".join(
+            "export function f%d(a: number): number {\n  return new Held(a).of(g%d(a))\n}\n"
+            "function g%d(a: number): number {\n  return a\n}\n" % (each, each, each)
+            for each in range(2000)
+        )
+        self.assertGreater(len(written), 250000)
+
+        started = time.time()
+        typescriptsource.parse(written, "big.ts", graph.source_root(self.scratch))
+        took = time.time() - started
+
+        self.assertLess(took, 3.0, "reading %d bytes took %.2fs" % (len(written), took))

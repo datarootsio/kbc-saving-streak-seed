@@ -231,11 +231,22 @@ it, and a module cannot raise its own reach by installing more packages any more
 Java module can by importing more of the JDK.
 
 Two readings on this side are looser than the Java side's, and both are named on the page
-rather than left to be found. **JSX text is read as source**: a `.tsx` file is prose and
-code inside the same braces, and telling them apart needs a JSX parser whose mistakes
-would blank real code rather than merely add to a fan — so a word in a paragraph with a
-bracket after it can be read as a call, and it draws a line only where the file also
-imports something of exactly that name. And **a quote in prose is not a string**: a `'`
+rather than left to be found. **JSX text is read as source, and only for what it can
+add**: a `.tsx` file is prose and code inside the same braces, and telling them apart
+needs a JSX parser whose mistakes would blank real code rather than merely add to a fan —
+so a word in a paragraph with a bracket after it can be read as a call, and it draws a
+line only where the file also imports something of exactly that name. What is *not* read
+out of prose is every statement: an `import`, an `export` and a declaration are statements,
+TypeScript cannot write one inside JSX text, and the three sweeps that look for those words
+step over a run of it. Nothing is blanked to do that — a run of prose missed is read
+exactly as before, and a run of code wrongly taken for prose costs a sweep its reading
+rather than costing the file its place on the page — so the mistake a JSX parser would
+make is not one this can make. Without it, the lowercase word `import` in one sentence of
+visible copy (`<p>You can import your statements here.</p>`, which `tsc --strict` compiles
+without a word) failed the whole file for "an import that names no module", and the word
+`export` in top-level JSX did the same to an entry point.
+
+And **a quote in prose is not a string**: a `'`
 opens a string only where a matching one follows on the same line and only where it is not
 written against the end of a word, because JavaScript strings do not span lines, nothing
 JavaScript compiles puts a string against an identifier, and JSX prose is full of
@@ -327,7 +338,22 @@ or read wrongly, on source `tsc` compiles without a word is a fixture in
   reversed the order a flow walks;
 - a **wrapped type argument list in a declaration list** — `new Map<\n  string,\n
   number\n>(), q = ...` — whose comma was read as a declarator separator, so the declined
-  log named an export called `number` the file does not contain.
+  log named an export called `number` the file does not contain;
+- the words **`import` and `export` written as English prose inside JSX** — `<p>You can
+  import your statements here.</p>` in a component, and `<main>Use the export button</main>`
+  at the top level of an entry point — each of which failed its whole file for a statement
+  the source does not hold;
+- a **type-only default import** — `import type Customer from './api'` — recorded as a type
+  this module declares, which also took the fan line off a value import of the same name;
+- a **JSDoc `@throws` above a declaration with no value** — a block over `let pending`,
+  which landed on the next `export function` and found that module documenting a refusal it
+  never raises;
+- an **exported arrow whose written type carries a generic default** — `export const ring:
+  <T = string>(a: T) => T = (a) => a` — where the `=` inside the `<>` was taken for the
+  assignment, so a function a caller can import left the interface entirely;
+- a **concise arrow's body** — `export const load = () => get('x')` — read as no body at
+  all, so a flow walked out of the method stopped one module short of where the fan drawn
+  off the module said it went.
 
 Three exports are still failed by name on purpose, and they are the whole of the exception
 to the sentence above: `export declare`, `export namespace` and `export module`, the last
