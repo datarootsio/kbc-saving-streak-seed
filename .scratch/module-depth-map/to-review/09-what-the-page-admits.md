@@ -15,12 +15,12 @@ a reader to mistake the score for the whole picture.
 
 **Blocked by:** 06 (Behind the shape).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] The snapshot date is supplied when the tool runs and never read from the system clock
-- [ ] The page shows the snapshot date it was given
-- [ ] The page names itself an observation on that date rather than a backlog, in words a reader will see without hunting
-- [ ] The page lists everything excluded from scoring and the rule that excluded it
-- [ ] The page states which parts of an interface the tool does not measure, naming invariants and ordering constraints
-- [ ] The page reports how much of the source was parsed, so a reader can weigh what they are looking at
-- [ ] Nothing on the page describes a module as needing to be changed
+- [x] The snapshot date is supplied when the tool runs and never read from the system clock
+- [x] The page shows the snapshot date it was given
+- [x] The page names itself an observation on that date rather than a backlog, in words a reader will see without hunting
+- [x] The page lists everything excluded from scoring and the rule that excluded it
+- [x] The page states which parts of an interface the tool does not measure, naming invariants and ordering constraints
+- [x] The page reports how much of the source was parsed, so a reader can weigh what they are looking at
+- [x] Nothing on the page describes a module as needing to be changed
