@@ -307,26 +307,64 @@ or read wrongly, on source `tsc` compiles without a word is a fixture in
 - **one type spelled two ways** — `string|null` and `string | null`, the union half of the
   rule that had already closed up `Record<string,number>`;
 - an **overload set**, charged for the implementation signature TypeScript never lets a
-  caller call.
+  caller call;
+- a **`type` or `class` exported with something other than a name after the keyword** —
+  `export type { Deposit } from './api'`, `export type * from './other'`,
+  `export default class { }` — where the next word was recorded as a type this module
+  declares, so the card named a type called `{` that a reader can go looking for and will
+  never find. `function* load()`'s star was offered to every keyword, which is where the
+  `from` in the second one came from;
+- a **`<` written against a value in a `.tsx` file** — `if (0 < Max && n > 1)` against an
+  imported `Max` — read as an element being built, because a digit is not a name and `0`
+  is not a closing bracket;
+- **`{ id: number }` beside `{id: number}`**, and `(a: A) => B` beside `(a: A)=>B`, left
+  standing as two types apiece, while `{ [k: string]: number }` was printed with its index
+  signature closed up against one brace and not the other — a spelling in neither the
+  source nor any normal form;
+- **`async` read as a call**, in `export const go = async () => {}`, which draws a fan
+  line in any file that also imports something of that name;
+- a **`new Thing` written with no brackets**, whose span ran on to the next call's and
+  reversed the order a flow walks;
+- a **wrapped type argument list in a declaration list** — `new Map<\n  string,\n
+  number\n>(), q = ...` — whose comma was read as a declarator separator, so the declined
+  log named an export called `number` the file does not contain.
 
-Two exports are still failed by name on purpose, and they are the whole of the exception
-to the sentence above: `export declare` and `export namespace`. What either describes is
-not a signature this reading can price — one says the implementation lives somewhere this
-tool was not pointed at, and the other opens a container of declarations rather than being
-one — so naming the file and stopping is the honest answer, where guessing would put a
-made-up interface on the page. Both are `.d.ts`-shaped writing, and `.d.ts` is on the list
-of paths never read at all. `export =` and `import x = require(...)` are failed too, and
-neither is legal here: `tsc` refuses both against this repository's own configuration,
-because they are CommonJS and this frontend is ECMAScript modules.
+Three exports are still failed by name on purpose, and they are the whole of the exception
+to the sentence above: `export declare`, `export namespace` and `export module`, the last
+being the older spelling of the second. What any of them describes is not a signature this
+reading can price — one says the implementation lives somewhere this tool was not pointed
+at, and the other two open a container of declarations rather than being one — so naming
+the file and stopping is the honest answer, where guessing would put a made-up interface
+on the page. All three are `.d.ts`-shaped writing, and `.d.ts` is on the list of paths
+never read at all. `export =` and `import x = require(...)` are failed too, and neither is
+legal here: `tsc` refuses both against this repository's own configuration, because they
+are CommonJS and this frontend is ECMAScript modules.
 
-One reading that was wrong in the other direction is here too: `new api.Thing()` writes
-exactly the characters a call on `api` writes, and drew a fan line whose evidence read
-"called on api" over a file that calls nothing on it. The Java reading declines that
-spelling and calls it the one failure it exists to make impossible; this one is now built
-the same way. `<Icons.Chevron />` is the same shape written as an element and gets the
-same answer — the name read is `Icons.Chevron`, which names no module here, so it reaches
-nothing — and that floor is named on the page beside the other floors rather than left
-where a reader checking a fan against the source would find a gap nobody accounted for.
+Readings that were wrong in the other direction are here too, because a fan line whose
+evidence a reader can check and find false is worse than a fan line missing:
+
+- `new api.Thing()` writes exactly the characters a call on `api` writes, and drew a fan
+  line whose evidence read "called on api" over a file that calls nothing on it. The Java
+  reading declines that spelling and calls it the one failure it exists to make
+  impossible; this one is now built the same way. `<Icons.Chevron />` is the same shape
+  written as an element and gets the same answer — the name read is `Icons.Chevron`, which
+  names no module here, so it reaches nothing — and that floor is named on the page beside
+  the other floors rather than left where a reader checking a fan against the source would
+  find a gap nobody accounted for;
+- `new SignInFailed()` on a *named* import went the same way one level along: the name has
+  brackets after it and nothing but `new` in front, so it read as a bare call as well as a
+  construction, and the fan said "calls SignInFailed, which this file imports from it"
+  about a file that calls nothing. The construction reading already reports it, and says
+  "builds one", which is what the source does;
+- a **member signature in a type declaration** is not a call. `export interface Api { save
+  (id: string): void }` in a file that also writes `import { save } from './repo'` drew a
+  fan line to `./repo` over a file whose truthful reach is nothing at all — invented
+  outright rather than misattributed. What is written after the brackets settles it, the
+  way what is written in front of them settles it in Java: a declaration says what it
+  hands back, or opens a body, and a call says neither;
+- a **reserved word is not a receiver**. A construct this reading masks leaves the
+  characters it stood for blank, so `return /x/.test(s)` read as `return`, a gap and
+  `.test(`, and reported a call on a collaborator called `return`.
 
 And a module reaching nothing because of *what it is called* was worse than either. A
 module's own name is a binding inside its own source in Java — a class's name is in scope
@@ -399,6 +437,14 @@ Where the tool is pointed matters more than the rule does, and both defaults are
 that nothing has to be skipped: `backend/src/main/java` is not `src/test/java`, and
 `frontend/src` is not `frontend/node_modules`. On this repository the rule matches nothing,
 and the page says so in as many words.
+
+A default that is not there is skipped rather than refused for, and is named in
+`source.rootsNotRead`, logged at INFO and printed on the page above the rule. A directory
+an operator *typed* is refused for, as it always was: they said to read it, and a page
+drawn from what was left answers a question nobody asked. A default is a directory this
+tool chose, and refusing for one meant a repository with only a backend in it got neither
+output written over a frontend nobody said was there. Every default missing is still a
+refusal, because then there is no source at all.
 
 ## What an interface costs
 

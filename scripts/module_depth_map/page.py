@@ -544,6 +544,16 @@ _SCRIPT = """
   // question a reader of a picture of an application is entitled to an answer to.
   var declined = add(root, "section", "rules");
   add(declined, "h2", null, "What was not read at all");
+  // A directory this tool looks in by default and did not find. Said first and in its own
+  // words, because it is a different finding from the rule below: half an application
+  // missing from a page is worth a sentence, and a run that quietly drew the other half
+  // would be a picture that does not say which half it is.
+  (document_.source.rootsNotRead || []).forEach(function (entry) {
+    var line = add(declined, "p", null, "");
+    add(line, "code", null, entry.root);
+    add(line, "span", null, " \u2014 " + entry.reason
+      + ". Nothing under it is drawn below.");
+  });
   add(declined, "p", null, document_.source.notRead.because);
   if (document_.source.notRead.paths.length > 0) {
     add(declined, "p", null,
@@ -719,12 +729,14 @@ _SCRIPT = """
     + "something reached through something else (a.b.c()), and a call to a statically "
     + "imported member whose name the module's own body declares, which is read as the "
     + "declaration it also is. The TypeScript side misses more of the same kind: "
-    + "an import of a directory rather than of a file (./components, where the module is "
-    + "the index inside it), a value a caller reads rather than calls, which is named "
+    + "a value a caller reads rather than calls, which is named "
     + "on its module and priced nowhere \u2014 the same answer the Java side gives a public "
-    + "field \u2014 and a name written with a dot in front of it, which names a member of "
+    + "field \u2014 a name written with a dot in front of it, which names a member of "
     + "something the file holds rather than a module here: <Icons.Chevron /> and new "
-    + "api.Thing() are the two spellings of that, and both reach nothing. Each leaves a "
+    + "api.Thing() are the two spellings of that, and both reach nothing \u2014 and a call "
+    + "whose brackets are followed by a colon or a brace, which is how a member signature "
+    + "in a type is written and is read as one, so a call in the first arm of "
+    + "ok ? go(x) : none goes uncounted too. Each leaves a "
     + "fan shorter than the source, which is the direction this page is willing to be "
     + "wrong in.");
   add(fans, "p", null,

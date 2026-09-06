@@ -88,11 +88,33 @@ def main(argv=None):
         force=True,
     )
 
+    chosen = arguments.source is not None
     sources = arguments.source or list(DEFAULT_SOURCES)
     missing = [directory for directory in sources if not os.path.isdir(directory)]
-    if missing:
+    if missing and (chosen or len(missing) == len(sources)):
+        # A directory an operator typed is worth refusing for: they said to read it, and
+        # drawing a page from what was left would answer a question nobody asked. A
+        # directory this tool chose is not, and refusing for one cost every run in a
+        # repository with only a backend in it — both outputs unwritten, over a frontend
+        # nobody said was there. The refusal stands when *every* default is missing,
+        # because then there is no source at all and a page of nothing is not an answer
+        # either.
         log.warning("refused to run: no such source directory %s", ", ".join(missing))
         return 2
+    for directory in missing:
+        log.info(
+            "default source not read path=%s reason=%s",
+            directory,
+            "this tool reads it when it is there and says so when it is not, because "
+            "nobody asked for it on the command line",
+        )
+    skipped = [
+        {"root": directory.replace(os.sep, "/"),
+         "reason": "one of the directories this tool reads when no --source is given, "
+                   "and there is none of that name in this repository"}
+        for directory in missing
+    ]
+    sources = [directory for directory in sources if directory not in missing]
 
     log.info(
         "run started sources=%s graph=%s page=%s scoring=%s",
@@ -113,7 +135,9 @@ def main(argv=None):
         return 4
 
     try:
-        document = graph.build([graph.source_root(directory) for directory in sources], rules)
+        document = graph.build(
+            [graph.source_root(directory) for directory in sources], rules, skipped
+        )
     except graph.DuplicateModules as clash:
         log.warning(
             "refused to run: %d module id(s) are declared more than once (%s), and a page "

@@ -7630,6 +7630,7 @@
       "backend/src/main/java",
       "frontend/src"
     ],
+    "rootsNotRead": [],
     "unparsed": []
   }
 }

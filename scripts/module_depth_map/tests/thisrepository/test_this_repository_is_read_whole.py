@@ -1,48 +1,93 @@
-"""Properties that must hold when the tool is run over this repository's own backend source.
+"""Properties that must hold when the tool is run over this repository's own source.
 
 Deliberately not specific numbers: those would fail every time a feature lands, and the
 thing worth asserting is that nothing was quietly dropped.
+
+Both source roots, because the page draws both halves of this application and this is the
+suite whose job is that nothing in it goes missing. Pointed at the backend alone — which
+it was, for as long as there was only one — a frontend file that silently stopped parsing
+passed it.
 """
 
 import os
 
-from ... import graph, javasource, scoring
-from ..support.sourcetrees import BACKEND_SOURCE, SourceTreeTest
+from ... import graph, languages, scoring
+from ..support.sourcetrees import BACKEND_SOURCE, FRONTEND_SOURCE, SourceTreeTest
+
+
+def this_repository():
+    """The graph of both of this repository's source roots, read with the shipped rules."""
+    return graph.build(
+        [graph.source_root(BACKEND_SOURCE), graph.source_root(FRONTEND_SOURCE)],
+        scoring.load(),
+    )
+
+
+def source_files_on_disk():
+    """Every file under either root a language here reads, as (root label, path under it).
+
+    Named by root as well as by path because two roots can hold the same relative path,
+    and a set of bare paths would then quietly hold one entry for two files.
+    """
+    found = set()
+    for label, whole in (
+        ("backend/src/main/java", BACKEND_SOURCE),
+        ("frontend/src", FRONTEND_SOURCE),
+    ):
+        for directory, _, names in os.walk(whole):
+            for name in names:
+                if languages.of(name) is None:
+                    continue
+                path = os.path.relpath(os.path.join(directory, name), whole)
+                found.add((label, path.replace(os.sep, "/")))
+    return found
 
 
 class ThisRepositoryIsReadWholeTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
+        self.document = this_repository()
+
+    def test_both_halves_of_this_application_are_on_the_one_page(self):
+        """The picture is of the application rather than of the half of it written in Java."""
+        self.assertEqual(
+            ["backend/src/main/java", "frontend/src"], self.document["source"]["roots"]
+        )
+        self.assertEqual(["java", "typescript"], self.document["source"]["languages"])
+        for language in ("java", "typescript"):
+            self.assertTrue(
+                any(module["language"] == language for module in self.document["modules"]),
+                language,
+            )
 
     def test_every_source_file_is_either_read_or_reported_as_unparseable(self):
-        """Nothing under the source root goes missing without the document saying so.
+        """Nothing under either source root goes missing without the document saying so.
 
         Three answers, not two. A file the tool reads and finds no module in is the third,
         and `package-info.java` is the one Java defines for it: it appears under no module
         and in no failure, and asking for two answers made adding one red this suite for a
-        file the README names as read rather than reported. The set of such files is the
+        file the README names as read rather than reported. The set of such files is each
         parser's own, so this test cannot drift from what the tool actually skips.
         """
-        on_disk = set()
-        for directory, _, names in os.walk(BACKEND_SOURCE):
-            for name in names:
-                if name.endswith(".java"):
-                    whole = os.path.join(directory, name)
-                    on_disk.add(os.path.relpath(whole, BACKEND_SOURCE).replace(os.sep, "/"))
-
-        reported = {entry["path"] for entry in self.document["source"]["unparsed"]}
-        parsed = {module["path"] for module in self.document["modules"]}
+        on_disk = source_files_on_disk()
         declaring_nothing = {
-            path for path in on_disk
-            if path.rsplit("/", 1)[-1] in javasource.DECLARES_NO_TYPE
+            (root, path) for root, path in on_disk
+            if path.rsplit("/", 1)[-1] in {
+                name
+                for language in languages.ALL
+                for name in getattr(language, "DECLARES_NO_TYPE", ())
+            }
         }
+        reported = {
+            (entry["root"], entry["path"]) for entry in self.document["source"]["unparsed"]
+        }
+        parsed = {(module["root"], module["path"]) for module in self.document["modules"]}
 
         self.assertEqual(on_disk, parsed | reported | declaring_nothing)
         self.assertEqual(len(on_disk), self.document["source"]["filesSeen"])
 
-    def test_the_whole_of_this_backend_can_be_read(self):
+    def test_the_whole_of_this_application_can_be_read(self):
         self.assertEqual([], self.document["source"]["unparsed"])
         self.assertEqual(
             self.document["source"]["filesSeen"], self.document["source"]["filesParsed"]
@@ -70,6 +115,10 @@ class ThisRepositoryIsReadWholeTest(SourceTreeTest):
             "io.dataroots.savingstreak.deposits",
             by_id["io.dataroots.savingstreak.deposits.DepositsService"]["package"],
         )
+        self.assertIn("frontend/src/App", by_id)
+        self.assertIn("frontend/src/api", by_id)
+        self.assertEqual("frontend/src", by_id["frontend/src/api"]["package"])
+        self.assertEqual("file", by_id["frontend/src/api"]["kind"])
 
 
 class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
@@ -83,7 +132,7 @@ class EveryModuleInThisRepositoryIsScoredOrExcludedByARuleTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
+        self.document = this_repository()
 
     def test_every_module_is_either_scored_or_excluded_and_never_both(self):
         for module in self.document["modules"]:
@@ -261,7 +310,7 @@ class TheDeletionTestHoldsOnThisRepositoryTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
+        self.document = this_repository()
         self.by_id = {module["id"]: module for module in self.document["modules"]}
         self.rule = self.document["scoring"]["deletionTest"]
 

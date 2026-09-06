@@ -1568,19 +1568,33 @@ def _calls_in(body):
         if _AN_ARRAY_CREATION.match(body, match.end(1)):
             continue
         found.append(
-            (match.start(), _after_the_arguments(body, match.end(1)),
+            (match.start(), after_the_arguments(body, match.end(1)),
              CallSite(None, built, builds=True))
         )
     return in_evaluation_order(found)
 
 
-def _after_the_arguments(body, after_the_name):
+def after_the_arguments(body, after_the_name):
     """Just past a construction's argument list, or the end of its name when it has none.
 
     The span is wanted for one thing only — telling a site written inside another's
     arguments from one written after it — so a spelling this cannot follow costs the
     nesting and never a call: the site is still read, it merely keeps the place the
     characters put it.
+
+    A construction may be written with no argument list at all — `new Thing` is how
+    TypeScript spells a build with no arguments — and that is the whole reason this exists
+    rather than `after_balanced` being called on what follows the name. Called on a name
+    with no brackets after it, `after_balanced` walks on to the *next* bracket group in
+    the file and hands back a span covering it, so the construction is read as enclosing
+    the call written after it and the two come back in the wrong order — and the order is
+    the one thing a flow is walked out of.
+
+    Public, and read by the TypeScript side as well: a construction's brackets are
+    brackets, `new` is spelled the same word in both, and both write type arguments
+    somewhere this has to step over. It is the same reason `after_balanced` and
+    `in_evaluation_order` are shared, and the TypeScript side called `after_balanced`
+    directly here until a `new Thing` with no brackets reversed a flow.
     """
     position = after_the_name
     while position < len(body) and body[position] in " \t\r\n":
@@ -2279,6 +2293,20 @@ def normalised(written):
     and its `&` a type bound's, and neither is a parameter, a return or a field — so the
     rule costs that side nothing.
 
+    A brace group is spelled with one space inside each brace and an `=>` with one space
+    on each side, for the same reason and for the same side: an object type and a function
+    type are how TypeScript spells the two commonest anonymous types there are, and
+    `{ id: number }` beside `{id: number}` is one type left standing on a page as two. An
+    empty group keeps its own spelling — `{}` is not written `{ }` anywhere — because a
+    normal form nobody writes is a third spelling rather than the one.
+
+    The order matters, and one of these rules used to fire inside another. `" [" -> "["`
+    closes an array's brackets up against the type they belong to, and applied to a brace
+    group it closed the *index signature* of `{ [k: string]: number }` up against the
+    brace and left the far one spaced — a spelling that is in neither the source nor any
+    normal form. The braces are spelled last, so what they hold has already been closed up
+    and the brace rule has the final say about its own two characters.
+
     Public, and read by the TypeScript side as well. It was hand-copied there once and the
     copy left the comma out, so `Record<string,number>` and `Record<string, number>` stayed
     two strings on one page — the exact hazard this docstring already named. Spelling is
@@ -2289,7 +2317,11 @@ def normalised(written):
         tidy = tidy.replace(" " + bracket, bracket)
     tidy = tidy.replace("< ", "<").replace("[ ", "[")
     tidy = re.sub(r",\s*", ", ", tidy)
-    return re.sub(r"\s*([|&])\s*", r" \1 ", tidy).strip()
+    tidy = re.sub(r"\s*=>\s*", " => ", tidy)
+    tidy = re.sub(r"\s*([|&])\s*", r" \1 ", tidy).strip()
+    tidy = re.sub(r"\{\s*", "{ ", tidy)
+    tidy = re.sub(r"\s*\}", " }", tidy)
+    return re.sub(r"\{ \}", "{}", tidy).strip()
 
 
 def candidate_ids(name, package, imports):

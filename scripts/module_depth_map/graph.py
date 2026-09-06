@@ -225,8 +225,14 @@ def _files_under(root, declined):
     return found, unreadable, not_read
 
 
-def build(roots, rules):
+def build(roots, rules, roots_not_read=()):
     """Read every source file under these roots and return the graph document.
+
+    `roots_not_read` is what the caller decided not to hand over and why, each as a
+    `{"root", "reason"}` pair. It exists because a page has to be able to say that half an
+    application was left out: a run in a repository with no `frontend/` at all is a
+    perfectly good run, and one that said nothing about the directory it looked for and
+    did not find would be a picture of half an application that does not say which half.
 
     A file that cannot be read is named in the document and logged, never counted as a
     module with nothing in it: a parse failure that looked like an empty module would be
@@ -338,6 +344,11 @@ def build(roots, rules):
         "schema": SCHEMA,
         "source": {
             "roots": sorted(root.label for root in roots),
+            # Kept apart from `notRead` below, which is the scoring file's rule about
+            # names: "a rule declined to read this" and "there is no such directory" are
+            # different findings, and printing the second under the first's sentence would
+            # say a rule nobody wrote had matched.
+            "rootsNotRead": [dict(entry) for entry in roots_not_read],
             "languages": sorted({module["language"] for module in modules}),
             # What a module of each language read *is*, in the words of the reading that
             # read it. Here because a page cannot say it otherwise: the prose was written
@@ -372,6 +383,8 @@ def build(roots, rules):
         "modules": modules,
     }
 
+    for entry in document["source"]["rootsNotRead"]:
+        log.info("source root not read root=%s reason=%s", entry["root"], entry["reason"])
     log.info(
         "graph built roots=%s languages=%s filesSeen=%d filesParsed=%d filesUnparsed=%d "
         "pathsNotRead=%d packages=%d modules=%d scored=%d neverScored=%d",

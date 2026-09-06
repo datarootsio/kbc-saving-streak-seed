@@ -63,6 +63,7 @@ from .javasource import (
     ParsedFile,
     ParseFailure,
     after_balanced,
+    after_the_arguments,
     ends_an_arrow,
     in_evaluation_order,
     line_of,
@@ -71,15 +72,20 @@ from .javasource import (
     split_on_commas,
 )
 
-# Ten names come from the Java reading and none of them is about Java. A bracket's
-# partner, the order a call's arguments are evaluated in, where a comma splits a list, how
-# a type is spelled, which line an offset sits on and whether a `>` closes anything are
-# facts about punctuation, and both readings have to give the same answer to every one of
-# them or "measured by the same rules" is not true of the page. `split_on_commas`,
-# `normalised` and `line_of` were hand-copies here once; the copies drifted, and two
-# review findings — a parameter list that collapsed around an `=>` and one type left
-# spelled two ways — are what the drift cost. They are shared for the same reason
-# `after_balanced` always was: a second account of one of them is one that can drift.
+# Fourteen names come from the Java reading and none of them is about Java. Six are the
+# shapes a parsed file is reported in, which both readings fill in and nothing outside
+# either has to tell apart. The other eight are punctuation: a bracket's partner, where a
+# construction's arguments end, the order a call's arguments are evaluated in, where a
+# comma splits a list and what lies between two of them, how a type is spelled, which line
+# an offset sits on and whether a `>` closes anything. Both readings have to give the same
+# answer to every one of those or "measured by the same rules" is not true of the page.
+# `split_on_commas`, `normalised` and `line_of` were hand-copies here once; the copies
+# drifted, and two review findings — a parameter list that collapsed around an `=>` and
+# one type left spelled two ways — are what the drift cost. `after_the_arguments` is the
+# newest of them and arrived the same way: `after_balanced` was called here in its place,
+# and a `new Thing` written with no brackets swallowed the next call's and reversed the
+# order a flow walks. They are shared for the same reason `after_balanced` always was: a
+# second account of one of them is one that can drift.
 log = logging.getLogger("module_depth_map.typescriptsource")
 
 # What this reading is called in the graph, and which files it is the reading of.
@@ -165,9 +171,14 @@ _AN_EXPORT = re.compile(r"(?<![\w$.])export(?![\w$])")
 # Every way TypeScript introduces a name. Read at every depth for `declares` — a name the
 # body declares is not a call to an import that shares its spelling — and at depth 0 for
 # what the module itself is made of.
+# The `*` is a generator's and belongs to `function` alone, which the lookbehind says: it
+# was written for `function* load()` and, offered to every keyword, made `export type *
+# from './other'` read as a declaration of a type called `from`, which the module then
+# named on its card as a type a reader could go looking for and never find.
 _DECLARES = re.compile(
-    r"(?<![\w$.])(function|class|type|interface|enum|const|let|var)[ \t\r\n]+"
-    r"(?:\*[ \t\r\n]*)?([A-Za-z_$][\w$]*)"
+    r"(?<![\w$.])(function|class|type|interface|enum|const|let|var)"
+    r"(?:(?<=function)[ \t\r\n]*\*)?[ \t\r\n]+"
+    r"(?!(?:extends|implements)(?![\w$]))([A-Za-z_$][\w$]*)"
 )
 
 # The type arguments a call may be written with, between the name and the brackets:
@@ -216,6 +227,11 @@ _A_JSX_ELEMENT = re.compile(r"<[ \t\r\n]*([A-Z][\w$]*(?:\.[A-Za-z_$][\w$]*)*)(?=
 # The name a `<` that opens a type argument list stands behind.
 _A_NAME_BEHIND_IT = re.compile(r"[A-Za-z_$][\w$]*$")
 
+# What a value can end with, other than a name: a closing bracket, a digit, or the quote
+# that closes a literal. A `<` written after one of them is an operator on that value
+# rather than a tag opening, which is what tells `if (0 < Max)` from `return <Max />`.
+_A_VALUE_CAN_END_WITH = frozenset(")]0123456789'\"`")
+
 # `throw new SignInFailed(...)`: the refusals the implementation raises, by name.
 _THROWN = re.compile(r"(?<![\w$.])throw[ \t\r\n]+new[ \t\r\n]+([A-Za-z_$][\w$.]*)")
 
@@ -240,11 +256,22 @@ _DOCUMENTED_REFUSAL = re.compile(
 # `AmountOfMoney.of` and `prices.of` are two — and holding it out took every call to one
 # of them off every fan.
 _NOT_A_CALL = frozenset(
-    ["as", "await", "case", "catch", "class", "delete", "do", "else", "for", "function",
-     "if", "import", "in", "infer", "instanceof", "keyof", "new", "return",
+    ["as", "async", "await", "case", "catch", "class", "delete", "do", "else", "for",
+     "function", "if", "import", "in", "infer", "instanceof", "keyof", "new", "return",
      "satisfies", "super", "switch", "this", "throw", "typeof", "void", "while", "with",
      "yield"]
 )
+
+# The words a call cannot be written *against*, because none of them holds anything. A
+# receiver is read as the name in front of a dot, and a construct this reading masks
+# leaves the characters it stood for blank — so `return /x/.test(s)` put `return` in front
+# of a dot with nothing but spaces in between and reported a call on a collaborator called
+# `return`. Harmless only while nothing can be imported under that name; the same shape
+# after any other masked construct attaches a real one to a call the source never wrote on
+# it. `this` and `super` are held out because both really do hold something: `this.` is
+# taken off before a receiver is read at all, and `super.pay()` is a call on what this was
+# built on.
+_NOT_A_RECEIVER = _NOT_A_CALL - frozenset(["this", "super"])
 
 # The words a written type can hold that do not name one. `void` is among them, and for
 # the reason the Java side answers a bare `void` with nothing: it is TypeScript's word for
@@ -320,6 +347,11 @@ _NOT_READ_HERE = ("declare", "namespace", "module")
 # about what a caller of it must learn. Stepped over so the declaration behind them is
 # read on its own terms.
 _MODIFIES_A_DECLARATION = ("async", "abstract")
+
+# The words a declaration can carry where its own name would otherwise be written, and
+# which are therefore not one. `export default class extends Base {}` writes one of them,
+# and read as a name it put a type called `extends` on the module's card.
+_STANDS_WHERE_A_NAME_WOULD = ("extends", "implements")
 
 # The words that can only open a declaration, and therefore cannot be part of a type. A
 # return type ends where one of them starts, which is the whole of how an overload
@@ -882,18 +914,48 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
         return
     if token == "class":
         named, _, _ = _token_at(masked, after)
+        if not _a_declared_name(named):
+            # `export default class { }` and `export default class extends Base { }`.
+            # Legal, and there is no name for the card to carry: read without asking, the
+            # word after the keyword was recorded as the type this module declares, so the
+            # page named a type called `{` that a reader can go looking for and will never
+            # find.
+            _decline(text, start, named, "a class exported with no name of its own "
+                     "leaves nothing for a reader to go and look up, so nothing is named "
+                     "on this module for it")
+            return
         _decline(text, start, named, "an exported class is named on this module rather "
                  "than measured, exactly as a type declared inside a Java module is: what "
                  "it costs a caller is its members, and its members are read nowhere")
-        if named and named not in types:
+        if named not in types:
             types.append(named)
         return
     if token in ("type", "interface", "enum"):
         named, _, _ = _token_at(masked, after)
-        if named and named not in types:
+        if not _a_declared_name(named):
+            # `export type Deposit` is a declaration; `export type { Deposit } from
+            # './api'` and `export type * from './other'` are re-exports that happen to
+            # start with the same word. Read without asking, the word after the keyword
+            # was taken for a name whatever it was, and `{`, `*` and `from` each went onto
+            # the card as a type this module declares.
+            _decline(text, start, named, "a type-only export list hands on declarations "
+                     "written somewhere else — in another file where a `from` follows it, "
+                     "and above in this one otherwise, where each is already named on "
+                     "this module by the declaration itself")
+            return
+        if named not in types:
             types.append(named)
         return
     if token in ("const", "let", "var"):
+        if token == "const" and _token_at(masked, after)[0] == "enum":
+            # `export const enum Direction { Up }` declares a type, not a binding. Read as
+            # one, the name after the keyword was the word `enum` and the declined log
+            # carried a line about an export nobody wrote.
+            token, start, after = _token_at(masked, after)
+            named, _, _ = _token_at(masked, after)
+            if _a_declared_name(named) and named not in types:
+                types.append(named)
+            return
         methods.extend(
             _bindings_from(masked, text, after, matching, documented, module, jsx)
         )
@@ -962,6 +1024,21 @@ def _read_one_export(masked, text, matching, documented, module, position, metho
     raise ParseFailure(
         "the export on line %d could not be read: it is followed by %r, which this tool "
         "has no reading of" % (line_of(text, start), token)
+    )
+
+
+def _a_declared_name(token):
+    """Whether this word is a name a declaration was given, rather than what stands where one would.
+
+    Both `class` and `type` can be followed by something that is not a name at all —
+    `export default class { }`, `export type { Deposit } from './api'` — and one of them
+    can be followed by a word that is a keyword rather than a name, in `export default
+    class extends Base { }`. Asked, each of those is declined by name and the module
+    carries no type nobody can look up; not asked, `{`, `*` and `extends` were each
+    recorded as a type this module declares and drawn on its card.
+    """
+    return bool(token) and re.match(r"[A-Za-z_$][\w$]*$", token) is not None and (
+        token not in _STANDS_WHERE_A_NAME_WOULD
     )
 
 
@@ -1082,23 +1159,36 @@ def _next_declarator(masked, position):
     value. And a bracket closing something this list never opened is the brace holding the
     whole declaration, which ends it whatever else is written after.
 
-    A `<` is a bracket only where something closes it on the same line, and that is the
-    whole of how `const a = new Map<string, number>(), b = 2` is told from `const flag =
-    1 < 2, b = (x: number): number => x`. Counted as a bracket outright, the comparison in
-    the second left the depth above zero for the rest of the scan, the comma that
-    separates the two declarators was never seen, and `b` — a function a caller can
-    import — was left out of the interface with no line in any log saying so. Read the
-    other way round, as no bracket at all, the comma inside the first one's type arguments
-    would split a declarator the source never wrote. A line is the bound because a type
-    argument list written inside a value is written on one; a `<` this finds no partner
-    for before the newline is a comparison, and is stepped over as the operator it is.
+    A `<` is a bracket only where a *name* stands in front of it and a `>` closes it before
+    this declaration ends, and that is the whole of how `const a = new Map<string,
+    number>(), b = 2` is told from `const flag = 1 < 2, b = (x: number): number => x`.
+    Counted as a bracket outright, the comparison in the second left the depth above zero
+    for the rest of the scan, the comma that separates the two declarators was never seen,
+    and `b` — a function a caller can import — was left out of the interface with no line
+    in any log saying so. Read the other way round, as no bracket at all, the comma inside
+    the first one's type arguments would split a declarator the source never wrote.
+
+    The name in front is what settles it, and it is the same question `_opens_type_arguments`
+    asks about a `<` in a `.tsx` file: type arguments are written against something, and a
+    comparison is written against a value that very often is not a name — `1`, `0`,
+    `items.length`. The end of the declaration is the bound rather than the end of the
+    line, because a long type argument list is wrapped over several of them, and bounding
+    it at the newline read the comma inside a wrapped `new Map<\n  string,\n  number\n>()`
+    as a declarator separator: `q` beside it was still measured and no number moved, but
+    the log `_decline` calls the complete list of what was skipped carried a line about an
+    export called `number` that this file does not contain.
     """
     depth = 0
     at = position
+    ends_at = _end_of_the_declaration(masked, position)
     while at < len(masked):
         character = masked[at]
         if character == "<":
-            closed = _after_angles(masked, at, _end_of_line(masked, at))
+            closed = (
+                _after_angles(masked, at, ends_at)
+                if _A_NAME_BEHIND_IT.search(masked[:at].rstrip()) is not None
+                else None
+            )
             if closed is not None:
                 at = closed
                 continue
@@ -1123,10 +1213,34 @@ def _next_declarator(masked, position):
     return None
 
 
-def _end_of_line(masked, position):
-    """Where the line this offset sits on ends, or the end of the text when it is the last."""
-    ended = masked.find("\n", position)
-    return len(masked) if ended < 0 else ended
+def _end_of_the_declaration(masked, position):
+    """How far a `<` written inside this declaration list may be looked for a partner.
+
+    A type argument list never spans a statement, so the statement is the bound: the `;`
+    that closes this one, the bracket that closes whatever holds it, or the word that can
+    only open the next one. Without a bound at all a `<` written as a comparison pairs
+    happily with the `>` of some generic further down the file and steps over everything
+    in between, which is the whole reason `_after_angles` asks for one.
+    """
+    depth = 0
+    at = position
+    while at < len(masked):
+        character = masked[at]
+        if character in "([{":
+            depth += 1
+        elif character in ")]}":
+            if depth == 0:
+                return at
+            depth -= 1
+        elif depth == 0:
+            if character == ";":
+                return at
+            if (character.isalpha() or character in "_$") and _OPENS_A_STATEMENT.match(
+                masked, at
+            ):
+                return at
+        at += 1
+    return len(masked)
 
 
 def _binding_from(masked, text, position, matching, documented, module, jsx):
@@ -1752,8 +1866,8 @@ def _jsx_elements_in(masked, jsx):
             log.debug(
                 "angle brackets not read as an element name=%s reason=%s",
                 match.group(1),
-                "a name stands in front of them, so they are the type arguments of that "
-                "name rather than a tag",
+                "a value stands in front of them, so the < is an operator on it — that "
+                "name's type arguments, or a comparison against it — rather than a tag",
             )
             continue
         found.append(match)
@@ -1761,16 +1875,26 @@ def _jsx_elements_in(masked, jsx):
 
 
 def _opens_type_arguments(before):
-    """Whether the `<` after this text opens a generic's type arguments rather than a tag.
+    """Whether the `<` after this text is anything other than a tag opening.
 
     What stands in front of it is the whole of the answer, the same way it is for a slash
-    that might open a regular expression. A name means type arguments —
-    `useState<Customer | null>(null)` writes the same six characters as `<Customer ...>`
-    and builds nothing at all — unless the name is a word a value can follow, because
-    `return <Card />` is a name in front of a tag and nothing else. A closing bracket
-    means type arguments for the same reason a name does. Everything else is punctuation
-    an expression can follow, `>` included: a `>` ends a JSX opening tag as surely as it
-    ends a type argument list, and `<div><Card /></div>` is how the nesting is written.
+    that might open a regular expression, and the question it really answers is whether a
+    *value* has just been written. A value in front means the `<` is an operator on it —
+    either a generic's type arguments, `useState<Customer | null>(null)`, or a comparison,
+    `if (0 < Max)` — and neither builds anything. Nothing in front of it means a value is
+    about to be written, and `<Card />` is one.
+
+    Four things count as a value ending here. A name is one, unless it is a word a value
+    can follow, because `return <Card />` is a name in front of a tag and nothing else. A
+    closing bracket is one. A digit is one, and it is the one this reading missed: `if (0
+    < Max && n > 1)` against an imported `Max` put a construction of `Max` in the fan of a
+    file that builds nothing, because a number is not a name and `0` is not a bracket. A
+    quote is the fourth, for the same reason a digit is — the masking leaves a literal's
+    own quotes in place, so `'a' < b` ends in one.
+
+    Everything else is punctuation an expression can follow, `>` included: a `>` ends a JSX
+    opening tag as surely as it ends a type argument list, and `<div><Card /></div>` is how
+    the nesting is written.
     """
     trimmed = before.rstrip()
     if not trimmed:
@@ -1778,7 +1902,7 @@ def _opens_type_arguments(before):
     name = _A_NAME_BEHIND_IT.search(trimmed)
     if name is not None:
         return name.group(0) not in _BEFORE_A_REGEX
-    return trimmed[-1] in ")]"
+    return trimmed[-1] in _A_VALUE_CAN_END_WITH
 
 
 def _reached_in(masked, jsx):
@@ -1799,16 +1923,28 @@ def _reached_in(masked, jsx):
     read = len(_THROWN.findall(masked))
     plain = _THROUGH_THIS.sub("", masked)
     receivers = _receivers_in(plain)
-    called = {
-        found.group(1)
-        for found in _A_CALL.finditer(masked)
-        if found.group(1) not in _NOT_A_CALL
-        and not masked[:found.start(1)].rstrip().endswith(".")
-    }
+    called = set()
+    declares = {found.group(2) for found in _DECLARES.finditer(masked)}
+    for found in _A_CALL.finditer(masked):
+        name = found.group(1)
+        if name in _NOT_A_CALL:
+            continue
+        before = masked[:found.start(1)].rstrip()
+        if before.endswith("."):
+            continue
+        if _PRECEDED_BY_NEW.search(before):
+            # `new SignInFailed()` puts a name in front of brackets with nothing but
+            # `new` in front of the name, so it reads as a bare call to something spelled
+            # `SignInFailed`. It is a construction, reported as one below, and read as a
+            # call as well it drew a fan line whose evidence said "calls SignInFailed,
+            # which this file imports from it" over a file that calls nothing — a
+            # sentence a reader can check against the source and find false. The Java
+            # side has refused this reading since it was written.
+            continue
+        (declares if _declares_rather_than_calls(masked, found) else called).add(name)
     constructed = set(_CONSTRUCTED.findall(plain)) | {
         match.group(1) for match in _jsx_elements_in(masked, jsx)
     }
-    declares = {found.group(2) for found in _DECLARES.finditer(masked)}
     qualified = sorted(name for name in constructed if "." in name)
     if qualified:
         # The floor this reading takes on a dotted name, said out loud once per file
@@ -1845,6 +1981,37 @@ def _reached_in(masked, jsx):
     }
 
 
+def _declares_rather_than_calls(text, match):
+    """Whether the name this call pattern matched is being declared rather than called.
+
+    The same question the Java side asks, answered off the other end of the brackets
+    because TypeScript writes the answer there. A declaration says what it hands back
+    after its parameter list — `save(id: string): void` in an `interface`, in a `type`, in
+    an object type written straight into an annotation, or on a class — and a call says
+    nothing there. A method written with a body and no return type is the second spelling:
+    `save(id) { ... }` opens a brace where a call would have finished.
+
+    Read without asking, every member signature in every type declaration in a file was a
+    call. `export interface Api { save(id: string): void }` in a file that also writes
+    `import { save } from './repo'` drew a fan line reading "calls save, which this file
+    imports from it" over a file whose truthful reach is nothing at all — the fan line
+    invented outright rather than merely misattributed.
+
+    Two spellings of a real call are answered "declaration" and go uncounted: a call
+    inside a conditional's first arm, `ok ? save(id) : none`, and a `case save():` in a
+    switch. Both leave a fan shorter than the source, which is the direction this tool is
+    willing to be wrong in and the same trade the Java side names — where the two cannot
+    be told apart, this answers "declaration", because the other answer draws a line to a
+    card the module never calls.
+
+    A `function` declaration is answered by the same rule off the same end — `function
+    f(): void` writes a return type and `function f() {` writes a body — which is why the
+    word in front of it no longer has to be looked at separately.
+    """
+    rest = text[after_balanced(text, match.end() - 1):].lstrip()
+    return bool(rest) and rest[0] in ":{"
+
+
 def _receivers_in(plain):
     """What calls in this file were written against, a qualified `new` left out.
 
@@ -1855,6 +2022,13 @@ def _receivers_in(plain):
     find false, which the Java side calls the one failure it exists to make impossible and
     which this reading reintroduced by building receivers with no guard. The ones declined
     are logged: nothing is dropped here without a word.
+
+    A reserved word is not a receiver either, and that one is the masking showing through:
+    a construct blanked out leaves the characters it stood for as spaces, so `return
+    /x/.test(s)` reads as the word `return`, a gap, and `.test(`, and was reported as a
+    call on a collaborator called `return`. Nothing can be imported under that name, so
+    this one drew no line — but the same shape after any other masked construct attaches a
+    real name to a call the source never wrote on it.
     """
     found = set()
     for match in _A_RECEIVER_CALL.finditer(plain):
@@ -1864,6 +2038,14 @@ def _receivers_in(plain):
                 match.group(1),
                 "new is written in front of it, so it qualifies the thing being built "
                 "rather than holding something a call was written on",
+            )
+            continue
+        if match.group(1) in _NOT_A_RECEIVER:
+            log.debug(
+                "name not read as a receiver name=%s reason=%s",
+                match.group(1),
+                "it is a reserved word, which holds nothing for a call to be written on: "
+                "what stood between it and the dot is a construct this reading masked",
             )
             continue
         found.add(match.group(1))
@@ -1888,6 +2070,10 @@ def _calls_in(body, jsx):
         receiver, name = match.group(1), match.group(2)
         if _PRECEDED_BY_NEW.search(body[:match.start(1)].rstrip()):
             continue
+        if receiver in _NOT_A_RECEIVER:
+            # The same reading `_receivers_in` declines, declined here too so that a flow
+            # and a fan cannot disagree about one line of source.
+            continue
         opened = match.end() - 1
         found.append(
             (match.start(1), after_balanced(body, opened),
@@ -1900,13 +2086,13 @@ def _calls_in(body, jsx):
         before = body[:match.start(1)].rstrip()
         if before.endswith(".") or _PRECEDED_BY_NEW.search(before):
             continue
-        if re.search(r"(?<![\w$.])(?:function|class)$", before):
+        if _declares_rather_than_calls(body, match):
             continue
         opened = match.end() - 1
         found.append((match.start(1), after_balanced(body, opened), CallSite(None, name)))
     for match in _CONSTRUCTED.finditer(body):
         found.append(
-            (match.start(), after_balanced(body, match.end(1)),
+            (match.start(), after_the_arguments(body, match.end(1)),
              CallSite(None, match.group(1), builds=True))
         )
     for match in _jsx_elements_in(body, jsx):
