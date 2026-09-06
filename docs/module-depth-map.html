@@ -8268,6 +8268,15 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + "refusal band cannot read on either side of a seam, and what a fan cannot see a "
     + "module coordinating. None of them can be checked by this page. All of them can be "
     + "checked against the source, which is why each one is named.");
+  // The two headings the sentence below sends a reader to, written once and used both
+  // here and on the sections themselves, so the name in the sentence and the name over
+  // the section cannot drift apart. They are named rather than pointed at, and named in
+  // the order the page draws them. Counting them instead — sending a reader on to the
+  // next two headings, scoring first — was true and useless: a reader after the scoring
+  // read the next heading down, and the next heading down is the reading one.
+  var HEADING_NOT_READ = "What was not read at all";
+  var HEADING_NEVER_SCORED = "What was never scored, and under which rule";
+
   // How much of the source is actually behind the picture, read from the document rather
   // than asserted. A page drawn from half the files deserves half the trust, and a reader
   // cannot weigh what they are looking at without being told which half it is.
@@ -8277,14 +8286,6 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // a page disagreeing with itself about what it read. Each noun below is counted and
   // each verb is counted separately from it, because "1 of 1 module ... are scored" is
   // what a hardcoded verb beside a counted noun produces on a one-module run.
-  // The two headings the sentence below sends a reader to, written once and used both
-  // here and on the sections themselves, so the name in the sentence and the name over
-  // the section cannot drift apart. They are named rather than pointed at, and named in
-  // the order the page draws them. Counting them instead — sending a reader on to the
-  // next two headings, scoring first — was true and useless: a reader after the scoring
-  // read the next heading down, and the next heading down is the reading one.
-  var HEADING_NOT_READ = "What was not read at all";
-  var HEADING_NEVER_SCORED = "What was never scored, and under which rule";
   add(unmeasured, "p", null,
     "Every number here was read from " + document_.source.filesParsed + " of "
     + count(document_.source.filesSeen, "source path", "source paths")
