@@ -15,7 +15,7 @@ a reader to mistake the score for the whole picture.
 
 **Blocked by:** 06 (Behind the shape).
 
-**Status:** needs-review
+**Status:** done
 
 - [x] The snapshot date is supplied when the tool runs and never read from the system clock
 - [x] The page shows the snapshot date it was given
@@ -819,3 +819,121 @@ and after.
   of it ..."); the same with `0.00` → 400 with "A deposit has to be an amount of more than
   zero, and 0.00 is not.". `grep -cE 'ERROR|Exception:'` over that log → **0**. Vite on 5173
   → 200, its log clean.
+
+## Verified
+
+Reviewed on `ticket/09-what-the-page-admits` at `a3af79c`, working tree clean before and
+after. All seven criteria met and each one exercised. `git diff
+ticket/08-the-frontend-honestly..ticket/09-what-the-page-admits -- backend frontend` is
+empty, so this branch is the Python tool and nothing else.
+
+**Checks.** `cd backend && ./mvnw test` → exit 0, `Tests run: 113, Failures: 0, Errors: 0`,
+BUILD SUCCESS. `cd frontend && npm run typecheck` → exit 0 (Node 24.16.0 from nvm; system
+node is v16). `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests`
+→ **869 tests, OK**.
+
+**The date is an argument and no clock is read (criterion 1).**
+`python3 scripts/module-depth-map.py --snapshot-date 2026-09-06 --log-level DEBUG` → exit
+0, and `git status --short` printed nothing afterwards, so the committed
+`docs/module-depth-map.{json,html}` are byte-identical to a fresh run. From the run's log:
+`run started snapshotDate=2026-09-06 ...`, DEBUG `snapshot date given date=2026-09-06
+reason=handed to this run; no clock is read anywhere in this tool`, `graph built
+snapshotDate=2026-09-06 ... filesSeen=74 filesParsed=74 filesUnparsed=0 pathsNotRead=0
+packages=9 modules=74 scored=38 neverScored=36`, `run finished ... flows=3 flowsTraced=3`.
+Two runs at `2001-02-03` are `cmp`-identical in both files; `2001-02-03` against
+`2027-01-01` is identical in both once the date is masked; today's real date `2026-09-06`
+appears **zero** times in a run dated `2001-02-03`, and `2001-02-03` is the only
+date-shaped string in it. `grep -rE '\.now\(|\.today\(|time\.time|new Date|Date\.now'`
+over the tool finds nothing.
+
+**Refusals.** Twenty-two, each a WARN naming its reason, each exit 6, none writing an
+output file: no `--snapshot-date` ("no snapshot date given, so there is nothing to date
+this page with"); `٢٠٢٦-٠٩-٠٦`, `２０２６-０９-０６`, `2026-٠٩-06`, `20260906`, `2026-W37-1`,
+`''`, `today`, `2026-9-6`, `+2026-09-06`, and dates with leading, trailing or newline
+whitespace, all with "is not a day written YYYY-MM-DD"; `2026-13-01` and `2026-00-01` with
+"month must be in 1..12"; `2026-02-30`, `2026-01-00`, `2026-02-29` with "day is out of
+range for month"; `0000-01-01` with "year 0 is out of range". `2024-02-29`, `0001-01-01`
+and `9999-12-31` are accepted, exit 0. Driven at the seam too: `graph.build([], rules, x)`
+raises `SnapshotNotADate` for `None`, the integer `20260906`, `''`, `2026-13-01` and
+`٢٠٢٦-٠٩-٠٦`; `build.__doc__` names both refusals it can raise and `DuplicateModules` still
+fires (two `Till.java` in one tree → WARN naming the clash, exit 6).
+
+**The page, in a real browser.** Playwright (chromium, sync API,
+`console`/`pageerror`/`requestfailed` subscribed before every navigation) over the
+committed page and seven fixtures — one unreadable directory alone; a class plus a locked
+directory; a class plus `node_modules`; a lone class; a lone record; a class plus both a
+locked directory and `node_modules`; an empty tree — in light and dark, and the committed
+page also at 900, 1024, 1280 and 1440. **Zero console messages, zero page errors, zero
+failed requests on every load**, and `scrollWidth == clientWidth` at every width.
+
+Screenshots read, not merely taken. Criterion 2 and 3: the bold sentence is the first
+paragraph under the `h1` and above the fold at 1024 — "**An observation of this
+repository's source as it stood on 2026-09-06.** Not a list of work to be done: nothing
+here is ranked, nothing here is proposed, and no module here is named as one that ought to
+change." — with "Snapshot 2026-09-06" the first fact in the counts box. Criterion 5:
+"What this page does not measure" carries both bullets by name — "the invariants a module
+states in prose" and "the order calls have to be made in" — and closes "The score is a
+floor on what an interface asks of a caller, never the whole of it". Criterion 6: "Source
+paths parsed 74 of 74", "Source paths not parsed 0", "Paths not read 0", and "Every number
+here was read from 74 of 74 source paths under the source named above — every one of them.
+38 of 74 modules drawn here are scored."
+
+**Criterion 4.** The page lists three rules with the count each excluded — data carrier 26,
+generated repository 9, entry point 1 — summing to the 36 the document reports, and
+`74 − 36 = 38 = modulesScored`. Every one of the 36 never-scored modules carries an
+`excludedBy` with both `rule` and `matched`; none is missing either. Each excluded card
+prints its rule on the card itself ("never scored — data carrier").
+
+**Criterion 7.** All 74 module panels opened one at a time and their dialog text plus the
+page body — 153,979 characters — scanned for 23 prescriptive phrases. One hit, and it is
+the page's own denial ("no module here is named as one that ought to change"). Separately
+all 2,516 strings in `docs/module-depth-map.json`: **zero** hits.
+
+**Attempt 4's three defects and five smaller items are all genuinely fixed**, each checked
+on the fixture attempt 4 named. On one unreadable directory and nothing else the coverage
+paragraph now reads "… and 1 path could not be read at all: **it is** named in the band
+above this, and every module declared **inside it** is missing from this page … and what
+could not be read at all is under **neither** of them: a path the operating system refused
+is a failure rather than a rule declining it" — the false "altogether" clause is gone and
+the pronouns agree. That same run's scoring summary now ends "And 1 path could not be read
+at all, named in the band above this". The end-of-run WARNING says `the page is drawn from
+0 of 1 source path: 1 could not be read, and every module declared inside it is missing
+from the page` — the noun the page uses. A single-path run reads "1 of 1 source path …
+the only one there was", and a lone record reads "1 of 1 module is drawn but never scored,
+**by** a named rule".
+
+**Guards mutation-tested; nine of nine bite.** Restoring the "altogether" clause → 4
+failures including `test_no_heading_is_promised_more_than_the_section_under_it_holds`;
+hardcoding the plural pronoun → fails; dropping the unreadable-path reconciliation clause →
+`test_the_scoring_summary_accounts_for_a_path_that_would_not_open_too`; hardcoding the
+noun or the pronoun in the CLI warning →
+`test_the_noun_the_count_governs_is_counted_along_with_the_pronoun`; adding a `--log`
+option whose name is a prefix of `--log-level`, and adding `TRACE` to `--log-level`'s
+choices → both fail `test_every_argument_this_command_takes_is_on_its_usage_line`, so
+attempt 4's two usage-line drifts are closed; paraphrasing a heading in the README →
+`test_the_readme_calls_the_sections_what_the_page_heads_them`. Every mutation was restored
+and `git status --short` was empty afterwards.
+
+**The running application** was exercised too, though this branch touches no Java or
+TypeScript: `GET /api/customers` → 200; `POST /api/savings-accounts/1/deposits` with
+`{"amount":"3.00","fromCurrentAccountId":1}` → 201, leaving in
+`logs/09-what-the-page-admits.app.5.backend.log` the two DEBUG lines behind the decision
+and then `INFO i.d.s.deposits.DepositsService : deposit accepted depositId=1
+savingsAccountId=1 fromCurrentAccountId=1 amount=3.00 pointsEarned=3
+depositedAt=2026-09-06T18:08:37.979Z`; the same with `0.00` → 400 "A deposit has to be an
+amount of more than zero, and 0.00 is not.". `grep -cE 'ERROR|Exception:'` over that log →
+**0**. Vite on 5173 → 200, its log clean.
+
+### Two things left open, neither blocking and neither a criterion
+
+- On a run that read **nothing** (an empty source tree, `filesSeen === 0`) the coverage
+  sentence ends "read from 0 of 0 source paths under the source named above — **every one
+  of them**". `word()` at `page.py:684` splits 1 from not-1, so zero takes the plural arm.
+  Vacuously true rather than false, and the same page's second paragraph already says
+  "Nothing was read", so no reader is misled — but it is the last survivor of the
+  count-the-noun family, and a third arm (or gating the clause on `filesSeen > 0`) would
+  close it. Unreachable on this repository.
+- On that same run the counts box prints "Languages" with an empty value. Confirmed
+  **pre-existing**: `git archive ticket/08-the-frontend-honestly` renders the identical
+  `fact("Languages", document_.source.languages.join(", "))`, so it belongs to an earlier
+  ticket.
