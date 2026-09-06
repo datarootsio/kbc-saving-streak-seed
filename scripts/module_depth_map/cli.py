@@ -283,12 +283,22 @@ def main(argv=None):
         )
 
     if document["source"]["filesUnparsed"]:
+        # "source paths", the same two words the counts box and the page's own coverage
+        # sentence use for these identical two numbers. A directory the operating system
+        # will not open is counted here, and a run that calls it a file in its log while
+        # the page it just wrote calls it a path is one thing under two names. The pronoun
+        # is counted too: one unreadable path left "every module in them". The tail names
+        # the page outright rather than saying "from it": with the pronoun above counted,
+        # a run with one unreadable path had two "it"s in one clause standing for two
+        # different things.
+        unparsed = document["source"]["filesUnparsed"]
         log.warning(
-            "the page is drawn from %d of %d source files: %d could not be read, and every "
-            "module in them is missing from it",
+            "the page is drawn from %d of %d source paths: %d could not be read, and every "
+            "module declared inside %s is missing from the page",
             document["source"]["filesParsed"],
             document["source"]["filesSeen"],
-            document["source"]["filesUnparsed"],
+            unparsed,
+            "it" if unparsed == 1 else "them",
         )
     return 0
 

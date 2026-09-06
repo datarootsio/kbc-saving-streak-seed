@@ -8171,7 +8171,14 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
 
   var read = add(root, "div", "read");
   var list = add(read, "dl");
-  function count(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  // The word a number governs, without the number in front of it. Counted nouns get it
+  // through `count` below; the pronouns that refer back to one get it on their own,
+  // because "1 path ... nothing inside them" is what a hardcoded pronoun beside a counted
+  // noun renders on a run that declined a single directory. A pronoun agrees with its
+  // antecedent for the same reason a noun agrees with its number, and there is one rule
+  // here for both so that neither can be written the other way by accident.
+  function word(n, one, many) { return n === 1 ? one : many; }
+  function count(n, one, many) { return n + " " + word(n, one, many); }
   // The other half of the page's grammar, for the sentences shaped "N of M modules are
   // scored". The noun there agrees with M and the verb with N, and the two are not the
   // same number: one `count` conjugating both renders "1 of 74 modules are scored" on a
@@ -8270,6 +8277,14 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // a page disagreeing with itself about what it read. Each noun below is counted and
   // each verb is counted separately from it, because "1 of 1 module ... are scored" is
   // what a hardcoded verb beside a counted noun produces on a one-module run.
+  // The two headings the sentence below sends a reader to, written once and used both
+  // here and on the sections themselves, so the name in the sentence and the name over
+  // the section cannot drift apart. They are named rather than pointed at, and named in
+  // the order the page draws them. Counting them instead — sending a reader on to the
+  // next two headings, scoring first — was true and useless: a reader after the scoring
+  // read the next heading down, and the next heading down is the reading one.
+  var HEADING_NOT_READ = "What was not read at all";
+  var HEADING_NEVER_SCORED = "What was never scored, and under which rule";
   add(unmeasured, "p", null,
     "Every number here was read from " + document_.source.filesParsed + " of "
     + count(document_.source.filesSeen, "source path", "source paths")
@@ -8283,15 +8298,16 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     + document_.scoring.modulesScored + " of "
     + count(document_.modules.length, "module", "modules") + " drawn here "
     + verb(document_.scoring.modulesScored, document_.modules.length, "is", "are")
-    + " scored, and what was left out of the scoring, and out of the "
-    + "reading altogether, is listed under the two headings that follow.");
+    + " scored. What was left out of the reading altogether is under “"
+    + HEADING_NOT_READ + "”, and what was read and then left out of the scoring is "
+    + "under “" + HEADING_NEVER_SCORED + "”.");
 
   // Not the alarm band above: a path a rule declined is not a failure, and painting the
   // two the same colour would have a `node_modules` reading as source this tool could not
   // cope with. It is here at all because "what was left out, and under which rule" is a
   // question a reader of a picture of an application is entitled to an answer to.
   var declined = add(root, "section", "rules");
-  add(declined, "h2", null, "What was not read at all");
+  add(declined, "h2", null, HEADING_NOT_READ);
   // A directory this tool looks in by default and did not find. Said first and in its own
   // words, because it is a different finding from the rule below: half an application
   // missing from a page is worth a sentence, and a run that quietly drew the other half
@@ -8306,7 +8322,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   if (document_.source.notRead.paths.length > 0) {
     add(declined, "p", null,
       count(document_.source.notRead.paths.length, "path", "paths") + " under the source "
-      + "read above matched that rule, and nothing inside them is drawn here:");
+      + "read above matched that rule, and nothing inside "
+      + word(document_.source.notRead.paths.length, "it", "them") + " is drawn here:");
     var skipped = add(declined, "ul");
     document_.source.notRead.paths.forEach(function (entry) {
       var item = add(skipped, "li");
@@ -8329,7 +8346,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // read for the cards, so that the page has one reading of the exclusions rather than
   // two.
   var neverScored = add(root, "section", "rules");
-  add(neverScored, "h2", null, "What was never scored, and under which rule");
+  add(neverScored, "h2", null, HEADING_NEVER_SCORED);
   // A rule that excluded nothing on this run is not listed. The sentence below promises
   // "every rule that excluded anything ... with the count it excluded", and a bullet
   // under it reading "0 modules" is a rule the reader is told about and cannot point at
@@ -8339,13 +8356,30 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   var excludingRules = document_.scoring.exclusions.filter(function (exclusion) {
     return exclusion.modulesExcluded > 0;
   });
+  // Scoped to the scoring in its first three words, because this section is one of two
+  // and the other one is a list of exclusions directly above it. A run can decline a path
+  // and exclude no module — a `node_modules` beside a single class does exactly that —
+  // and a summary opening on nothing having been left out, unqualified, then denies one
+  // block later the list the page has just drawn. The heading gives the sentence its
+  // scope, but the words a skimming reader takes are the sentence's own, so the scope is
+  // in them: left out *of the scoring*, which is what this number settles and all it
+  // settles. What the other half of the answer is gets said here too, rather than left to
+  // a reader to reconcile against the section above.
   if (document_.scoring.modulesNeverScored === 0) {
     add(neverScored, "p", null,
-      "Nothing was left out. Every module drawn on this page carries a bar: none of the "
+      "Nothing was left out of the scoring. Every module drawn on this page carries a "
+      + "bar: none of the "
       + count(document_.scoring.exclusions.length, "rule", "rules") + " in "
       + document_.scoring.configuration + " that decline to price a module matched "
       + "anything this run read. What those rules are, and what each of them would have "
-      + "excluded, is in that file.");
+      + "excluded, is in that file."
+      + (document_.source.notRead.paths.length > 0
+         ? " What was left out of the reading is a different list and a shorter answer: "
+           + "the " + count(document_.source.notRead.paths.length, "path", "paths")
+           + " under “" + HEADING_NOT_READ + "” above, which no rule here "
+           + "declined to price because nothing here read "
+           + word(document_.source.notRead.paths.length, "it", "them") + "."
+         : ""));
   } else {
     add(neverScored, "p", null,
       document_.scoring.modulesNeverScored + " of "

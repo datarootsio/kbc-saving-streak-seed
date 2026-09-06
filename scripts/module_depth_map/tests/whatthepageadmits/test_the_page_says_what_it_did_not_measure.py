@@ -509,7 +509,7 @@ class ThePageSaysItsLimitsOnTheSmallestRunThereIsTest(SourceTreeTest):
         """
         self.assertIn("exclusion.modulesExcluded > 0", self.rendered)
         self.assertIn("if (excludingRules.length > 0)", self.rendered)
-        self.assertIn("Nothing was left out.", self.rendered)
+        self.assertIn("Nothing was left out of the scoring.", self.rendered)
 
 
 class ThePageSaysItsLimitsWhenNothingCouldBeScoredTest(SourceTreeTest):
@@ -554,6 +554,138 @@ class ThePageSaysItsLimitsWhenNothingCouldBeScoredTest(SourceTreeTest):
         self.assertIn(
             "function verb(n, of, is, are) { return n === 1 || of === 1 ? is : are; }",
             self.rendered,
+        )
+
+
+class ThePageDoesNotDenyAnExclusionItHasJustListedTest(SourceTreeTest):
+    """A rule declined a path and no rule excluded a module: the run where the two halves disagree.
+
+    "What was left out" has two halves on this page and they are counted separately: a
+    path a rule declined to read, and a module that was read and then not priced. The
+    fixture here is the run that has one of each kind of answer — one declined directory,
+    and one module that every scoring rule was happy to price — and it is the run where a
+    summary written for the second half lands directly under a list belonging to the
+    first. An unqualified "Nothing was left out." is then the page denying, one block
+    later and inside one screen, the exclusion it has just drawn a bullet for.
+
+    Neither of the two classes above can see this: both build a tree with nothing in it a
+    rule would decline to read, so `source.notRead.paths` is empty in both and the
+    sentence is true in both.
+    """
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        # One class every rule prices, so nothing is excluded from the scoring, and one
+        # directory named on `sourcesNotRead.directories`, so something is excluded from
+        # the reading. `node_modules` is the rule already in `scoring.json`; nothing here
+        # is arranged for the test beyond putting a file inside it.
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        tree.typescript("node_modules/left-pad", "index.ts", "export const pad = (s) => s;")
+        self.document = graph.build(
+            [graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT
+        )
+        self.rendered = page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
+    def test_the_run_really_is_one_with_a_declined_path_and_no_excluded_module(self):
+        """The fixture is worth nothing unless it genuinely has one of each answer."""
+        self.assertEqual(1, len(self.document["source"]["notRead"]["paths"]))
+        self.assertEqual(0, self.document["scoring"]["modulesNeverScored"])
+        self.assertEqual(1, len(self.document["modules"]))
+
+    def test_the_declined_path_the_page_will_list_is_the_one_the_rule_named(self):
+        """What the section above draws, so that the sentence below really does follow it."""
+        declined = self.document["source"]["notRead"]["paths"][0]
+
+        self.assertEqual("node_modules", os.path.basename(declined["path"]))
+        self.assertIn("node_modules", declined["matched"])
+
+    def test_no_run_can_render_a_summary_that_denies_an_exclusion_outright(self):
+        """The three words a skimming reader takes have to be true on every run there is.
+
+        The heading gives the sentence its scope and a reader who reads the heading is not
+        misled. A reader who reads three words is, so the scope is in the three words: the
+        page says nothing was left out *of the scoring*, which is a claim
+        `modulesNeverScored === 0` really does settle, and never that nothing was left
+        out, which it does not.
+        """
+        self.assertIn("Nothing was left out of the scoring.", self.rendered)
+        self.assertNotIn("Nothing was left out.", self.rendered)
+        self.assertNotIn("Nothing was left out,", self.rendered)
+
+    def test_the_summary_accounts_for_the_paths_a_rule_declined_as_well(self):
+        """Scoping the sentence stops it lying; it does not answer the reader's question.
+
+        Somebody who reaches this section wanting to know what is missing from the page
+        has been told about one half of the answer and is standing under a list of the
+        other half. So the paragraph reconciles the two itself, on the runs where there is
+        anything to reconcile, and names the heading the rest of the answer is under
+        rather than pointing at it.
+        """
+        self.assertIn("document_.source.notRead.paths.length > 0", self.rendered)
+        self.assertIn("What was left out of the reading is a different list", self.rendered)
+
+    def test_a_pronoun_standing_for_a_counted_noun_is_counted_too(self):
+        """"1 path ... nothing inside them" is what a hardcoded pronoun renders here.
+
+        The number of declined paths is one on this run, which is the run the plural was
+        written blind to. A pronoun agrees with its antecedent for the same reason a noun
+        agrees with its number, and the page has one rule for both.
+        """
+        self.assertIn("function word(n, one, many) { return n === 1 ? one : many; }", self.rendered)
+        self.assertIn(
+            'word(document_.source.notRead.paths.length, "it", "them")', self.rendered
+        )
+        self.assertNotIn("and nothing inside them is drawn here", self.rendered)
+
+
+class TheCoverageSentenceSendsAReaderTheWayThePageIsDrawnTest(SourceTreeTest):
+    """The sentence that hands a reader on to the two exclusion sections names them in page order.
+
+    "the two headings that follow" was true and useless: a reader who wanted the scoring
+    half read the next heading and met the reading half. The remedy is the one the
+    section-naming fix used before it — name the heading instead of pointing at it — and
+    the order the sentence names them in has to be the order the page draws them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
+        self.rendered = page.render(document, graph.serialise(document)).decode("utf-8")
+
+    def test_each_heading_is_written_once_so_the_sentence_cannot_drift_from_the_section(self):
+        """A name in two places is a name that gets changed in one of them."""
+        self.assertIn('var HEADING_NOT_READ = "What was not read at all";', self.rendered)
+        self.assertIn(
+            'var HEADING_NEVER_SCORED = "What was never scored, and under which rule";',
+            self.rendered,
+        )
+        self.assertIn('add(declined, "h2", null, HEADING_NOT_READ)', self.rendered)
+        self.assertIn('add(neverScored, "h2", null, HEADING_NEVER_SCORED)', self.rendered)
+
+    def test_the_sentence_names_the_headings_rather_than_counting_them(self):
+        self.assertNotIn("the two headings that follow", self.rendered)
+        self.assertIn("What was left out of the reading altogether is under", self.rendered)
+
+    def test_the_sentence_names_them_in_the_order_the_page_draws_them(self):
+        """Reading first and scoring second, because that is the order the sections come in."""
+        sentence = self.rendered[
+            self.rendered.index("What was left out of the reading altogether is under") :
+        ]
+        sentence = sentence[: sentence.index("”.") + 2]
+
+        self.assertLess(
+            sentence.index("HEADING_NOT_READ"),
+            sentence.index("HEADING_NEVER_SCORED"),
+            sentence,
+        )
+        self.assertLess(
+            self.rendered.index('add(declined, "h2", null, HEADING_NOT_READ)'),
+            self.rendered.index('add(neverScored, "h2", null, HEADING_NEVER_SCORED)'),
         )
 
 
