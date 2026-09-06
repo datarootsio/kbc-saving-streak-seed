@@ -6,7 +6,7 @@ import os
 import re
 
 from ... import cli, graph, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 
 class EveryModuleIsOnThePageTest(SourceTreeTest):
@@ -17,7 +17,7 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
         tree.java("shop.till", "Receipt", "public record Receipt(long cents) {}")
         tree.java("shop.stock", "Shelf", "interface Shelf {\n    void restock();\n}")
         tree.java("shop.stock", "Aisle", "public enum Aisle {\n    LEFT,\n    RIGHT\n}")
-        return graph.build([graph.source_root(tree.root)], scoring.load())
+        return graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
     def test_every_type_in_the_source_is_a_module_in_the_graph(self):
         document = self.source()
@@ -47,7 +47,7 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
         tree.java("shop.till", "Marks", "public @ interface Marks {\n    String value();\n}")
         tree.java("shop.till", "AlsoMarks", "public @interface AlsoMarks {\n    String value();\n}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(
@@ -64,7 +64,7 @@ class EveryModuleIsOnThePageTest(SourceTreeTest):
             "    public enum Kind {\n        NO_STOCK\n    }\n}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["shop.till.Refused"], [module["id"] for module in document["modules"]])
         self.assertEqual(["Kind"], document["modules"][0]["nested"])
@@ -185,7 +185,7 @@ class NoDeclarationIsWalkedPastTest(SourceTreeTest):
             "package shop.till;\n\n@Deprecated public class Foo {}\nclass Bar {}\n",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(["shop.till.Bar", "shop.till.Foo"], [m["id"] for m in document["modules"]])
@@ -198,7 +198,7 @@ class NoDeclarationIsWalkedPastTest(SourceTreeTest):
             "public class Outer {\n    @Deprecated public enum Kind { A }\n}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["Kind"], document["modules"][0]["nested"])
 
@@ -206,7 +206,7 @@ class NoDeclarationIsWalkedPastTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "B", "class B { class N {} }")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["shop.till.B"], [m["id"] for m in document["modules"]])
         self.assertEqual(["N"], document["modules"][0]["nested"])
@@ -222,7 +222,7 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
             "package shop.till;\n\n/*/ class Ghost {} */\npublic class Real {}\n",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["shop.till.Real"], [m["id"] for m in document["modules"]])
         self.assertEqual([], document["source"]["unparsed"])
@@ -234,7 +234,7 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
             "package shop.till;\n\npublic class Till {\n}\n",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(4, document["modules"][0]["lines"])
 
@@ -246,7 +246,7 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
 
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             with self.assertRaises(graph.DuplicateModules):
-                graph.build(roots, scoring.load())
+                graph.build(roots, scoring.load(), A_SNAPSHOT)
 
         self.assertIn("shop.till.Till", logged.output[0])
         self.assertIn("first/shop/till/Till.java", logged.output[0])
@@ -262,7 +262,8 @@ class NothingIsInventedThatTheSourceDoesNotDeclareTest(SourceTreeTest):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
             exit_code = cli.main(
                 ["--source", first.root, "--source", second.root,
-                 "--graph", graph_path, "--page", page_path, "--log-level", "WARNING"]
+                 "--graph", graph_path, "--page", page_path, "--log-level", "WARNING",
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(3, exit_code)
@@ -289,7 +290,7 @@ class NestedTypesAreToldApartTest(SourceTreeTest):
             "}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["B", "B.C", "D", "D.C"], document["modules"][0]["nested"])
 
@@ -297,7 +298,7 @@ class NestedTypesAreToldApartTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "A", "class A {\n    void m() { class Row {} }\n}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["shop.till.A"], [m["id"] for m in document["modules"]])
         self.assertEqual(["Row"], document["modules"][0]["nested"])
@@ -310,7 +311,7 @@ class NestedTypesAreToldApartTest(SourceTreeTest):
             "class A {\n    void m() { class Row {} }\n    void n() { class Row {} }\n}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["Row"], document["modules"][0]["nested"])
 
@@ -326,7 +327,7 @@ class LegalJavaIsNeverCalledUnreadableTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/%s.java" % name, body)
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         return document

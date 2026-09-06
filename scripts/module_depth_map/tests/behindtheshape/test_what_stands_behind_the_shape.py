@@ -19,7 +19,7 @@ import os
 import re
 
 from ... import graph, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 # The cast, each written to earn one shape the panel has to be able to draw.
 A_MODULE_TO_CALL = "public class Prices {\n    public long of(long id) { return 0; }\n}"
@@ -139,7 +139,7 @@ class BehindTheShapeTest(SourceTreeTest):
             ("Market", ANOTHER_CALLER),
         ):
             tree.java("shop.till", name, body)
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], self.document["source"]["unparsed"])
         self.modules = {module["name"]: module for module in self.document["modules"]}
         self.rendered = page.render(

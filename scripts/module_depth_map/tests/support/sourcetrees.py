@@ -13,6 +13,14 @@ REPOSITORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 BACKEND_SOURCE = os.path.join(REPOSITORY, "backend", "src", "main", "java")
 FRONTEND_SOURCE = os.path.join(REPOSITORY, "frontend", "src")
 
+# The day every fixture here is an observation of. Every run needs one — the tool refuses
+# to date a page itself — and one written down beside the fixtures keeps the suite saying
+# the same thing on every machine and on every day it is run.
+#
+# Deliberately nothing like today: a run that read a clock instead of its argument would
+# still write a date, and a fixture dated near today could not tell the two apart.
+A_SNAPSHOT = "2001-02-03"
+
 
 class SourceTreeTest(unittest.TestCase):
     """A test with a scratch directory it can write source files into."""

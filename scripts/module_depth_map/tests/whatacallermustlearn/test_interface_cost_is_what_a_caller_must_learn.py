@@ -10,7 +10,7 @@ import json
 import re
 
 from ... import graph, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 
 class SourceOfKnownShapeTest(SourceTreeTest):
@@ -21,7 +21,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -416,7 +416,7 @@ class AMethodThatHandsNothingBackCrossesNoSeamTest(SourceOfKnownShapeTest):
         name, body = source
         tree = self.tree("fixture")
         tree.java("shop.till", name, body)
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         return {module["name"]: module for module in document["modules"]}[name]
@@ -877,7 +877,7 @@ class ACostCanBeAddedUpFromThePartsDrawnUnderItTest(SourceTreeTest):
         tree = self.tree("fixture")
         for name, body in sources:
             tree.java("shop.till", name, body)
-        self.document = graph.build([graph.source_root(tree.root)], rules)
+        self.document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -977,7 +977,7 @@ class ARecordThatWritesAnAccessorOffersOneOfItTest(SourceOfKnownShapeTest):
         tree = self.tree("fixture")
         for name, body in sources:
             tree.java("shop.till", name, body)
-        self.document = graph.build([graph.source_root(tree.root)], rules)
+        self.document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}

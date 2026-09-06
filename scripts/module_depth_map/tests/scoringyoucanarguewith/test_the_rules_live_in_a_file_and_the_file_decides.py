@@ -11,7 +11,7 @@ import json
 import os
 
 from ... import cli, graph, javasource, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 TOOL = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -70,7 +70,7 @@ class RulesFromAFileTest(SourceTreeTest):
         return graph.source_root(tree.root)
 
     def modules(self, root, path=None):
-        document = graph.build([root], scoring.load(path))
+        document = graph.build([root], scoring.load(path), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["name"]: module for module in document["modules"]}
 
@@ -113,7 +113,7 @@ class ChangingAWeightChangesTheScoreTest(RulesFromAFileTest):
         tree.java("shop.till", "Till", A_MODULE)
 
         document = graph.build(
-            [graph.source_root(tree.root)], scoring.load(self.weights(method=7))
+            [graph.source_root(tree.root)], scoring.load(self.weights(method=7)), A_SNAPSHOT
         )
 
         self.assertEqual(7, document["scoring"]["weights"]["method"])
@@ -213,7 +213,7 @@ class ChangingAnExclusionChangesWhatIsScoredTest(RulesFromAFileTest):
         ]
 
         document = graph.build(
-            [graph.source_root(tree.root)], scoring.load(self.rules(exclusions=renamed))
+            [graph.source_root(tree.root)], scoring.load(self.rules(exclusions=renamed)), A_SNAPSHOT
         )
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -404,6 +404,7 @@ class ARuleThatCouldNeverMatchIsRefusedTest(RulesFromAFileTest):
                     "--scoring", self.rules(
                         **self.with_a_rule({"annotatedWith": ["a.b.C"]})
                     ),
+                    "--snapshot-date", A_SNAPSHOT,
                 ]
             )
 
@@ -439,6 +440,7 @@ class TheFileIsUsedOrTheRunStopsTest(RulesFromAFileTest):
                     "--graph", os.path.join(out, "graph.json"),
                     "--page", os.path.join(out, "page.html"),
                     "--scoring", "",
+                    "--snapshot-date", A_SNAPSHOT,
                 ]
             )
 
@@ -719,6 +721,7 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
                     "--graph", os.path.join(out, "graph.json"),
                     "--page", os.path.join(out, "page.html"),
                     "--scoring", missing,
+                    "--snapshot-date", A_SNAPSHOT,
                 ]
             )
 
@@ -738,6 +741,7 @@ class TheFileIsTheOnlyPlaceTheRulesLiveTest(RulesFromAFileTest):
                 "--graph", os.path.join(out, "graph.json"),
                 "--page", os.path.join(out, "page.html"),
                 "--scoring", self.weights(method=10),
+                "--snapshot-date", A_SNAPSHOT,
             ]
         )
 

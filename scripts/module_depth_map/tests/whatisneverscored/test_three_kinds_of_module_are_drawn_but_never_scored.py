@@ -9,7 +9,7 @@ beside the tool, which is the file a reader who disagrees with an exclusion woul
 import json
 
 from ... import graph, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 
 class SourceOfKnownShapeTest(SourceTreeTest):
@@ -20,7 +20,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, body in sources:
             tree.java("shop.till", name, body)
 
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -365,7 +365,7 @@ class NoModuleIsExcludedWithoutARuleThatSaysSoTest(SourceOfKnownShapeTest):
         tree = self.tree("fixture")
         tree.java("shop.till", "Receipt", "public record Receipt(long cents) {}")
 
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual("first", document["modules"][0]["excludedBy"]["rule"])
 

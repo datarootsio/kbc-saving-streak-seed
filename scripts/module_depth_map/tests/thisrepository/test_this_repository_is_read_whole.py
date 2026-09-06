@@ -12,14 +12,19 @@ passed it.
 import os
 
 from ... import graph, languages, scoring
-from ..support.sourcetrees import BACKEND_SOURCE, FRONTEND_SOURCE, SourceTreeTest
+from ..support.sourcetrees import (
+    A_SNAPSHOT,
+    BACKEND_SOURCE,
+    FRONTEND_SOURCE,
+    SourceTreeTest,
+)
 
 
 def this_repository():
     """The graph of both of this repository's source roots, read with the shipped rules."""
     return graph.build(
         [graph.source_root(BACKEND_SOURCE), graph.source_root(FRONTEND_SOURCE)],
-        scoring.load(),
+        scoring.load(), A_SNAPSHOT,
     )
 
 

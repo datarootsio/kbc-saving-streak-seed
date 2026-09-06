@@ -26,7 +26,7 @@ import os
 import re
 
 from ... import graph, page, scoring
-from ..support.sourcetrees import BACKEND_SOURCE, SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, BACKEND_SOURCE, SourceTreeTest
 
 TOOL = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REPOSITORY = os.path.dirname(os.path.dirname(TOOL))
@@ -162,12 +162,12 @@ class FlowTest(SourceTreeTest):
 
     def flows_of(self, *flows):
         """The flows the graph holds when the configuration names these."""
-        document = graph.build([self.root], scoring.load(self.rules_naming(*flows)))
+        document = graph.build([self.root], scoring.load(self.rules_naming(*flows)), A_SNAPSHOT)
         return document["flows"]
 
     def module(self, module_id):
         """One module of the graph this fixture builds, for reading its fan off."""
-        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())))
+        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())), A_SNAPSHOT)
         return {module["id"]: module for module in document["modules"]}[module_id]
 
     def one_flow(self, **entry_point):
@@ -346,7 +346,7 @@ class AFlowIsWalkedOutOfTheCallGraphTest(FlowTest):
     def test_the_transaction_a_module_establishes_is_reached_and_is_not_a_step(self):
         """A flow passes through modules; nothing on the page could be highlighted for it."""
         document = graph.build(
-            [graph.source_root(BACKEND_SOURCE)], scoring.load()
+            [graph.source_root(BACKEND_SOURCE)], scoring.load(), A_SNAPSHOT
         )
         by_id = {module["id"]: module for module in document["modules"]}
         deposit = [flow for flow in document["flows"] if flow["flow"] == "a deposit"][0]
@@ -365,7 +365,7 @@ class EveryModuleNamedInAFlowIsOneTheGraphHoldsTest(FlowTest):
     def test_every_step_of_every_flow_names_a_module_in_the_document(self):
         document = graph.build(
             [self.root],
-            scoring.load(self.rules_naming(self.a_flow(), self.a_flow(flow="another sale"))),
+            scoring.load(self.rules_naming(self.a_flow(), self.a_flow(flow="another sale"))), A_SNAPSHOT,
         )
         held = {module["id"] for module in document["modules"]}
 
@@ -376,7 +376,7 @@ class EveryModuleNamedInAFlowIsOneTheGraphHoldsTest(FlowTest):
                 self.assertIn(step["moduleId"], held)
 
     def test_every_module_a_step_says_it_was_reached_from_is_in_the_document_too(self):
-        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())))
+        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())), A_SNAPSHOT)
         held = {module["id"] for module in document["modules"]}
 
         for flow in document["flows"]:
@@ -385,7 +385,7 @@ class EveryModuleNamedInAFlowIsOneTheGraphHoldsTest(FlowTest):
                     self.assertIn(step["reachedFrom"], held)
 
     def test_a_step_names_the_module_by_the_name_and_package_the_document_gave_it(self):
-        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())))
+        document = graph.build([self.root], scoring.load(self.rules_naming(self.a_flow())), A_SNAPSHOT)
         by_id = {module["id"]: module for module in document["modules"]}
 
         for step in document["flows"][0]["path"]:
@@ -449,7 +449,7 @@ class AFlowThatCannotBeWalkedFailsRatherThanShortensTest(FlowTest):
         with self.assertLogs("module_depth_map.graph", level=logging.WARNING) as logged:
             graph.build(
                 [self.root],
-                scoring.load(self.rules_naming(self.a_flow(module="shop.till.Nowhere"))),
+                scoring.load(self.rules_naming(self.a_flow(module="shop.till.Nowhere"))), A_SNAPSHOT,
             )
 
         said = "\n".join(logged.output)
@@ -568,7 +568,7 @@ class TheFlowsThisRepositoryShipsTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load(), A_SNAPSHOT)
         self.flows = {flow["flow"]: flow for flow in self.document["flows"]}
 
     def test_a_deposit_a_withdrawal_and_a_reward_claim_are_each_available_as_a_flow(self):
@@ -738,7 +738,7 @@ class ThePageDrawsTheFlowsItIsGivenTest(FlowTest):
                     self.a_flow(),
                     self.a_flow(module="shop.till.Nowhere", flow="a sale that moved"),
                 )
-            ),
+            ), A_SNAPSHOT,
         )
         self.rendered = page.render(
             self.document, graph.serialise(self.document)

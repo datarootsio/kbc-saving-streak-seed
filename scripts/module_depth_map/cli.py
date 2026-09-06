@@ -3,6 +3,13 @@
 Both outputs are written from the same document in the same run, so the page can never
 describe a codebase the graph does not. The run says out loud how much of the source it
 actually read, because a picture drawn from half the files deserves half the trust.
+
+One argument has no default and cannot have one: the day the run is an observation of.
+Every other value here can fall back on something written down, and this one could only
+fall back on the machine's clock — which would move the bytes between two runs over
+unchanged source, and would date the page by when somebody pressed a key rather than by
+what it is a picture of. So a run with no `--snapshot-date` is refused with the reason
+said out loud rather than dated quietly.
 """
 
 import argparse
@@ -59,6 +66,18 @@ def parser():
         help="a directory of source to read, in any language this tool knows the file "
              "endings of (repeatable; default %s)" % ", ".join(DEFAULT_SOURCES),
     )
+    # Not defaulted, and deliberately not defaultable. The only default available is the
+    # machine's clock, and reading it would put a value in the output that changes
+    # between two runs over unchanged source — and would date the page by when it was
+    # generated rather than by what it is an observation of. So whoever runs the tool
+    # says which day this is a picture of, or there is no picture.
+    it.add_argument(
+        "--snapshot-date",
+        metavar=graph.SNAPSHOT_DATE,
+        help="the day this run is an observation of, written %s. Required: no clock is "
+             "read anywhere in this tool, so a page is dated by whoever ran it or not at "
+             "all" % graph.SNAPSHOT_DATE,
+    )
     it.add_argument("--graph", default=DEFAULT_GRAPH, metavar="FILE", help="where to write the graph document")
     it.add_argument("--page", default=DEFAULT_PAGE, metavar="FILE", help="where to write the page")
     it.add_argument(
@@ -87,6 +106,33 @@ def main(argv=None):
         format="%(levelname)-5s %(name)s %(message)s",
         force=True,
     )
+
+    # Before the source is walked, because a run that cannot be dated is not a run and
+    # there is no reason to read seventy files to find that out. Refused in words rather
+    # than by argparse's own `required=True`, which ends the process from inside a
+    # function documented to answer an exit code, and says "the following arguments are
+    # required" where the reason a reader needs is why this tool will not date a page
+    # itself.
+    if arguments.snapshot_date is None:
+        log.warning(
+            "refused to run: no snapshot date given, so there is nothing to date this "
+            "page with. Nothing here reads a clock — a date read off the machine would "
+            "change the output between two runs over unchanged source, and would say "
+            "when the page was generated rather than what it is an observation of. Pass "
+            "--snapshot-date %s",
+            graph.SNAPSHOT_DATE,
+        )
+        return 6
+    try:
+        snapshot = graph.a_snapshot_date(arguments.snapshot_date)
+    except graph.SnapshotNotADate as refused:
+        log.warning(
+            "refused to run: %s. A page dated by something that is not a day is a dated "
+            "page that is not dated, and every other number on it would be read as "
+            "though it were",
+            refused.reason,
+        )
+        return 6
 
     chosen = arguments.source is not None
     sources = arguments.source or list(DEFAULT_SOURCES)
@@ -117,7 +163,8 @@ def main(argv=None):
     sources = [directory for directory in sources if directory not in missing]
 
     log.info(
-        "run started sources=%s graph=%s page=%s scoring=%s",
+        "run started snapshotDate=%s sources=%s graph=%s page=%s scoring=%s",
+        snapshot,
         ",".join(sources),
         arguments.graph,
         arguments.page,
@@ -136,7 +183,8 @@ def main(argv=None):
 
     try:
         document = graph.build(
-            [graph.source_root(directory) for directory in sources], rules, skipped
+            [graph.source_root(directory) for directory in sources], rules, snapshot,
+            skipped,
         )
     except graph.DuplicateModules as clash:
         log.warning(
@@ -183,9 +231,10 @@ def main(argv=None):
             )
         return 5
     log.info(
-        "run finished graphBytes=%d pageBytes=%d languages=%s filesParsed=%d "
+        "run finished snapshotDate=%s graphBytes=%d pageBytes=%d languages=%s filesParsed=%d "
         "filesUnparsed=%d pathsNotRead=%d modules=%d scored=%d neverScored=%d flows=%d "
         "flowsTraced=%d",
+        document["snapshot"]["date"],
         written[arguments.graph],
         written[arguments.page],
         ",".join(document["source"]["languages"]) or "none, nothing was read",

@@ -6,6 +6,7 @@ reruns the tool — and a stale page is worse than no page, because it is truste
 the only test that fails when the outputs in `docs/` no longer describe the source.
 """
 
+import json
 import os
 
 from ... import cli
@@ -32,20 +33,38 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
         # other and would fail for a reason that is nothing to do with the source.
         exit_code = cli.main(
             ["--source", BACKEND_SOURCE, "--source", FRONTEND_SOURCE,
-             "--graph", self.graph_path, "--page", self.page_path, "--log-level", "ERROR"]
+             "--graph", self.graph_path, "--page", self.page_path,
+             "--snapshot-date", self.the_day_the_committed_outputs_say_they_are_of(),
+             "--log-level", "ERROR"]
         )
         self.assertEqual(0, exit_code)
+
+    def the_day_the_committed_outputs_say_they_are_of(self):
+        """The snapshot date the committed graph carries, handed back to the fresh run.
+
+        The date is the one value in these files that the source cannot produce: it is
+        whatever whoever last ran the tool said the day was, and no reading of this
+        repository can rediscover it. So the fresh run is given the committed one, and
+        what this test compares is everything else — which is exactly its subject.
+        Whoever regenerates the outputs on a new day changes the date in both files and
+        this test follows them; what it will not let past is a page describing source
+        that has moved on.
+        """
+        with open(COMMITTED_GRAPH, encoding="utf-8") as handle:
+            return json.load(handle)["snapshot"]["date"]
 
     def test_the_committed_graph_document_is_byte_identical_to_a_fresh_run(self):
         self.assertEqual(
             bytes_of(COMMITTED_GRAPH),
             bytes_of(self.graph_path),
-            "docs/module-depth-map.json is out of date: run python3 scripts/module-depth-map.py",
+            "docs/module-depth-map.json is out of date: run python3 "
+            "scripts/module-depth-map.py --snapshot-date <the day you are dating it>",
         )
 
     def test_the_committed_page_is_byte_identical_to_a_fresh_run(self):
         self.assertEqual(
             bytes_of(COMMITTED_PAGE),
             bytes_of(self.page_path),
-            "docs/module-depth-map.html is out of date: run python3 scripts/module-depth-map.py",
+            "docs/module-depth-map.html is out of date: run python3 "
+            "scripts/module-depth-map.py --snapshot-date <the day you are dating it>",
         )

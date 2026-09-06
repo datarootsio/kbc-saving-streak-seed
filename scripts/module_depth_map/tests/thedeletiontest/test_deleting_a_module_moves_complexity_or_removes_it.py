@@ -16,7 +16,7 @@ import json
 import os
 
 from ... import cli, graph, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 TOOL = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -114,7 +114,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, (package, body) in elsewhere.items():
             tree.java(package, name, body)
 
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load(self.rules()))
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(self.rules()), A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -468,8 +468,8 @@ class TheSameSourceAlwaysGivesTheSameVerdictTest(SourceOfKnownShapeTest):
             tree.java(package, name, body)
         root = graph.source_root(tree.root)
 
-        first = graph.build([root], scoring.load())
-        second = graph.build([root], scoring.load())
+        first = graph.build([root], scoring.load(), A_SNAPSHOT)
+        second = graph.build([root], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(
             [module["deletionTest"] for module in first["modules"]],
@@ -677,7 +677,8 @@ class ADeletionTestNobodyWroteIsRefusedTest(SourceTreeTest):
             ["--source", tree.root, "--scoring", path,
              "--graph", os.path.join(written_to, "graph.json"),
              "--page", os.path.join(written_to, "page.html"),
-             "--log-level", "ERROR"]
+             "--log-level", "ERROR",
+             "--snapshot-date", A_SNAPSHOT]
         )
 
         self.assertEqual(4, code)

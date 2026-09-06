@@ -10,7 +10,7 @@ import logging
 import os
 
 from ... import cli, page
-from ..support.sourcetrees import SourceTreeTest, bytes_of
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest, bytes_of
 
 
 class TheRunSaysWhatItDidTest(SourceTreeTest):
@@ -24,7 +24,8 @@ class TheRunSaysWhatItDidTest(SourceTreeTest):
         return cli.main(
             ["--source", root,
              "--graph", os.path.join(self.scratch, "out", "graph.json"),
-             "--page", os.path.join(self.scratch, "out", "page.html")] + list(arguments)
+             "--page", os.path.join(self.scratch, "out", "page.html"),
+             "--snapshot-date", A_SNAPSHOT] + list(arguments)
         )
 
     def test_one_line_says_what_the_run_read_and_what_it_wrote(self):
@@ -159,7 +160,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         with self.assertLogs("module_depth_map.cli", level=logging.ERROR) as logged:
             code = cli.main(
                 ["--source", tree.root, "--graph", graph_path,
-                 "--page", os.path.join(self.scratch, "out", "page.html")]
+                 "--page", os.path.join(self.scratch, "out", "page.html"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)
@@ -184,7 +186,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
             code = cli.main(
                 ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
-                 "--page", os.path.join(blocker, "page.html")]
+                 "--page", os.path.join(blocker, "page.html"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)
@@ -217,7 +220,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
             code = cli.main(
                 ["--source", tree.root, "--graph", os.path.join(blocker, "graph.json"),
-                 "--page", os.path.join(out, "page.html")]
+                 "--page", os.path.join(out, "page.html"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)
@@ -245,7 +249,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
             code = cli.main(
                 ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
-                 "--page", os.path.join(out, "page.html")]
+                 "--page", os.path.join(out, "page.html"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)
@@ -269,7 +274,10 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         both = os.path.join(out, "graph.json")
 
         with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
-            code = cli.main(["--source", tree.root, "--graph", both, "--page", both])
+            code = cli.main(
+                ["--source", tree.root, "--graph", both, "--page", both,
+                 "--snapshot-date", A_SNAPSHOT]
+            )
 
         self.assertEqual(5, code)
         self.assertEqual(b"the previous run's graph.json", bytes_of(both))
@@ -287,7 +295,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
             code = cli.main(
                 ["--source", tree.root,
                  "--graph", os.path.join(out, "graph.json"),
-                 "--page", os.path.join(out, ".", "graph.json")]
+                 "--page", os.path.join(out, ".", "graph.json"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)
@@ -311,7 +320,8 @@ class NeitherOutputIsWrittenWithoutTheOtherTest(SourceTreeTest):
         with self.assertLogs("module_depth_map.cli", level=logging.ERROR) as logged:
             code = cli.main(
                 ["--source", tree.root, "--graph", os.path.join(out, "graph.json"),
-                 "--page", os.path.join(out, "page.html")]
+                 "--page", os.path.join(out, "page.html"),
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(5, code)

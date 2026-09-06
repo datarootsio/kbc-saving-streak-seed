@@ -4,11 +4,13 @@ The single most important test here: every other claim the page makes rests on i
 change in the output always meaning a change in the code is the whole point.
 """
 
+import datetime
 import os
 import re
 
 from ... import cli, graph, page, scoring
 from ..support.sourcetrees import (
+    A_SNAPSHOT,
     BACKEND_SOURCE,
     FRONTEND_SOURCE,
     SourceTree,
@@ -37,16 +39,18 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
     def test_the_graph_document_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = graph.serialise(graph.build([graph.source_root(tree.root)], scoring.load()))
-        second = graph.serialise(graph.build([graph.source_root(tree.root)], scoring.load()))
+        first = graph.serialise(
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT))
+        second = graph.serialise(
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT))
 
         self.assertEqual(first, second)
 
     def test_the_page_is_byte_identical_between_runs(self):
         tree = self.source()
 
-        first = _rendered(graph.build([graph.source_root(tree.root)], scoring.load()))
-        second = _rendered(graph.build([graph.source_root(tree.root)], scoring.load()))
+        first = _rendered(graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT))
+        second = _rendered(graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT))
 
         self.assertEqual(first, second)
 
@@ -75,7 +79,7 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
         tree.java("shop.till", "Ant", "public class Ant {}")
         tree.java("shop.aisle", "Middle", "public class Middle {}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(
             ["shop.aisle.Middle", "shop.till.Ant", "shop.till.Zebra"],
@@ -89,7 +93,8 @@ class TheSameSourceGivesTheSameBytesTest(SourceTreeTest):
         graph_path = os.path.join(self.scratch, run, "graph.json")
         page_path = os.path.join(self.scratch, run, "page.html")
         exit_code = cli.main(
-            ["--source", source, "--graph", graph_path, "--page", page_path, "--log-level", "ERROR"]
+            ["--source", source, "--graph", graph_path, "--page", page_path,
+             "--log-level", "ERROR", "--snapshot-date", A_SNAPSHOT]
         )
         self.assertEqual(0, exit_code)
         return bytes_of(graph_path), bytes_of(page_path)
@@ -101,7 +106,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
     def written(self):
         tree = self.tree("fixture")
         tree.java("shop.till", "Till", "public class Till {}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         return tree, graph.serialise(document).decode("utf-8"), _rendered(document).decode("utf-8")
 
     def test_neither_output_names_a_directory_on_this_machine(self):
@@ -118,7 +123,7 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         self.assertIn('"fixture"', written_graph)
 
     def test_this_repository_is_named_by_its_own_layout_rather_than_its_location(self):
-        document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load())
+        document = graph.build([graph.source_root(BACKEND_SOURCE)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["backend/src/main/java"], document["source"]["roots"])
 
@@ -152,7 +157,10 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
         for root in (clone, worktree):
             SourceTree(root).java("shop.till", "Till", "public class Till {}")
 
-        written = [graph.serialise(graph.build([graph.source_root(r)], scoring.load())) for r in (clone, worktree)]
+        written = [
+            graph.serialise(graph.build([graph.source_root(r)], scoring.load(), A_SNAPSHOT))
+            for r in (clone, worktree)
+        ]
 
         self.assertEqual(written[0], written[1])
 
@@ -168,12 +176,57 @@ class NothingMachineSpecificIsWrittenTest(SourceTreeTest):
 
         self.assertEqual(graph.REPOSITORY_ROOT, graph.label_for(top))
 
-    def test_neither_output_carries_anything_that_looks_like_a_date_or_a_time(self):
+    def test_the_only_date_in_either_output_is_the_one_the_run_was_given(self):
+        """One date, and it is the run's own argument. It used to be none at all.
+
+        The page has to carry the day it is an observation of, so "no date anywhere" is
+        no longer the property to hold — and it was never quite the right one, because
+        what it stood in for is that nothing here is read off the machine. That is what
+        is asserted now: every date-shaped string in either output is the one this run
+        was handed, and there is still no time of day in either, because a time is a
+        thing only a clock can answer.
+        """
         _, written_graph, written_page = self.written()
 
         for written in (written_graph, written_page):
-            self.assertEqual([], re.findall(r"\d{4}-\d{2}-\d{2}", written))
+            self.assertEqual(
+                {A_SNAPSHOT}, set(re.findall(r"\d{4}-\d{2}-\d{2}", written))
+            )
             self.assertEqual([], re.findall(r"\d{2}:\d{2}:\d{2}", written))
+
+    def test_today_is_nowhere_in_either_output(self):
+        """The direct test of the one thing a clock could get into this: today's date.
+
+        A run dated 2001-02-03 that carried today's date anywhere would be a run that
+        asked the machine what day it is, whatever it was told. Written with the test's
+        own clock, because the test is allowed one and the tool is not.
+        """
+        _, written_graph, written_page = self.written()
+
+        today = datetime.date.today().isoformat()
+        for written in (written_graph, written_page):
+            self.assertNotIn(today, written)
+
+    def test_two_runs_dated_differently_differ_in_the_date_and_nothing_else(self):
+        """The date is carried, not measured: no score, shape or verdict moves with it.
+
+        Held as its own property because the date is the one input to this tool that is
+        not source. A date that had leaked into anything measured would make the page a
+        different picture on a different day, over a repository that had not changed.
+        """
+        tree = self.tree("fixture")
+        tree.java("shop.till", "Till", "public class Till {\n    public void ring() {}\n}")
+
+        first = graph.serialise(
+            graph.build([graph.source_root(tree.root)], scoring.load(), "2001-02-03"))
+        second = graph.serialise(
+            graph.build([graph.source_root(tree.root)], scoring.load(), "2020-12-31"))
+
+        self.assertNotEqual(first, second)
+        self.assertEqual(
+            first.decode("utf-8").replace("2001-02-03", "a day"),
+            second.decode("utf-8").replace("2020-12-31", "a day"),
+        )
 
 
 def _gitdir_pointer(path):

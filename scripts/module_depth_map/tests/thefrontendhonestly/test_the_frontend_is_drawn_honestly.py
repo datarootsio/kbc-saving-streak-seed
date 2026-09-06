@@ -20,7 +20,7 @@ import os
 import re
 
 from ... import cli, graph, javasource, languages, page, scoring, typescriptsource
-from ..support.sourcetrees import FRONTEND_SOURCE, SourceTreeTest, bytes_of
+from ..support.sourcetrees import A_SNAPSHOT, FRONTEND_SOURCE, SourceTreeTest, bytes_of
 
 # The same module written in both languages: one method taking one parameter of a type the
 # configuration does not call familiar, handing back another, and coordinating one
@@ -80,7 +80,7 @@ class ATypeScriptFileIsAModuleTest(SourceTreeTest):
         tree.typescript("", "prices.ts", "export function of(basket: unknown): number {\n  return 0\n}")
         tree.typescript("panels", "card.tsx",
                         "export default function Card() {\n  return <p>hello</p>\n}")
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.by_id = {module["id"]: module for module in self.document["modules"]}
 
     def test_each_file_is_one_module_named_by_the_path_it_sits_at(self):
@@ -115,7 +115,7 @@ class ATypeScriptFileIsAModuleTest(SourceTreeTest):
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
         tree.typescript("", "till.ts", "export function ring(): void {}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["java", "typescript"], document["source"]["languages"])
         self.assertEqual(
@@ -150,7 +150,7 @@ class TheSameRulesMeasureBothHalvesTest(SourceTreeTest):
         self.typescript = self.built(web, "web/till")
 
     def built(self, tree, module_id):
-        document = graph.build([graph.source_root(tree.root)], self.rules)
+        document = graph.build([graph.source_root(tree.root)], self.rules, A_SNAPSHOT)
         return {module["id"]: module for module in document["modules"]}[module_id]
 
     def test_an_interface_costs_the_same_in_both_languages(self):
@@ -228,7 +228,7 @@ class WhatAFrontendModuleExportsAndReachesIsReadFromTheSourceTest(SourceTreeTest
         tree.typescript("", name, body)
         for each, source in others:
             tree.typescript("", each, source)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         return {module["id"]: module for module in document["modules"]}
 
     def test_only_what_the_file_exports_is_on_its_interface(self):
@@ -452,7 +452,7 @@ class SizeIsNotDepthTest(SourceTreeTest):
         tree.typescript("", "baskets.ts",
                         "export type Basket = { size: number }\n"
                         "export type Receipt = { cents: number }")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         return document, {module["id"]: module for module in document["modules"]}[named + "/till"]
 
     def test_two_hundred_more_lines_of_implementation_move_nothing(self):
@@ -486,7 +486,7 @@ class SizeIsNotDepthTest(SourceTreeTest):
                         "  of(0)\n  take()\n  Card()\n}")
         tree.typescript("", "card.tsx", "export default function Card() {\n  return null\n}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         by_id = {module["id"]: module for module in document["modules"]}
         longest = max(by_id.values(), key=lambda module: module["lines"])
 
@@ -522,7 +522,7 @@ class SizeIsNotDepthTest(SourceTreeTest):
         tree.typescript("", "zebra.ts", "export function z(): void {}")
         tree.typescript("", "ant.ts", "export function a(): void {}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual("web/zebra", document["scoring"]["largest"]["moduleId"])
 
@@ -542,7 +542,7 @@ class TypeScriptThatCannotBeReadIsNamedTest(SourceTreeTest):
         tree.typescript("", "prices.ts", "export function of(): number {\n  return 0\n}")
         for each, source in others:
             tree.typescript("", each, source)
-        return graph.build([graph.source_root(tree.root)], scoring.load())
+        return graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
     def failure_for(self, name, body):
         document = self.read(name, body)
@@ -616,7 +616,8 @@ class TypeScriptThatCannotBeReadIsNamedTest(SourceTreeTest):
 
         with self.assertLogs("module_depth_map", level="WARNING") as logged:
             exit_code = cli.main(
-                ["--source", tree.root, "--graph", graph_path, "--page", page_path]
+                ["--source", tree.root, "--graph", graph_path, "--page", page_path,
+                 "--snapshot-date", A_SNAPSHOT]
             )
 
         self.assertEqual(0, exit_code)
@@ -687,7 +688,7 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         tree.typescript("", name, body)
         for each, source in others:
             tree.typescript("", each, source)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["id"]: module for module in document["modules"]}
 
@@ -893,7 +894,7 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         rules = scoring.load()
 
         def built(tree, module_id):
-            document = graph.build([graph.source_root(tree.root)], rules)
+            document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
             self.assertEqual([], document["source"]["unparsed"])
             return {module["id"]: module for module in document["modules"]}[module_id]
 
@@ -1035,7 +1036,7 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
                 "", "f%d.ts" % index,
                 "export function f(): %s {\n  return null as any\n}\n" % each,
             )
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(
@@ -1124,7 +1125,7 @@ class LegalTypeScriptIsNotFailedForBeingWrittenTheUsualWayTest(SourceTreeTest):
         rules = scoring.load()
 
         def built(tree, module_id):
-            document = graph.build([graph.source_root(tree.root)], rules)
+            document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
             self.assertEqual([], document["source"]["unparsed"])
             return {module["id"]: module for module in document["modules"]}[module_id]
 
@@ -1519,7 +1520,7 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
         tree = self.tree("web")
         for name, body in sources:
             tree.typescript("", name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["id"]: module for module in document["modules"]}
 
@@ -1582,7 +1583,7 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
             self.tree("rules").raw("scoring.json", _as_json(configuration))
         )
 
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual(
             ["web/uses", "web/api"],
@@ -1678,7 +1679,7 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
                   "import static shop.Prices.of;\npublic class Till {\n"
                   "    public long ring(long each) { return of(each); }\n"
                   "    private long of(long each) { return each; }\n}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         modules = {module["id"]: module for module in document["modules"]}
 
         self.assertEqual([], modules["shop.till.Till"]["reach"]["reaches"])
@@ -1716,7 +1717,7 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
                         "export function Row(): JSX.Element {\n  return <Icons.Chevron />\n}")
 
         with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
-            graph.build([graph.source_root(tree.root)], scoring.load())
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         said = "\n".join(logged.output)
         self.assertIn("qualified names read as reaching no module here", said)
@@ -1732,7 +1733,7 @@ class WhatAModuleReachesIsTheNameItsBodyWritesTest(SourceTreeTest):
         tree = self.tree("web")
         tree.typescript("", "icons.tsx",
                         "export function Chevron(): JSX.Element {\n  return <i />\n}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -1777,7 +1778,7 @@ class AnOverloadSetIsWhatACallerCanCallTest(SourceTreeTest):
     def module(self, body, under="web"):
         tree = self.tree(under)
         tree.typescript("", "till.ts", body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["id"]: module for module in document["modules"]}[under + "/till"]
 
@@ -1856,7 +1857,7 @@ class AnOverloadSetIsWhatACallerCanCallTest(SourceTreeTest):
         tree.java("shop", "Till", "public class Till {\n"
                   "    public String ring(String id) { return id; }\n"
                   "    public String ring(long id) { return \"\"; }\n}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         interface = {module["id"]: module
                      for module in document["modules"]}["shop.Till"]["interface"]
 
@@ -1883,7 +1884,7 @@ class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
         self.rules = scoring.load()
 
     def crossing(self, tree, module_id):
-        document = graph.build([graph.source_root(tree.root)], self.rules)
+        document = graph.build([graph.source_root(tree.root)], self.rules, A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         module = {module["id"]: module for module in document["modules"]}[module_id]
         return {
@@ -1922,7 +1923,7 @@ class WhatACallerAlreadyKnowsIsAJudgementPerLanguageTest(SourceTreeTest):
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
         tree.typescript("", "till.ts", "export function ring(): void {}")
 
-        document = graph.build([graph.source_root(tree.root)], self.rules)
+        document = graph.build([graph.source_root(tree.root)], self.rules, A_SNAPSHOT)
 
         published = document["scoring"]["typesEveryCallerAlreadyKnows"]
         self.assertEqual(["java", "typescript"], sorted(published))
@@ -1942,7 +1943,7 @@ class OneAccountOfWhatBothReadingsShareTest(SourceTreeTest):
     """
 
     def read(self, tree, module_id):
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["id"]: module for module in document["modules"]}[module_id]
 
@@ -2139,7 +2140,7 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
         tree.java("shop", "Till", "public class Till {}")
         tree.java("shop", "TillTest", "public class TillTest {}")
         self.tree_root = tree
-        self.document = graph.build([graph.source_root(tree.root)], self.rules)
+        self.document = graph.build([graph.source_root(tree.root)], self.rules, A_SNAPSHOT)
 
     def test_only_the_application_s_own_source_is_a_module(self):
         self.assertEqual(
@@ -2181,7 +2182,7 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
 
     def test_the_run_says_which_rule_declined_each_path(self):
         with self.assertLogs("module_depth_map.graph", level="INFO") as logged:
-            graph.build([graph.source_root(self.tree_root.root)], self.rules)
+            graph.build([graph.source_root(self.tree_root.root)], self.rules, A_SNAPSHOT)
 
         said = "\n".join(logged.output)
         self.assertIn("source not read", said)
@@ -2240,7 +2241,7 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
         written = self.tree("rules").raw("scoring.json", _as_json(document))
 
         found = graph.build(
-            [graph.source_root(self.tree_root.root)], scoring.load(written)
+            [graph.source_root(self.tree_root.root)], scoring.load(written), A_SNAPSHOT
         )
 
         self.assertIn("web/till.test", [module["id"] for module in found["modules"]])
@@ -2256,7 +2257,7 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
         """
         inside = graph.source_root(os.path.join(self.tree_root.root, "node_modules"))
 
-        document = graph.build([inside], self.rules)
+        document = graph.build([inside], self.rules, A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(
@@ -2269,7 +2270,7 @@ class TestCodeBuildOutputAndDependenciesAreNotInTheGraphTest(SourceTreeTest):
         inside = graph.source_root(os.path.join(self.tree_root.root, "dist"))
 
         with self.assertLogs("module_depth_map.graph", level="INFO") as logged:
-            graph.build([inside], self.rules)
+            graph.build([inside], self.rules, A_SNAPSHOT)
 
         said = "\n".join(logged.output)
         self.assertIn("source not read", said)
@@ -2287,7 +2288,7 @@ class ThisFrontendIsReadWholeTest(SourceTreeTest):
 
     def setUp(self):
         super().setUp()
-        self.document = graph.build([graph.source_root(FRONTEND_SOURCE)], scoring.load())
+        self.document = graph.build([graph.source_root(FRONTEND_SOURCE)], scoring.load(), A_SNAPSHOT)
         self.by_id = {module["id"]: module for module in self.document["modules"]}
 
     def test_the_whole_of_this_frontend_can_be_read(self):
@@ -2368,7 +2369,7 @@ class TheFrontendIsOnThePageTest(SourceTreeTest):
         tree = self.tree("mixed")
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
         tree.typescript("", "till.ts", "export function ring(): void {}")
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.rendered = page.render(
             self.document, graph.serialise(self.document)
         ).decode("utf-8")
@@ -2403,7 +2404,7 @@ class TheFrontendIsOnThePageTest(SourceTreeTest):
         tree = self.tree("backend")
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertEqual(
@@ -2434,7 +2435,7 @@ class TheFrontendIsOnThePageTest(SourceTreeTest):
         )
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         largest = document["scoring"]["largest"]
         self.assertEqual("shop.Receipt", largest["moduleId"])
@@ -2489,7 +2490,7 @@ class AFanLineSaysWhatTheSourceSaysTest(SourceTreeTest):
         tree = self.tree("web")
         for name, body in sources:
             tree.typescript("", name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {module["id"]: module for module in document["modules"]}
 
@@ -2538,7 +2539,7 @@ class AFanLineSaysWhatTheSourceSaysTest(SourceTreeTest):
             self.tree("rules").raw("scoring.json", _as_json(configuration))
         )
 
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual(
             ["web/use", "web/failed"],
@@ -2651,7 +2652,7 @@ class AFanLineSaysWhatTheSourceSaysTest(SourceTreeTest):
             "", "till.ts",
             "export function f(s: string): boolean {\n  return /x/.test(s)\n}",
         )
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         read = typescriptsource.parse(
             open(os.path.join(tree.root, "till.ts"), encoding="utf-8").read(),
@@ -2710,7 +2711,7 @@ class AFanLineSaysWhatTheSourceSaysTest(SourceTreeTest):
             "import { Card } from './components'\n"
             "export function go(): number {\n  return Card()\n}",
         )
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         by_id = {module["id"]: module for module in document["modules"]}
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -2733,7 +2734,7 @@ class ADeclarationIsReadUnderTheNameItWasGivenTest(SourceTreeTest):
     def declared_by(self, name, body):
         tree = self.tree("web")
         tree.typescript("", name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         module = {each["id"]: each for each in document["modules"]}["web/" + name.split(".")[0]]
         return module["nested"]
@@ -2769,7 +2770,7 @@ class ADeclarationIsReadUnderTheNameItWasGivenTest(SourceTreeTest):
             "", "till.ts",
             "export function* load(id: number): Generator<number> {\n  yield id\n}",
         )
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         module = {each["id"]: each for each in document["modules"]}["web/till"]
 
         self.assertEqual(
@@ -2796,7 +2797,7 @@ class ADeclarationIsReadUnderTheNameItWasGivenTest(SourceTreeTest):
 
     def test_every_name_the_card_carries_is_one_a_reader_could_look_up(self):
         """The property behind the four fixtures above, over the real frontend."""
-        document = graph.build([graph.source_root(FRONTEND_SOURCE)], scoring.load())
+        document = graph.build([graph.source_root(FRONTEND_SOURCE)], scoring.load(), A_SNAPSHOT)
 
         for module in document["modules"]:
             for name in module["nested"]:
@@ -2808,7 +2809,7 @@ class ADeclarationIsReadUnderTheNameItWasGivenTest(SourceTreeTest):
         tree.typescript("", "till.ts", "export type { Deposit } from './api'\n")
 
         with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
-            graph.build([graph.source_root(tree.root)], scoring.load())
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertIn("export not read as a method", "\n".join(logged.output))
 
@@ -2827,7 +2828,7 @@ class ADeclarationListIsSplitWhereTheSourceSplitsItTest(SourceTreeTest):
         tree = self.tree("web")
         tree.typescript("", "till.ts", body)
         with self.assertLogs("module_depth_map.typescriptsource", level="DEBUG") as logged:
-            document = graph.build([graph.source_root(tree.root)], scoring.load())
+            document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         module = {each["id"]: each for each in document["modules"]}["web/till"]
         return module, "\n".join(logged.output)
@@ -2909,7 +2910,7 @@ class AConstructionKeepsThePlaceTheSourceGaveItTest(SourceTreeTest):
         rules = scoring.load(
             self.tree("rules").raw("scoring.json", _as_json(configuration))
         )
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return [step["moduleId"] for step in document["flows"][0]["path"]]
 
@@ -2981,7 +2982,7 @@ class ADefaultRootThatIsNotThereIsSkippedTest(SourceTreeTest):
         os.chdir(self.scratch)
         graph_path = os.path.join(self.scratch, "out", "graph.json")
         page_path = os.path.join(self.scratch, "out", "page.html")
-        code = cli.main(["--graph", graph_path, "--page", page_path])
+        code = cli.main(["--graph", graph_path, "--page", page_path, "--snapshot-date", A_SNAPSHOT])
         return code, graph_path, page_path
 
     def test_the_default_root_that_is_there_is_still_drawn(self):
@@ -3021,6 +3022,7 @@ class ADefaultRootThatIsNotThereIsSkippedTest(SourceTreeTest):
             cli.main([
                 "--graph", os.path.join(self.scratch, "out", "graph.json"),
                 "--page", os.path.join(self.scratch, "out", "page.html"),
+                "--snapshot-date", A_SNAPSHOT,
             ])
 
         said = "\n".join(logged.output)
@@ -3035,6 +3037,7 @@ class ADefaultRootThatIsNotThereIsSkippedTest(SourceTreeTest):
                 "--source", os.path.join(self.scratch, "nowhere"),
                 "--graph", os.path.join(self.scratch, "out", "graph.json"),
                 "--page", os.path.join(self.scratch, "out", "page.html"),
+                "--snapshot-date", A_SNAPSHOT,
             ])
 
         self.assertEqual(2, code)
@@ -3051,6 +3054,7 @@ class ADefaultRootThatIsNotThereIsSkippedTest(SourceTreeTest):
             code = cli.main([
                 "--graph", os.path.join(empty, "graph.json"),
                 "--page", os.path.join(empty, "page.html"),
+                "--snapshot-date", A_SNAPSHOT,
             ])
 
         self.assertEqual(2, code)
@@ -3069,7 +3073,7 @@ class ThreeExportsAreFailedByNameOnPurposeTest(SourceTreeTest):
     def failure_for(self, word, body):
         tree = self.tree("web-" + word)
         tree.typescript("", "till.ts", body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual(1, len(document["source"]["unparsed"]))
         return document["source"]["unparsed"][0]["reason"]
 
@@ -3140,7 +3144,7 @@ class ProseInsideJsxIsNotAStatementTest(SourceTreeTest):
         tree = self.tree("web")
         for name, body in sources:
             tree.typescript("", name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(0, document["source"]["filesUnparsed"])
         return {module["id"]: module for module in document["modules"]}
@@ -3235,7 +3239,7 @@ class ProseInsideJsxIsNotAStatementTest(SourceTreeTest):
         """The sweep is withheld inside prose and nowhere else."""
         tree = self.tree("web")
         tree.typescript("", "m.tsx", "export function H(): JSX.Element {\n  return <p>hello</p>\n}\nimport oops\n")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(1, document["source"]["filesUnparsed"])
         self.assertIn("import", document["source"]["unparsed"][0]["reason"])
@@ -3244,7 +3248,7 @@ class ProseInsideJsxIsNotAStatementTest(SourceTreeTest):
         """JSX is legal in a `.tsx` file and nowhere else, which is `tsc`'s own rule."""
         tree = self.tree("web")
         tree.typescript("", "l.ts", "const x = 1\nimport oops\n")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(1, document["source"]["filesUnparsed"])
 
@@ -3323,7 +3327,7 @@ class ATypeAnotherFileDeclaresIsNotThisModulesTest(SourceTreeTest):
         tree = self.tree("web")
         for name, body in sources:
             tree.typescript("", name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {each["id"]: each for each in document["modules"]}
 
@@ -3388,7 +3392,7 @@ class ABlockDocumentsTheDeclarationUnderItTest(SourceTreeTest):
     def module(self, body):
         tree = self.tree("web")
         tree.typescript("", "x.ts", body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         return {each["id"]: each for each in document["modules"]}["web/x"]
 
@@ -3460,7 +3464,7 @@ class AWrittenTypeMayCarryAnEqualsOfItsOwnTest(SourceTreeTest):
     def methods(self, body):
         tree = self.tree("web")
         tree.typescript("", "y.ts", body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         self.assertEqual([], document["source"]["unparsed"])
         module = {each["id"]: each for each in document["modules"]}["web/y"]
         return [each["name"] for each in module["interface"]["methods"]]
@@ -3550,7 +3554,7 @@ class AConciseArrowHasABodyTest(SourceTreeTest):
             self.tree("rules").raw("scoring.json", _as_json(configuration))
         )
 
-        document = graph.build([graph.source_root(tree.root)], rules)
+        document = graph.build([graph.source_root(tree.root)], rules, A_SNAPSHOT)
 
         self.assertEqual(
             ["web/load", "web/api"],
@@ -3578,7 +3582,7 @@ class OneListPerLanguageIsOneListPerLanguageTest(SourceTreeTest):
     def test_a_java_module_is_charged_for_a_domain_type_of_one_of_those_names(self):
         tree = self.tree("fixture")
         tree.java("shop", "Till", "public class Till {\n    public Record ring(Date given) {\n        return null;\n    }\n}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         module = {each["id"]: each for each in document["modules"]}["shop.Till"]
 
         self.assertEqual(
@@ -3589,7 +3593,7 @@ class OneListPerLanguageIsOneListPerLanguageTest(SourceTreeTest):
     def test_a_typescript_caller_still_gets_its_own_platform_types_free(self):
         tree = self.tree("web")
         tree.typescript("", "api.ts", "export function ring(given: Date): Response {\n  return null as any\n}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         module = {each["id"]: each for each in document["modules"]}["web/api"]
 
         self.assertEqual(
@@ -3603,7 +3607,7 @@ class OneListPerLanguageIsOneListPerLanguageTest(SourceTreeTest):
         tree = self.tree("mixed")
         tree.java("shop", "Till", "public class Till {\n    public void ring() {}\n}")
         tree.typescript("", "till.ts", "export function ring(): void {}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
         self.assertIn("There is one list per language", rendered)
@@ -3697,7 +3701,7 @@ class AModuleIdIsSpelledWithForwardSlashesTest(SourceTreeTest):
     def test_a_nested_file_is_named_with_forward_slashes(self):
         tree = self.tree("web")
         tree.typescript("parts/deep", "card.ts", "export function ring(): void {}")
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(
             ["web/parts/deep/card"], [each["id"] for each in document["modules"]]

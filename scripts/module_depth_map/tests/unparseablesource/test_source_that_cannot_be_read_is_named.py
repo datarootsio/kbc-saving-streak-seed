@@ -5,7 +5,7 @@ import os
 import unittest
 
 from ... import cli, graph, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 
 class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
@@ -17,7 +17,9 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
         return tree
 
     def test_the_file_is_named_in_the_graph_with_the_reason_it_could_not_be_read(self):
-        document = graph.build([graph.source_root(self.tree_with_one_broken_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_broken_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(1, len(document["source"]["unparsed"]))
         failure = document["source"]["unparsed"][0]
@@ -26,12 +28,16 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
         self.assertIn("braces do not balance", failure["reason"])
 
     def test_the_file_is_not_turned_into_a_module_with_nothing_in_it(self):
-        document = graph.build([graph.source_root(self.tree_with_one_broken_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_broken_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
 
     def test_the_run_says_how_many_files_it_read_and_how_many_it_could_not(self):
-        document = graph.build([graph.source_root(self.tree_with_one_broken_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_broken_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(2, document["source"]["filesSeen"])
         self.assertEqual(1, document["source"]["filesParsed"])
@@ -39,7 +45,9 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
 
     def test_the_run_warns_by_name_rather_than_passing_over_it(self):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            graph.build([graph.source_root(self.tree_with_one_broken_file().root)], scoring.load())
+            graph.build(
+                [graph.source_root(self.tree_with_one_broken_file().root)], scoring.load(), A_SNAPSHOT
+            )
 
         warnings = [line for line in logged.output if "could not parse" in line]
         self.assertEqual(1, len(warnings))
@@ -47,7 +55,9 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
         self.assertIn("braces do not balance", warnings[0])
 
     def test_the_page_says_which_files_it_was_not_drawn_from(self):
-        document = graph.build([graph.source_root(self.tree_with_one_broken_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_broken_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -58,7 +68,7 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/notes.java", "package shop.till;\n\n// nothing but a note\n")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(
@@ -72,7 +82,7 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
         with open(path, "wb") as handle:
             handle.write(b"package shop.till;\n\xff\xfe\x00 class Bytes {}\n")
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertIn("not valid UTF-8", document["source"]["unparsed"][0]["reason"])
@@ -89,7 +99,7 @@ class SourceThatCannotBeReadIsNamedTest(SourceTreeTest):
             "}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
@@ -111,7 +121,9 @@ class SourceThatCannotBeOpenedIsNamedTest(SourceTreeTest):
         return tree
 
     def test_the_file_is_named_and_counted_rather_than_ending_the_run(self):
-        document = graph.build([graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(1, document["source"]["filesUnparsed"])
         failure = document["source"]["unparsed"][0]
@@ -120,7 +132,9 @@ class SourceThatCannotBeOpenedIsNamedTest(SourceTreeTest):
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
 
     def test_the_reason_says_what_went_wrong_without_naming_this_machine(self):
-        document = graph.build([graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load(), A_SNAPSHOT
+        )
 
         reason = document["source"]["unparsed"][0]["reason"]
         self.assertNotIn(self.scratch, reason)
@@ -128,7 +142,9 @@ class SourceThatCannotBeOpenedIsNamedTest(SourceTreeTest):
 
     def test_the_run_warns_by_name(self):
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            graph.build([graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load())
+            graph.build(
+                [graph.source_root(self.tree_with_one_unopenable_file().root)], scoring.load(), A_SNAPSHOT
+            )
 
         warnings = [line for line in logged.output if "could not read source file" in line]
         self.assertEqual(1, len(warnings))
@@ -142,7 +158,8 @@ class SourceThatCannotBeOpenedIsNamedTest(SourceTreeTest):
 
         exit_code = cli.main(
             ["--source", tree.root, "--graph", graph_path, "--page", page_path,
-             "--log-level", "ERROR"]
+             "--log-level", "ERROR",
+             "--snapshot-date", A_SNAPSHOT]
         )
 
         self.assertEqual(0, exit_code)
@@ -165,7 +182,7 @@ class ADeclarationTheParserCannotReadIsNamedTest(SourceTreeTest):
             "package shop.till;\n\npublic class Odd {}\n\nclass 2Bad {}\n",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(1, document["source"]["filesUnparsed"])
@@ -184,7 +201,7 @@ class ADeclarationTheParserCannotReadIsNamedTest(SourceTreeTest):
             "}",
         )
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
@@ -205,19 +222,25 @@ class AFileDeclaringNoTypeOnPurposeIsNotAnAlarmTest(SourceTreeTest):
         return tree
 
     def test_neither_is_reported_as_a_file_that_could_not_be_read(self):
-        document = graph.build([graph.source_root(self.tree_with_both_descriptors().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_both_descriptors().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(3, document["source"]["filesSeen"])
         self.assertEqual(3, document["source"]["filesParsed"])
 
     def test_neither_becomes_a_module(self):
-        document = graph.build([graph.source_root(self.tree_with_both_descriptors().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_both_descriptors().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
 
     def test_the_page_draws_no_alarm_when_every_file_was_read(self):
-        document = graph.build([graph.source_root(self.tree_with_both_descriptors().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_both_descriptors().root)], scoring.load(), A_SNAPSHOT
+        )
 
         rendered = page.render(document, graph.serialise(document)).decode("utf-8")
 
@@ -238,7 +261,7 @@ class AnUnclosedRegionIsNamedTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/A.java", body)
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(1, document["source"]["filesUnparsed"])
@@ -278,7 +301,7 @@ class AnUnclosedRegionIsNamedTest(SourceTreeTest):
         tree.raw("shop/till/A.java", "package shop.till;\npublic class A {}\n/* open\nclass B {}\n")
 
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            graph.build([graph.source_root(tree.root)], scoring.load())
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         warnings = [line for line in logged.output if "could not parse" in line]
         self.assertEqual(1, len(warnings))
@@ -299,7 +322,7 @@ class BracesThatCloseMoreThanTheyOpenAreNamedTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/A.java", body)
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(1, document["source"]["filesUnparsed"])
@@ -346,7 +369,9 @@ class ADirectoryThatWillNotOpenIsNamedTest(SourceTreeTest):
 
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
     def test_the_directory_is_named_and_counted_rather_than_passed_over(self):
-        document = graph.build([graph.source_root(self.tree_with_one_locked_directory().root)], scoring.load())
+        document = graph.build(
+            [graph.source_root(self.tree_with_one_locked_directory().root)], scoring.load(), A_SNAPSHOT
+        )
 
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
         self.assertEqual(1, document["source"]["filesUnparsed"])
@@ -359,7 +384,7 @@ class ADirectoryThatWillNotOpenIsNamedTest(SourceTreeTest):
         tree = self.tree_with_one_locked_directory()
 
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            graph.build([graph.source_root(tree.root)], scoring.load())
+            graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         warnings = [line for line in logged.output if "could not read source directory" in line]
         self.assertEqual(1, len(warnings))
@@ -384,7 +409,7 @@ class SourceReachedTwiceIsReadOnceTest(SourceTreeTest):
         os.symlink(os.path.join(self.scratch, "elsewhere", "shop", "stock"),
                    os.path.join(tree.root, "shop", "stock"))
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         self.assertEqual(
@@ -397,7 +422,7 @@ class SourceReachedTwiceIsReadOnceTest(SourceTreeTest):
         os.symlink(os.path.join(tree.root, "shop"), os.path.join(tree.root, "again"))
 
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            document = graph.build([graph.source_root(tree.root)], scoring.load())
+            document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual(["shop.till.Till"], [module["id"] for module in document["modules"]])
         self.assertTrue(any("not reading source directory" in line for line in logged.output))
@@ -422,7 +447,7 @@ class LegalJavaIsNotFailedForBeingWrittenTightlyTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/A.java", body)
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["source"]["unparsed"])
         return {module["name"]: module for module in document["modules"]}
@@ -469,7 +494,7 @@ class AShapeThatWouldMakeAnInterfaceCheaperIsNamedTest(SourceTreeTest):
         tree = self.tree("fixture")
         tree.raw("shop/till/A.java", body)
 
-        document = graph.build([graph.source_root(tree.root)], scoring.load())
+        document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], document["modules"])
         self.assertEqual(1, document["source"]["filesUnparsed"])
@@ -512,7 +537,7 @@ class AShapeThatWouldMakeAnInterfaceCheaperIsNamedTest(SourceTreeTest):
         )
 
         with self.assertLogs("module_depth_map", level=logging.WARNING) as logged:
-            document = graph.build([graph.source_root(tree.root)], scoring.load())
+            document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         warnings = [line for line in logged.output if "could not parse" in line]
         self.assertEqual(1, len(warnings))

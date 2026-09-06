@@ -18,7 +18,7 @@ import re
 import unittest
 
 from ... import graph, javasource, page, scoring
-from ..support.sourcetrees import SourceTreeTest
+from ..support.sourcetrees import A_SNAPSHOT, SourceTreeTest
 
 # The collaborators the fixtures reach for. Each is here to be one kind of reached thing:
 # a module with a method to call, storage whose implementation is generated, a row that
@@ -176,7 +176,7 @@ class SourceOfKnownShapeTest(SourceTreeTest):
         for name, (package, body) in elsewhere.items():
             tree.java(package, name, body)
 
-        self.document = graph.build([graph.source_root(tree.root)], scoring.load())
+        self.document = graph.build([graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT)
 
         self.assertEqual([], self.document["source"]["unparsed"])
         return {module["name"]: module for module in self.document["modules"]}
@@ -1489,7 +1489,7 @@ class TheRulesForWhatIsReachedLiveInTheFileTest(SourceOfKnownShapeTest):
         tree.java("shop.till", "Till", A_DEEP_MODULE)
         for name, (package, body) in self.collaborators().items():
             tree.java(package, name, body)
-        document = graph.build([graph.source_root(tree.root)], scoring.load(path))
+        document = graph.build([graph.source_root(tree.root)], scoring.load(path), A_SNAPSHOT)
         till = {module["name"]: module for module in document["modules"]}["Till"]
 
         self.assertEqual(

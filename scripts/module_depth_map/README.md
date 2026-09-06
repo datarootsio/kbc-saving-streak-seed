@@ -5,13 +5,20 @@ command reads the source, backend and frontend together, and writes two files: a
 document naming every module, and a self-contained page that is a pure rendering of that
 document.
 
-Run it from the repository root:
+Run it from the repository root, saying which day the picture is of:
 
-    python3 scripts/module-depth-map.py
+    python3 scripts/module-depth-map.py --snapshot-date 2026-09-06
 
 It reads `backend/src/main/java` and `frontend/src`, and writes
 `docs/module-depth-map.json` and `docs/module-depth-map.html`. Open the HTML file
 directly — there is no server to start and nothing is fetched from the network.
+
+`--snapshot-date` has no default and is not going to get one. The only default available
+is the machine's clock, and reading it would put a value in the output that moves between
+two runs over unchanged source — and would date the page by when somebody pressed a key
+rather than by what it is a picture of. A run without one is refused with the reason said
+out loud (exit 6), and so is a day there was not: `2026-02-30` and `20260906` are both
+spelling mistakes, and a page dated by one is a dated page that is not dated.
 
 Run its tests with the standard library's own runner, also from the repository root:
 
@@ -21,7 +28,11 @@ Run its tests with the standard library's own runner, also from the repository r
 
 - **The same source gives the same bytes.** No clock is read, no absolute path is written,
   and every collection is emitted sorted. Two runs over unchanged source are byte
-  identical, and a test asserts it.
+  identical, and a test asserts it. The one date in the output is the `--snapshot-date`
+  the run was handed: the tool asks a calendar whether that day exists and never asks it
+  what day it is, and two runs given different days differ in that value and in nothing
+  else — which is also asserted, because a date that had leaked into a measurement would
+  make the same repository a different picture on a different afternoon.
 - **The page contains nothing the graph does not.** The page carries the graph document
   verbatim and draws itself from it, so there is no second place for a fact to come from.
 - **Source it cannot read is named, not scored as empty.** Parsing is targeted pattern
@@ -100,7 +111,8 @@ Run its tests with the standard library's own runner, also from the repository r
   excluded it and the fact about the module that matched, so "why was this ignored?" always
   has an answer a reader can point at and argue with.
 - **It refuses rather than guessing.** No source directory (exit 2), two files declaring
-  the same module id (exit 3) and a scoring configuration this tool cannot use (exit 4)
+  the same module id (exit 3), a scoring configuration this tool cannot use (exit 4) and
+  a run with no snapshot date, or one that is not a day there was (exit 6),
   all stop the run with the reason logged as a warning, before a byte is written — because
   a page that drew one of two clashing modules twice, or that scored with weights nobody
   wrote, would be worse than no page. Outputs it cannot write are exit 5, which is the one
@@ -138,14 +150,26 @@ Run its tests with the standard library's own runner, also from the repository r
   two languages cannot render without went in: `source.readAt` says, for each language
   read, what a module of it is and why — in that language's own words, so the page
   describes this run rather than this tool — and `scoring.typesEveryCallerAlreadyKnows`
-  became one list per language.
+  became one list per language, and to `module-depth-map/10` when the document grew a
+  top-level `snapshot`: the day it is an observation of, handed to the run rather than read
+  off a clock.
   The page checks it before drawing, and says so rather than drawing half a document, because
   reaching into a shape that is not there throws in the middle of one pass and reads as a
   page that ended early.
 - **The committed outputs are the ones this source produces.** `docs/module-depth-map.json`
   and `docs/module-depth-map.html` are checked in, and a test byte-compares them against a
   fresh run, so adding a Java class without rerunning the tool fails the suite instead of
-  leaving a stale page for a reader to trust.
+  leaving a stale page for a reader to trust. That fresh run is given the snapshot date the
+  committed graph carries — the one value in those files no reading of this repository can
+  rediscover — so what is compared is everything else. Regenerating them on a new day
+  changes the date in both and the test follows; what it will not let past is a page
+  describing source that has moved on.
+- **It says what it did not measure.** The page carries the day it is an observation of,
+  names itself one rather than a backlog, and states in its own section the two parts of
+  every interface here that are measured nowhere: the invariants a module states in prose,
+  and the order its calls have to be made in. Neither is derivable from a signature, both
+  are as much a part of an interface as the methods are, and a page that quietly left them
+  out would invite a reader to take a score for the whole picture.
 
 ## What is on it so far
 
@@ -164,6 +188,49 @@ is what the rest of this file is about. Above the cards, three flows — a depos
 withdrawal with the deposits it draws down, and a reward claimed — each highlight the
 modules that business event passes through, in order. Nothing is ranked, and nothing is
 proposed for change.
+
+## What the page admits
+
+Three things a reader is told before they are told what to read into the shapes.
+
+**Which day it is a picture of.** Under the title, and again in the box of counts: *an
+observation of this repository's source as it stood on 2026-09-06*. The date is the
+`--snapshot-date` the run was given, carried in the graph document and drawn from there,
+so the page and the graph beside it cannot disagree about when they are from. Nothing here
+reads a clock, so a page cannot date itself and does not pretend to.
+
+**That it is an observation and not a backlog.** In the same sentence: *not a list of work
+to be done — nothing here is ranked, nothing here is proposed, and no module here is named
+as one that ought to change*. This matters because of who reads it. A participant can be
+told; an agent picking up a ticket cannot, and an undated ranked list of shallow modules
+with no framing on it reads to one as an instruction to start merging things. The
+deletion-test verdict stops at the same line: it says what deleting a module would do, and
+never that anybody should. A test walks every string in the graph document — which is
+everything the page can say about any module — and fails on the words a proposal is
+written with.
+
+**What it did not measure.** Its own section, above every section that explains a measure,
+because a reader who is told this after being told what the shapes mean has already formed
+the impression it exists to prevent. Two parts of every interface here are measured
+nowhere:
+
+- **the invariants a module states in prose** — what has to be true before a call, and what
+  the module promises will be true after. This repository states them, carefully, in
+  javadoc meant for a person. Nothing here parses one, so a module that states them scores
+  exactly as a module that states none does;
+- **the order calls have to be made in** — that this has to exist before that can be
+  written, or be earned before it can be spent. A caller who does not know it writes a call
+  that fails, and it cannot be read off the methods it constrains.
+
+Neither is mechanically derivable, both are as much a part of an interface as a method
+signature is, and leaving them unmeasured is a decision rather than an oversight — so the
+page says so, and says what it costs: a score is a floor on what an interface asks of a
+caller, never the whole of it. Every other measure here is a floor in the same direction,
+and each names its own blind spots where it is explained. The same section says how much of
+the source the picture was drawn from — files parsed of files seen, modules scored of
+modules drawn — so a reader can weigh what they are looking at, and the two headings under
+it are what was never read at all and what was read and never scored, each with the named
+rule behind it.
 
 ## The frontend, at the grain its interfaces are written at
 
@@ -1043,6 +1110,7 @@ published in parts is still a score for a module the document says has none:
 ## Arguments
 
     --source DIR     a directory of source to read (repeatable; default backend/src/main/java and frontend/src)
+    --snapshot-date  the day this run is an observation of, written YYYY-MM-DD (required; no clock is read)
     --graph FILE     where to write the graph document
     --page FILE      where to write the page
     --scoring FILE   the weights, exclusion rules and flows to apply (default scoring.json beside the tool)

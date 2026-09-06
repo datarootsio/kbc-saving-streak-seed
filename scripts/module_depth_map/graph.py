@@ -6,13 +6,17 @@ plain data, every collection sorted, no value that could differ between two mach
 
 Determinism is enforced here rather than hoped for. Paths are recorded relative to the
 source root they were found under, the source root is recorded relative to the repository
-that holds it, and nothing is read from the clock.
+that holds it, and nothing is read from the clock. The one date in the document is the
+day whoever ran the tool said this observation is of, handed in as an argument: this
+module asks a calendar whether that day exists and never asks it what day it is.
 """
 
 import collections
+import datetime
 import json
 import logging
 import os
+import re
 
 from . import languages
 
@@ -42,8 +46,19 @@ log = logging.getLogger("module_depth_map.graph")
 # `source.readAt` says, for each language read, what a module of it is and why — the
 # sentence the page's prose was hardcoded with, which was a page claiming two grains on a
 # run that read one — and `scoring.typesEveryCallerAlreadyKnows` became one list per
-# language, because a caller of each language does not already know the other's types.
-SCHEMA = "module-depth-map/9"
+# language, because a caller of each language does not already know the other's types. It
+# moved to /10 when the document grew a top-level `snapshot`: the day this document is an
+# observation of, handed to the run rather than read off a clock. A reader of an undated
+# picture cannot tell today's source from last year's, and an agent reading an undated
+# ranking of shallow modules takes it for a list of work to be done.
+SCHEMA = "module-depth-map/10"
+
+# How a snapshot date is written, in the one place that decides it: the command line's
+# help, the refusal a misspelled one is met with, and the reading below all take it from
+# here rather than each spelling it out.
+SNAPSHOT_DATE = "YYYY-MM-DD"
+
+_A_DATE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
 
 # What a source root that is its own repository is called. `os.path.relpath` answers "."
 # for that, which reads as a path on the page ("Source read: .", "./shop/Till.java") and
@@ -65,6 +80,52 @@ class DuplicateModules(Exception):
     def __init__(self, clashes):
         super().__init__("duplicate module ids: %s" % ", ".join(sorted(clashes)))
         self.clashes = sorted(clashes)
+
+
+class SnapshotNotADate(Exception):
+    """A day this document was asked to be an observation of that is not a day.
+
+    Refused rather than carried through, because the date is the one value on the page
+    that nothing else can check: every number there can be held against the source, and
+    "2026-13-40" cannot be held against anything. A page carrying it would be a dated
+    page that is not dated, which is worse than one that was never written.
+    """
+
+    def __init__(self, given, reason):
+        super().__init__(reason)
+        self.given = given
+        self.reason = reason
+
+
+def a_snapshot_date(given):
+    """`given` as the day this document is an observation of, or a named refusal.
+
+    The whole of what this tool asks a calendar. It asks whether the day it was handed
+    exists — 2025-02-30 is a spelling mistake, and a page dated by one says nothing — and
+    it never asks what day it is today. That difference is the whole of why the date is
+    an argument: one read from the machine changes the output between two runs over
+    unchanged source, and dates the page by when it was generated rather than by what it
+    is an observation of.
+
+    Written out rather than left to `datetime.date.fromisoformat`, which reads
+    `20260906` and `2026-W37-1` as dates on a new enough Python and refuses them on an
+    older one — the same argument producing two different documents on two machines,
+    which is the one thing this tool may not do.
+    """
+    if not isinstance(given, str) or not _A_DATE.match(given):
+        raise SnapshotNotADate(
+            given,
+            "the snapshot date %r is not a day written %s"
+            % (given, SNAPSHOT_DATE),
+        )
+    year, month, day = (int(part) for part in given.split("-"))
+    try:
+        datetime.date(year, month, day)
+    except ValueError as impossible:
+        raise SnapshotNotADate(
+            given, "the snapshot date %s is not a day there was: %s" % (given, impossible)
+        ) from impossible
+    return given
 
 
 class SourceUnreadable(Exception):
@@ -225,8 +286,16 @@ def _files_under(root, declined):
     return found, unreadable, not_read
 
 
-def build(roots, rules, roots_not_read=()):
+def build(roots, rules, snapshot, roots_not_read=()):
     """Read every source file under these roots and return the graph document.
+
+    `snapshot` is the day this document is an observation of, written YYYY-MM-DD. It is
+    asked for rather than defaulted for the same reason `rules` is: a default would be a
+    second home for a decision the command line already has, and the only default
+    available here is the machine's own clock — which is the one source of a value this
+    tool may not carry, because it would move the bytes between two runs over unchanged
+    source and would date the page by when it was generated rather than by what it is an
+    observation of. A run with no date to put on it is a run that does not happen.
 
     `roots_not_read` is what the caller decided not to hand over and why, each as a
     `{"root", "reason"}` pair. It exists because a page has to be able to say that half an
@@ -247,6 +316,16 @@ def build(roots, rules, roots_not_read=()):
     has, and made a `ConfigurationRefused` come out of the call the caller guards for
     duplicate module ids — the one failure this function is documented to raise.
     """
+    # Read before a file is opened, so that a run which cannot be dated costs nobody a
+    # walk of the source. Read here as well as on the command line because this is the
+    # tool's interface: a caller reaching it directly is held to the same rule as one
+    # typing the argument, and there is one reading of what a date is rather than two.
+    dated = a_snapshot_date(snapshot)
+    log.debug(
+        "snapshot date given date=%s reason=%s",
+        dated,
+        "handed to this run; no clock is read anywhere in this tool",
+    )
     modules = []
     unparsed = []
     declined = []
@@ -342,6 +421,12 @@ def build(roots, rules, roots_not_read=()):
 
     document = {
         "schema": SCHEMA,
+        # The day this document is an observation of, and the only date in it. It is
+        # what the run was told rather than what the machine thinks, which is what makes
+        # two runs over unchanged source identical and what makes the page a statement
+        # about a day in this repository's history rather than about when somebody
+        # pressed a key.
+        "snapshot": {"date": dated},
         "source": {
             "roots": sorted(root.label for root in roots),
             # Kept apart from `notRead` below, which is the scoring file's rule about
@@ -386,8 +471,9 @@ def build(roots, rules, roots_not_read=()):
     for entry in document["source"]["rootsNotRead"]:
         log.info("source root not read root=%s reason=%s", entry["root"], entry["reason"])
     log.info(
-        "graph built roots=%s languages=%s filesSeen=%d filesParsed=%d filesUnparsed=%d "
-        "pathsNotRead=%d packages=%d modules=%d scored=%d neverScored=%d",
+        "graph built snapshotDate=%s roots=%s languages=%s filesSeen=%d filesParsed=%d "
+        "filesUnparsed=%d pathsNotRead=%d packages=%d modules=%d scored=%d neverScored=%d",
+        document["snapshot"]["date"],
         ",".join(document["source"]["roots"]),
         ",".join(document["source"]["languages"]) or "none, nothing was read",
         seen,

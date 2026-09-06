@@ -87,7 +87,7 @@
     },
     "raisedNeverDocumented": {
       "finding": "raised but never documented",
-      "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. This is the cheaper of the two to fix and the more expensive to be handed by a customer."
+      "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Which of the two sides is the honest one is a question for a person; that they disagree is a question for a machine, and this is the machine saying so."
     }
   },
 

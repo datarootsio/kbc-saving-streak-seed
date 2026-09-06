@@ -62,6 +62,12 @@ h1 { font-size: 1.6rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 p { margin: 0 0 1rem; }
 .lede { color: var(--ink-soft); max-width: 46rem; }
+/* The day the page is an observation of, drawn in full ink rather than in the soft
+   ink the ledes use: it is the one sentence that decides how much of the rest is
+   still true, and a reader who skims past it reads a picture of a day they have not
+   been told. */
+.dated { max-width: 46rem; }
+.dated .day { color: var(--ink); }
 .read {
   border: 1px solid var(--edge);
   background: var(--raised);
@@ -459,6 +465,22 @@ _SCRIPT = """
 
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
+  // The day this page is an observation of, said directly under the title. It is here
+  // rather than in a footer because it is the sentence that decides how much of the rest
+  // of the page is still true, and because of what an undated ranking of shallow modules
+  // is read as: this repository is extended by agents, and a list of modules with the
+  // shallow ones at the bottom, carrying no date and no framing, reads as a list of work
+  // to be done. The date is the run's own, carried in the document — nothing here reads a
+  // clock, so a page cannot date itself and does not pretend to.
+  var dated = add(head, "p", "dated");
+  add(dated, "strong", "day",
+    "An observation of this repository's source as it stood on "
+    + document_.snapshot.date + ".");
+  add(dated, "span", null,
+    " Not a list of work to be done: nothing here is ranked, nothing here is proposed, "
+    + "and no module here is named as one that ought to change. What it did not measure "
+    + "is stated below in its own section, because a score read as the whole of an "
+    + "interface is the one way this page misleads.");
   // How many languages this run read is the document's own answer, and the prose follows
   // it. Written as a constant, a run of one source root rendered "both halves of it,
   // java" — a false sentence at the top of a page whose whole claim is that its numbers
@@ -479,9 +501,7 @@ _SCRIPT = """
            : " \u2014 all of it, " + read.join(", ") + " \u2014")
       + " grouped by the package it lives "
       + "in, each drawn as what its interface costs a caller over a fan of everything it "
-      + "coordinates on that caller's behalf. An observation of the source it was generated "
-      + "from, and nothing more: nothing here is ranked, and no module here is proposed for "
-      + "change.");
+      + "coordinates on that caller's behalf, as all three stood on the day above.");
     var grain = add(head, "p", "lede");
     add(grain, "span", null,
       "A module is anything with an interface and an implementation, and where that sits "
@@ -515,6 +535,8 @@ _SCRIPT = """
     add(pair, "dt", null, term);
     add(pair, "dd", null, value);
   }
+  // First, because it is the fact the rest of them are only true on.
+  fact("Snapshot", document_.snapshot.date);
   fact("Source read", document_.source.roots.join(", "));
   fact("Languages", document_.source.languages.join(", "));
   fact("Files parsed", document_.source.filesParsed + " of " + document_.source.filesSeen);
@@ -537,6 +559,67 @@ _SCRIPT = """
       add(item, "span", null, " \\u2014 " + entry.reason);
     });
   }
+
+  // What this page cannot see, said before it says anything it can. It is above every
+  // measure rather than under them because of the order a reader reads in: the sections
+  // below explain what each shape is worth, and a reader who has been told that after
+  // being told what the shapes mean has already formed the impression this section
+  // exists to prevent. Two parts of every interface here are measured nowhere at all,
+  // and they are not the small parts.
+  var unmeasured = add(root, "section", "rules");
+  add(unmeasured, "h2", null, "What this page does not measure");
+  add(unmeasured, "p", null,
+    "An interface is everything a caller has to know before they can use a module "
+    + "correctly, and this page measures the part of it a machine can read. Two parts of "
+    + "it are read by nobody here, and neither is derivable from a signature:");
+  var unread = add(unmeasured, "ul");
+  [
+    {part: "the invariants a module states in prose",
+     says: "what has to be true before a call is made, and what the module promises will "
+       + "be true after it. They are written in this repository's own documentation, in "
+       + "sentences meant for a person; nothing here parses one, no score moves by one, "
+       + "and a module that states them carefully scores exactly as a module that states "
+       + "none does."},
+    {part: "the order calls have to be made in",
+     says: "that this has to exist before that can be written, or be earned before it can "
+       + "be spent. An ordering constraint is as much a part of an interface as a method "
+       + "is \u2014 a caller who does not know it writes a call that fails \u2014 and it "
+       + "cannot be read off the methods it constrains, so it is counted nowhere on this "
+       + "page."}
+  ].forEach(function (part) {
+    var item = add(unread, "li");
+    add(item, "strong", null, part.part);
+    add(item, "span", null, " \u2014 " + part.says);
+  });
+  add(unmeasured, "p", null,
+    "So a narrow bar is not a promise that a module is simple to call correctly, and a "
+    + "wide one is not a claim that everything a caller must learn has been counted. The "
+    + "score is a floor on what an interface asks of a caller, never the whole of it, and "
+    + "a reader who takes it for the whole picture has been misled by this page \u2014 "
+    + "which is why it is said here rather than left to be found out.");
+  add(unmeasured, "p", null,
+    "Every other measure here is a floor in the same direction, and each names its own "
+    + "blind spots in the section that explains it: what else a bar leaves out, what the "
+    + "refusal band cannot read on either side of a seam, and what a fan cannot see a "
+    + "module coordinating. None of them can be checked by this page. All of them can be "
+    + "checked against the source, which is why each one is named.");
+  // How much of the source is actually behind the picture, read from the document rather
+  // than asserted. A page drawn from half the files deserves half the trust, and a reader
+  // cannot weigh what they are looking at without being told which half it is.
+  add(unmeasured, "p", null,
+    "Every number here was read from " + document_.source.filesParsed + " of "
+    + count(document_.source.filesSeen, "source file", "source files")
+    + " under the source named above"
+    + (document_.source.filesUnparsed > 0
+       ? ", and " + count(document_.source.filesUnparsed, "file", "files")
+         + " could not be read at all: each is named above this, and every module "
+         + "declared inside one of them is missing from this page rather than drawn "
+         + "empty. "
+       : " \u2014 every one of them. ")
+    + document_.scoring.modulesScored + " of "
+    + count(document_.modules.length, "module", "modules")
+    + " drawn here are scored, and what was left out of the scoring, and out of the "
+    + "reading altogether, is listed under the two headings that follow.");
 
   // Not the alarm band above: a path a rule declined is not a failure, and painting the
   // two the same colour would have a `node_modules` reading as source this tool could not
@@ -573,6 +656,24 @@ _SCRIPT = """
       "Nothing under the source read above matched that rule: the directories this tool "
       + "was pointed at hold the application's own source and nothing else.");
   }
+
+  // What was read and then never scored, kept next to what was never read: they are the
+  // two halves of "what is missing from the numbers on this page", and a reader looking
+  // for either should not have to find one of them under a heading about bars. The list
+  // itself is filled in further down, where the rule each module carries is already being
+  // read for the cards, so that the page has one reading of the exclusions rather than
+  // two.
+  var neverScored = add(root, "section", "rules");
+  add(neverScored, "h2", null, "What was never scored, and under which rule");
+  add(neverScored, "p", null,
+    document_.scoring.modulesNeverScored + " of " + document_.modules.length
+    + " modules are drawn but never scored, each by a named rule in "
+    + document_.scoring.configuration + ". They are shallow by construction, and ranking "
+    + "them beside the modules that are not would bury the finding. Every rule that "
+    + "excluded anything is here with the count it excluded, and every excluded card "
+    + "carries the rule that excluded it and the fact about the module that matched, so "
+    + "\u201cwhy is this one not scored?\u201d is a question with an answer a reader can "
+    + "point at and argue with:");
 
   var rules = add(root, "section", "rules");
   add(rules, "h2", null, "What the bars measure");
@@ -611,10 +712,18 @@ _SCRIPT = """
       " \u2014 " + count(known[language].length, "name", "names") + " a caller writing it "
       + "is charged nothing for: " + known[language].join(", ") + ".");
   });
+  // The bar's own floors. The two an interface cannot do without — the invariants and the
+  // order — are named at the top of the page rather than a second time here, because that
+  // is where a reader meets them before they have been told what a bar is worth; this
+  // paragraph is the rest of what this particular measure cannot see. The constructor is
+  // kept on one line of its own because a test names that phrase: it is the floor that
+  // took six attempts to get onto the page at all, and a rewrap must not be what quietly
+  // drops it again.
   add(rules, "p", null,
     "What a bar leaves out is part of the interface too, and is not measured: the "
-    + "invariants a module states in prose, the order its calls have to be made in, "
-    + "what a type variable has to be, the constructor a caller writes new against "
+    + "invariants and the ordering constraints named at the top of this page, and besides "
+    + "those, what a type variable has to be, "
+    + "the constructor a caller writes new against "
     + "\\u2014 how a module is built is this framework's business rather than a "
     + "caller's \\u2014 the methods a module inherits rather than declares \\u2014 this "
     + "tool reads one file at a time and never opens a supertype it does not hold "
@@ -622,11 +731,6 @@ _SCRIPT = """
     + "below it rather than counted. A bar is a floor on what a caller must learn "
     + "rather than the whole of it, and a bar at nothing says only that there was "
     + "nothing on it to count.");
-  add(rules, "p", null,
-    document_.scoring.modulesNeverScored + " of " + document_.modules.length
-    + " modules are drawn but never scored, each by a named rule in "
-    + document_.scoring.configuration + ". They are shallow by construction, and ranking "
-    + "them beside the modules that are not would bury the finding.");
   var band = add(root, "section", "rules");
   add(band, "h2", null, "What the band on each bar measures");
   add(band, "p", null, document_.scoring.refusals.because);
@@ -888,7 +992,7 @@ _SCRIPT = """
     + "not a proposal to delete it — nothing here is ranked, and no module here is "
     + "proposed for change.");
 
-  var named = add(rules, "ul");
+  var named = add(neverScored, "ul");
   var because = {};
   document_.scoring.exclusions.forEach(function (exclusion) {
     because[exclusion.rule] = exclusion.because;
