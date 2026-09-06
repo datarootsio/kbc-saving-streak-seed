@@ -11,14 +11,14 @@ frontend as one tidy box would be a picture that lies by omission.
 
 **Blocked by:** 03 (Reach, and the fan).
 
-Status: needs-review
+Status: needs-info
 
 - [x] Frontend source is analysed at file grain and appears on the page beside the backend modules
 - [x] Interface cost, reach and depth are computed for frontend modules by the same rules as for backend modules
-- [x] What a frontend module exports, and what it reaches, are both derived from the source
+- [ ] What a frontend module exports, and what it reaches, are both derived from the source
 - [x] A large frontend module presenting a small interface is not reported as deep on account of its size
 - [x] The page makes the frontend's shape visible rather than collapsing it into a single unscored box
-- [x] Frontend source the tool cannot parse is reported loudly and named, as backend source is
+- [ ] Frontend source the tool cannot parse is reported loudly and named, as backend source is
 - [x] Test code, build output and dependencies are excluded from the graph
 
 ## Review feedback - attempt 1
@@ -1439,6 +1439,342 @@ And the properties this branch must not have broken, all checked by me:
   an unknown address with "No customer banks here under that email address" and signed
   `anke.peeters@example.be` in to a fully styled page showing both savings accounts (€24,00 /
   17 points) and the rewards catalogue.
+- The application still logs no `io.dataroots.savingstreak` WARN when it refuses — every 400 and 404
+  above is visible only through Spring's `ExceptionHandlerExceptionResolver` at DEBUG. That is the
+  pre-existing gap recorded at the end of ticket 07; this branch touches no application source and it
+  is not this branch's doing.
+
+## Review feedback - attempt 6
+
+**All twelve points from attempt 5 are genuinely fixed.** I reproduced every one against this branch
+and every one now behaves; the list is under "What I confirmed fixed" at the bottom so you do not redo
+any of it. Both lab checks, the 811-test suite, determinism, the no-regression diff against ticket/07
+and the page itself are all green. Five of the seven criteria are met and I saw them work.
+
+What sends this back is the same two sentences as the last five rounds. `README.md:266`:
+
+> And legal TypeScript is never failed, which matters more here than on the Java side: a failed file
+> is a whole module off the page and every fan line into it gone with it.
+
+and the page's own sentence above its list of over-readings:
+
+> A floor whose edge a reader cannot see is not one they can trust, and neither is a page that
+> promises a floor while holding a reading that is not one.
+
+Point 1 below fails a whole file for a reason untrue of the source. Points 2 to 4 each put a wrong
+number or a checkably-false sentence on a card or on a flow, with no line in any log saying so. I
+reproduced **every** item below myself against this branch with the exact source shown; none is a code
+reading, and every TypeScript file quoted compiles under the frontend's own `tsconfig.json` with
+`strict` on, exit 0.
+
+Set-up used for every repro below (`$TS` is `frontend/node_modules/.bin/tsc`):
+
+    mkdir -p /tmp/src && cd /tmp/src
+    # write the file, then:
+    python3 scripts/module-depth-map.py --source /tmp/src --graph /tmp/g.json --page /tmp/p.html
+
+### File-fatal: the whole module leaves the page
+
+**1. A regular expression written straight after `=>`, whose pattern holds an unbalanced brace,
+fails the file.**
+
+    $ cat /tmp/src/r1.ts
+    export const isOdd = (s: string): boolean => /[{]/.test(s)
+    $ $TS --noEmit --strict --target es2022 --module esnext --moduleResolution bundler \
+        --skipLibCheck --lib es2022,dom /tmp/src/r1.ts ; echo $?
+    0
+    $ python3 scripts/module-depth-map.py --source /tmp/src --graph /tmp/g.json --page /tmp/p.html
+    WARNING module_depth_map.graph could not parse source file root=src language=typescript
+      path=r1.ts reason=braces do not balance: 1 unclosed at end of file
+    WARNING module_depth_map.cli the page is drawn from 0 of 1 source files
+
+The braces in that file balance perfectly. `_AFTER_WHICH_A_REGEX_CAN_START`
+(typescriptsource.py:338) deliberately excludes `>` so that `</div>` does not open a regular
+expression — and the `>` of an `=>` was never carved back out, so `/[{]/` is read as division, the
+`{` inside the character class is counted as a brace, and `_masked` fails the file.
+
+I narrowed the shape for you, so the fixture is the right one and the fix is not a blanket one. These
+fail:
+
+    export const isOdd = (s: string): boolean => /[{]/.test(s)
+    export const isOdd = (s: string): boolean => /[}]/.test(s)
+
+These are fine and must keep working:
+
+    export function isOdd(s: string): boolean { return /[{]/.test(s) }   # the `function` form
+    export const trim = (s: string): string => s.replace(/^\s+/, '')     # no brace in the pattern
+    export const money = (s: string): boolean => /^\d+([.,]\d{2})?$/.test(s)   # balanced `{2}`
+    const re = /[{]/                                                     # bound to a name first
+    export const isOdd = (s: string): boolean => re.test(s)
+
+So it is the `=>`, and only where the pattern's braces do not balance on their own. This is the same
+shape of latency the last five attempts were sent back for: `grep -c '=> */' frontend/src/*.ts*`
+returns 0 today, so it costs this repository nothing — until somebody writes one concise arrow with a
+regular expression in it, and 1545 lines leave the page.
+
+### Read wrongly, with nothing reported
+
+**2. A concise arrow exported without a trailing semicolon takes the rest of the file as its body.**
+Two files, byte-identical but for one `;`:
+
+    $ cat /tmp/src/s1.ts                       # this frontend's own style: no semicolons
+    import { go, doThing, other } from './dep'
+
+    export const f = () => go(1)
+
+    function helper(): number { return doThing() }
+
+    export function g(): number { return other(helper()) }
+
+    -> f.calls == ['go', 'doThing']            <- should be ['go']
+    -> with `export const f = () => go(1);`  ->  f.calls == ['go']   (right)
+
+`f` does not call `doThing`. `_the_expression_after` (typescriptsource.py:1432) bounds the body with
+`_end_of_the_declaration`, and `_OPENS_A_STATEMENT` omits `function`, `class` and `async`, so nothing
+stops the body at the next declaration. `reach_of` reads `declared.called`, which is module-wide, so
+no fan line moves — but `calls_from` is what a flow is walked with, so a flow entered at `f` steps
+through a module `f` never calls. That is the disagreement between a flow and a fan that your own note
+on attempt-4 point 8 says cannot happen, and attempt 5 point 6 sent this back for in the other
+direction. Reproduce with:
+
+    python3 -c "
+    import sys; sys.path.insert(0,'scripts')
+    from module_depth_map import typescriptsource as ts
+    from module_depth_map.graph import SourceRoot
+    d = ts.parse(open('/tmp/src/s1.ts').read(), 's1.ts', root=SourceRoot('/tmp/src','src'))
+    print([(m.name, [c.name for c in m.calls]) for t in d.types for m in t.methods])"
+
+**3. A comparison chain draws a fan line whose evidence a reader can check and find false.**
+
+    $ cat /tmp/src/api.ts
+    export const count = 1
+    export const limit = 3
+    $ cat /tmp/src/cmp.ts
+    import { count, limit } from './api'
+    export function over(total: number): boolean { return count < total && limit > (total) }
+
+    src/cmp reach 1 -> src/api, 'calls count, which this file imports from it'
+
+The file calls nothing. `count` is a number. `_TYPE_ARGUMENTS` (typescriptsource.py:217) has a
+`[^<>;{}()]*` clause that matches ` total && limit `, so the `(` after it makes `count` look like a
+call with type arguments. The truthful reach is 0 — a value a caller reads rather than calls is a
+floor this page already names and prices nowhere.
+
+**4. A name that also appears in a type position, or in a ternary's first arm, loses the fan line for
+every *real* call to it in the same file.** This is a fix from attempt 4 that went one step too far.
+
+(a) A member signature in an interface:
+
+    $ cat /tmp/src/iface.ts
+    import { save } from './api'
+    export interface Api { save(id: string): void }
+    export function use(): void { save('x') }
+
+    src/iface reach 0            <- should be 1 -> src/api
+
+`use()` really does call the imported `save`. Attempt 4 asked for reach 0 on the file that *only*
+declares the signature, and that fixture is in the suite and still right — but `_reached_in`
+(typescriptsource.py:2317) puts every name `_declares_rather_than_calls` rejects into the module's
+`declares` set rather than merely leaving it out of `called`, and `scoring._the_names_this_body_declares`
+then skips the import outright.
+
+(b) The same mechanism, through a ternary. Two files differing only by one line:
+
+    $ cat /tmp/src/tern.ts
+    import { go } from './api'
+    export function pick(ok: boolean, x: number): number { return ok ? go(x) : 0 }
+    export function always(x: number): number { return go(x) }
+    -> reach 0
+
+    $ cat /tmp/src/tern2.ts      # the same file with the ternary line deleted
+    import { go } from './api'
+    export function always(x: number): number { return go(x) }
+    -> reach 1 -> src/api, 'calls go, which this file imports from it'
+
+The page names this floor as "a call in the first arm of `ok ? go(x) : none` goes uncounted". What
+actually happens is that the name is lost for the whole file. `ok ? go(x) : none` is ordinary React.
+
+**5. JSX children are ordered after their parent, and evaluation order is what a flow is walked in.**
+
+    export function Row(): JSX.Element { return (<Parent><Child /></Parent>) }
+    -> calls in evaluation order: [('Parent', builds), ('Child', builds)]
+
+`createElement(Parent, null, createElement(Child))` evaluates `Child` first. `_CONSTRUCTED` gets its
+full span from `after_the_arguments` precisely so that nesting orders correctly; the JSX branch
+(typescriptsource.py:2470) passes `match.end()`, which stops at the tag name, so `in_evaluation_order`
+cannot see that one element is written inside the other.
+
+### Smaller, and each one a sentence a reader can check and find false
+
+**6. `normalised` rewrites the inside of a string-literal type**, undoing attempt 3's point 8, which
+you fixed by spelling types off the original text:
+
+    export function f(mode: 'a|b'): void {}    -> parameter "'a | b'"
+    export function g(mode: 'a,b'): void {}    -> parameter "'a, b'"
+    export function i(mode: '{x}'): void {}    -> parameter "'{ x }'"
+
+The card prints a type the file does not contain. `'one' | 'two'` is right, so it is only the
+punctuation *inside* the quotes. `_as_written` restores a literal's characters; `normalised`
+(javasource.py:2321) then rewrites them again.
+
+**7. An optional-chained or non-null-asserted call reaches nothing, and is not a named floor.**
+
+    import { api } from './api'
+    export function a(): number { return api?.load() ?? 0 }   -> reach 0
+    export function b(): number { return api!.load() }        -> reach 0
+    export function c(): number { return api.load() }         -> reach 1, 'called on api'
+
+`_A_RECEIVER_CALL` wants the dot against the name. Understating is the direction this page is allowed
+to be wrong in — but the page says the understating readings it knows are "named here rather than left
+to be found", and this one is absent. `frontend/src/App.tsx` writes `?.` fifteen times.
+
+**8. The page's rules section says "the card says which language it was read in"** (page.py:606). The
+card renders `module.kind` only — `FILE`, `CLASS`, `RECORD`. The language is in the detail panel
+(`file · typescript · frontend/src`), not on the card. Either render it on the card or say "the
+panel".
+
+### How to know you are done
+
+Every point above is a fixture the suite does not have — the 811 tests pass with all eight present.
+`tests/thefrontendhonestly` is good work, so add to it rather than starting over. Hold at minimum:
+
+- `export const isOdd = (s: string): boolean => /[{]/.test(s)` read rather than failed, asserting
+  `filesUnparsed=0`, **and** the five near-misses above that must keep working, so the fix cannot be a
+  blanket one;
+- a concise arrow with no trailing semicolon followed by a non-exported `function`, asserting the
+  arrow's `calls` hold only what it calls;
+- `count < total && limit > (total)` against an imported `count`, asserting reach 0;
+- `export interface Api { save(id: string): void }` beside `import { save }` **and** a real
+  `save('x')` in the same file, asserting reach 1 — the attempt-4 fixture (signature only, reach 0)
+  must keep passing beside it;
+- `ok ? go(x) : 0` beside a plain `go(x)` in the same file, asserting reach 1;
+- `<Parent><Child /></Parent>`, asserting `Child` is ordered before `Parent`;
+- `'a|b'`, `'a,b'` and `'{x}'` as parameter types, asserting the card prints what the source wrote;
+- `api?.load()` and `api!.load()` — either reaching `api`, or named on the page's list of
+  understating readings.
+
+Then re-check `README.md:266` and page.py:606 against what the code actually keeps.
+
+### What I confirmed fixed, so you do not redo it
+
+Every point from attempt 5, reproduced by me on this branch:
+
+1 & 2. `<p>You can import your statements here.</p>` inside a component and
+   `createRoot(...).render(<main>Use the export button</main>,)` at top level both parse —
+   `filesUnparsed=0`. All four near-misses still work (`<p>Import statements</p>`,
+   `<li>Imports and exports</li>`, `<p>{'You can import things'}</p>`, `// you can import things`),
+   and a real `import { thing } from './other'` in the same file as that prose still draws its fan
+   line. I attacked the new prose reading with six more shapes — a `//` comment holding a fake open
+   tag with a real `import` after it, template literals holding `<section>` and `</section>` around a
+   real export, multi-line prose full of statement words, an import written after JSX, an attribute
+   brace group holding `'</p>'`, and nested same-named elements — all seven files `tsc`-clean, all
+   read, every real import and export still measured. The reading blanks nothing, which is what makes
+   it recoverable in both directions; that design is sound.
+3. `import type Customer from './api'` gives `nested = []`, and the inline `import { type Customer, go }`
+   still reaches `src/api` through `go`.
+4. A JSDoc `@throws Boom` above `let pending` followed by an undocumented `export function` gives no
+   refusal on the seam and no finding (cost 1, refusals `[]`).
+5. `export const ring: <T = string>(a: T) => T = (a) => a` is one method again.
+6. `export const load = () => get('x')` and the braced form give the same `calls` **and** the same
+   `declared.called` — `(CallSite('get'),)` and `('get',)` on both, plus the bare-parameter form.
+7. Parse time is linear: 49 KB 0.046s, 98 KB 0.092s, 196 KB 0.186s, 393 KB 0.383s (copies of the real
+   `App.tsx`). Exactly 2x for 2x at every step.
+8. `typesEveryCallerAlreadyKnows` is `{"java": [40], "typescript": [21]}` and the Java list is
+   **identical** to ticket/07's — `Date`, `Error` and `Record` are off it, set-diff empty both ways.
+9. The page's "What the bars measure" section prints both lists by language: "There is one list per
+   language, because what a caller already holds is a fact about the language they are calling
+   from…", then `java — 40 names…` and `typescript — 21 names…`.
+10. `_place_of` normalises `os.sep` for itself, with the coupling to `graph._relative` documented by
+    name.
+11. All seven bracket scanners now read one generator, `_at_each_depth(masked, position, brackets,
+    limit)`, with `_BRACKETS_OF_A_TYPE` / `_BRACKETS_OF_A_VALUE` saying which question each is asking.
+12. `_files_under` binds the root's basename as `named`; `here` is only the walk's realpath.
+
+And the properties this branch must not have broken, all checked by me:
+
+- `cd backend && ./mvnw test` — exit 0, 113 tests, BUILD SUCCESS.
+- `cd frontend && npm run typecheck` — exit 0 (Node 24.16.0 on PATH; system node is v16).
+- `python3 -m unittest discover -t scripts -s scripts/module_depth_map/tests` — **811 tests, OK**.
+- **The fixtures are real.** Restoring `9138147`'s nine tool sources under this branch's tests fails
+  **20 of the 233** tests in `tests/thefrontendhonestly`, one per attempt-5 point. Tree restored,
+  `git status` clean.
+- Two fresh runs are `cmp`-identical to each other **and** to the committed
+  `docs/module-depth-map.{json,html}`; neither holds an absolute path; `git status` clean after a run;
+  0.59s.
+- Diffed all 74 modules against `ticket/07:docs/module-depth-map.json`: **no backend module changed in
+  any field**, exactly three added (`frontend/src/App`, `api`, `main`), `flows` byte-identical.
+- 500 lines of padding on a copy of the real `App.tsx` moved `lines` 1545 → 2046 and **nothing else on
+  any of the three modules** — with the root name normalised, the only field that differs anywhere is
+  `lines`.
+- `frontend/src/App` is 1545 lines — 5.4x the next longest file — at interface cost 1 over a fan of 1,
+  leverage 1.0, and ranks **4th of 34** scored modules by leverage, behind Java modules of 60, 67 and
+  149 lines. Size is not depth here, which is the whole point of the ticket.
+- The same shape in both languages: a Java `shop.Till` and a TypeScript `ts/t/till`, two methods, one
+  documented refusal, three collaborators — **cost 6, costWithoutRefusals 4, refusalCost 2, reach 4,
+  leverage 0.67, verdict "earns its keep" on both**, same methods, types, refusals and reaches.
+- Exclusions: `node_modules`, `dist`, `build`, `coverage`, `target`, `__tests__`, `*.test.ts`,
+  `*.spec.tsx`, `*.d.ts` each named with the rule and what matched, in the log, in
+  `source.notRead.paths` **and** on the page. Two genuinely broken files failed by name with true
+  reasons, plus `WARNING … the page is drawn from 1 of 3 source files`.
+- 22 real third-party `.ts`/`.tsx` files out of `node_modules`, and a hand-written idiomatic React
+  corpus (hooks, context, reducer, error boundary, overloads, generics, mapped/template-literal/
+  conditional types, `as const`, assertion signatures, async generators, `export * as`, barrel
+  re-exports, generic arrows in `.tsx`) — every one `tsc`-clean, all read, `filesUnparsed=0`, with no
+  invented type, no false refusal and no false fan line.
+- The compounded participant edit the last five reviews used as the standard — the prose sentence
+  carrying both lowercase statement words added to the real sign-in copy, four components exported
+  from a copy of the real `App.tsx`, a new `{xs.map(x => <span key={x} data-chip={x} />)}` component,
+  and `import './index.css'` moved third of four with no semicolons — `tsc -p` exit 0, tool gives
+  `filesUnparsed=0`, `src/App` cost 21 with six methods, and `main` still reaching `App`.
+- Every floor the page claims is real: `<Icons.Chevron />` reaches nothing, `new api.Thing()` reaches
+  nothing, a value read rather than called reaches nothing, `ok ? go(x) : 0` goes uncounted, a plain
+  `go(x)` still draws its line, and JSX prose matching an imported name draws the over-reading the
+  page names. The false entry attempt 4 found is gone.
+- The page driven with Playwright (chromium; console, pageerror and requestfailed subscribed; log at
+  `.scratch/module-depth-map/logs/08-the-frontend-honestly.review.6.browser.log`) at 1024, 1280 and
+  1440 wide, light and dark: **zero console errors, zero pageerrors, zero failed requests**,
+  `scrollWidth == clientWidth` at every width, 74 cards, 9 package sections. `frontend/src` draws
+  **first** with three FILE cards; `App` is a sliver of a bar over a fan of 1, `api` the widest bar
+  (49) with a gold refusal band over no fan, `main` a small bar with a gold band over a fan of 1. All
+  three panels open and **Escape closes each**; flows mark **12 / 13 / 9** and Clear resets to 0.
+  Screenshots `…review.6.page-1280-light.png`, `…review.6.frontend-section.png`.
+- Every claim on the three frontend cards checks out against the source: `App.tsx` has exactly one
+  export (`export default function App()`) and declares exactly `SavingsAccountView` and
+  `Celebration`; `main.tsx` has no export, throws one `new Error(...)` and builds `<App />`; `api.ts`
+  has eleven `export function`s. The tool's DEBUG log says the same: `parsed file path=App.tsx
+  module=frontend/src/App lines=1545 exports=1 typesDeclared=2 imports=27`.
+- The "What a line count is worth here" section reads *"The longest module here is frontend/src/App,
+  at 1545 lines of typescript. It presents 1 method, costing 1 unit of interface, over a fan of 1
+  thing — leverage 1."* Every value in it is `scoring.largest` in the graph.
+- Page edge cases, all clean with no console error and no stray `null` in the text: a java-only run
+  (lede reads "written in java", longest module `ScheduledJobs` at 284 lines), a default run with
+  `frontend/src` absent (`INFO … default source not read path=frontend/src reason=…`, both outputs
+  written), and a run with two unparseable files, both named with their reasons.
+- The tool's own logging follows CLAUDE.md: **no `print`, no `sys.stdout`** anywhere in
+  `scripts/module_depth_map`; a `module_depth_map.*` logger per file; one INFO per business event with
+  the values behind it (`largest module=frontend/src/App language=typescript lines=1545
+  interfaceCost=1 reach=1 leverage=1.0`, `graph built … filesSeen=74 filesParsed=74 filesUnparsed=0`,
+  `widest interface module=frontend/src/api cost=49 methods=11 typesToLearn=7`); WARNING with a reason
+  on every refusal; DEBUG for the inputs behind a decision (`angle brackets not read as an element
+  name=Customer reason=a value stands in front of them …`, `export not read as a method … reason=…`).
+  No WARNING or ERROR from `module_depth_map` over the real source.
+- `test_this_repository_is_read_whole.py` reads both roots — all three classes go through
+  `this_repository()`, built from `BACKEND_SOURCE` and `FRONTEND_SOURCE`.
+- The running application is untouched by this branch (`git diff --name-only ticket/07..HEAD --
+  backend frontend` is empty) and still works. Over HTTP against the running API: 404 "No customer
+  banks here under that email address", 200 for `anke.peeters@example.be`, 201 for a 7.00 deposit,
+  400 "A deposit has to be an amount of more than zero, and 0.00 is not.", 201 for a 3.00 withdrawal
+  allocating against deposit 1, 400 "Cinema ticket costs 100 points, and this account has 7.", 400
+  `There is nothing called "NOT_A_REWARD" in the rewards catalogue.`, 400 "Charity donation costs 10
+  points, and this account has 7." — with `i.d.s.deposits.DepositsService : deposit accepted
+  depositId=1 savingsAccountId=1 fromCurrentAccountId=1 amount=7.00 pointsEarned=7` and
+  `i.d.s.deposits.WithdrawalsService : withdrawal accepted withdrawalId=1 savingsAccountId=1
+  toCurrentAccountId=1 amount=3.00` in
+  `.scratch/module-depth-map/logs/08-the-frontend-honestly.app.6.backend.log`. Driving :5173 refused
+  an unknown address with "No customer banks here under that email address" on a fully styled page
+  (that is `api.ts`'s `SignInFailed`, the refusal the graph reports as "raised but never documented")
+  and signed Anke Peeters in to both savings accounts and the rewards catalogue. Screenshots
+  `…review.6.app-refused.png`, `…review.6.app-home.png`.
 - The application still logs no `io.dataroots.savingstreak` WARN when it refuses — every 400 and 404
   above is visible only through Spring's `ExceptionHandlerExceptionResolver` at DEBUG. That is the
   pre-existing gap recorded at the end of ticket 07; this branch touches no application source and it
