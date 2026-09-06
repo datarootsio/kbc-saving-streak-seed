@@ -49,6 +49,12 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
         Whoever regenerates the outputs on a new day changes the date in both files and
         this test follows them; what it will not let past is a page describing source
         that has moved on.
+
+        What it cannot catch is a regeneration handed the date it found here — the fresh
+        run and the committed file then agree about a day neither of them was. That is
+        why the failure messages below name the day to type rather than a day, and why
+        `TheDocumentedWayToRegenerateDoesNotAge` keeps one out of the two lines a
+        maintainer copies the command from.
         """
         with open(COMMITTED_GRAPH, encoding="utf-8") as handle:
             return json.load(handle)["snapshot"]["date"]
@@ -58,7 +64,9 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
             bytes_of(COMMITTED_GRAPH),
             bytes_of(self.graph_path),
             "docs/module-depth-map.json is out of date: run python3 "
-            "scripts/module-depth-map.py --snapshot-date <the day you are dating it>",
+            "scripts/module-depth-map.py --snapshot-date <the day you are dating it> "
+            "\u2014 the day you are regenerating it on, not the day the file already "
+            "carries",
         )
 
     def test_the_committed_page_is_byte_identical_to_a_fresh_run(self):
@@ -66,5 +74,7 @@ class TheCommittedOutputsAreWhatAFreshRunWritesTest(SourceTreeTest):
             bytes_of(COMMITTED_PAGE),
             bytes_of(self.page_path),
             "docs/module-depth-map.html is out of date: run python3 "
-            "scripts/module-depth-map.py --snapshot-date <the day you are dating it>",
+            "scripts/module-depth-map.py --snapshot-date <the day you are dating it> "
+            "\u2014 the day you are regenerating it on, not the day the file already "
+            "carries",
         )

@@ -193,6 +193,15 @@ def main(argv=None):
         )
         return 4
 
+    # `build` is documented to refuse with two exceptions and only one of them is caught
+    # here. The other, `SnapshotNotADate`, cannot arrive at this line: `snapshot` is what
+    # `a_snapshot_date` handed back above, and `a_snapshot_date` answers with the string
+    # it was given — so the reading inside `build` is asked the same question about the
+    # same string that has already been answered, and cannot answer it differently. The
+    # date is checked up there rather than caught down here on purpose: a run that cannot
+    # be dated is refused before a file is opened, with the reason a person needs, and
+    # `test_a_date_this_tool_will_not_read_never_reaches_the_build_seam` is what holds
+    # that order in place if anybody moves this call above the check.
     try:
         document = graph.build(
             [graph.source_root(directory) for directory in sources], rules, snapshot,

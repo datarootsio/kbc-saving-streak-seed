@@ -139,6 +139,37 @@ class TheSnapshotDateIsGivenToTheRunTest(SourceTreeTest):
                 self.assertIn(given, said)
                 self.assertNotIn("Traceback", said)
 
+    def test_a_date_this_tool_will_not_read_never_reaches_the_build_seam(self):
+        """`build` refuses with two exceptions and `main` guards one. This is why that holds.
+
+        `main` reads the date before it walks anything and hands `build` what
+        `a_snapshot_date` gave back, so the reading inside `build` is asked the same
+        question about the same string and cannot answer it differently — which is the
+        whole reason a `SnapshotNotADate` is not caught around that call. The claim is
+        about an order of statements, so it is held by an order of statements: `build` is
+        replaced with something that refuses to be called at all, and a misspelled date
+        still comes back as the refusal `main` writes rather than as a traceback.
+        """
+        tree = self.source()
+        was = graph.build
+
+        def build_that_must_not_be_reached(*arguments, **named):
+            raise AssertionError("main walked the source before reading the date")
+
+        graph.build = build_that_must_not_be_reached
+        self.addCleanup(setattr, graph, "build", was)
+        with self.assertLogs("module_depth_map.cli", level=logging.WARNING) as logged:
+            code = self.run_over(tree.root, "--snapshot-date", "2026-02-30")
+
+        self.assertEqual(6, code)
+        self.assertIn("is not a day there was", "\n".join(logged.output))
+        # And the pass-through the comment beside that call rests on: the reading answers
+        # with the string it was handed, so asking it a second time about its own answer
+        # is the same question and gets the same one back.
+        read = graph.a_snapshot_date("2026-02-28")
+        self.assertEqual("2026-02-28", read)
+        self.assertEqual(read, graph.a_snapshot_date(read))
+
     def test_a_run_that_cannot_be_dated_writes_neither_output(self):
         """The refusal comes before the source is walked, so both files are last run's."""
         tree = self.source()
@@ -213,12 +244,25 @@ class ThePageSaysItsOwnLimitsTest(SourceTreeTest):
     def setUp(self):
         super().setUp()
         tree = self.tree("fixture")
+        # `ring` documents a refusal it never throws and throws one it never documents,
+        # which is what puts a finding on a card. Without a disagreement in here every
+        # module in this fixture carried nought findings, and the scan below — which is
+        # the whole of criterion 7's guarantee — walked a `findings` list that was always
+        # empty while eight cards of the committed page carried that prose.
         tree.java(
             "shop.till", "Till",
             "public class Till {\n"
             "    private final Prices prices;\n"
             "    Till(Prices prices) { this.prices = prices; }\n"
-            "    public long ring(long cents) { return prices.of(cents); }\n"
+            "    /**\n"
+            "     * Ring a sale up.\n"
+            "     *\n"
+            "     * @throws IllegalStateException when this till has not been opened yet\n"
+            "     */\n"
+            "    public long ring(long cents) {\n"
+            "        if (cents <= 0) { throw new IllegalArgumentException(\"cents\"); }\n"
+            "        return prices.of(cents);\n"
+            "    }\n"
             "}",
         )
         tree.java("shop.till", "Prices", "public class Prices {\n    public long of(long c) { return c; }\n}")
@@ -301,17 +345,63 @@ class ThePageSaysItsOwnLimitsTest(SourceTreeTest):
         about a *measure* is allowed sentences prose about a module is not: "nothing to
         fix" is an accurate thing for a heading to say, and a scan over everything bans
         it. The exclusion reasons are in scope even though they sit under `scoring`,
-        because every excluded card prints the one that excluded it.
+        because every excluded card prints the one that excluded it, and the two
+        disagreement kinds under `scoring.refusals` are in scope for exactly the same
+        reason: each is copied verbatim onto every card whose module has that finding —
+        eight cards of the committed page — so a proposal written in one of them is a
+        proposal on a card. `scoring.refusals.because` is not in scope: it is the band's
+        own explanation, prose about a measure, and it is printed under a heading rather
+        than on any module.
         """
         printed_on_a_card = list(_prose_about_a_module_in(self.document["modules"]))
         printed_on_a_card += list(
             _prose_about_a_module_in(self.document["scoring"]["exclusions"], "exclusions")
+        )
+        printed_on_a_card += list(
+            _prose_about_a_module_in(self.a_finding_on_a_card_is_written_with(), "refusals")
         )
 
         self.assertTrue(printed_on_a_card)
         for path, said in printed_on_a_card:
             for word in WORDS_A_PROPOSAL_IS_WRITTEN_WITH:
                 self.assertNotIn(word, said.lower(), path)
+
+    def a_finding_on_a_card_is_written_with(self):
+        """The prose behind a refusal finding, which a card prints word for word.
+
+        Named apart from the scan so that the two kinds are listed in one place: a third
+        kind of disagreement added under `scoring.refusals` and not added here would be
+        prose on a card that nothing reads, which is the hole this was written to close.
+        """
+        refusals = self.document["scoring"]["refusals"]
+        return {kind: refusals[kind] for kind in FINDINGS_A_CARD_PRINTS}
+
+    def test_the_prose_a_finding_puts_on_a_card_is_the_prose_under_scoring_refusals(self):
+        """Both halves of the scan above, held to being about the same sentences.
+
+        The scan reads the source of a finding as well as its copies, and this is what
+        says they are copies: what a module carries under `findings` is `because` and
+        `finding` taken verbatim from `scoring.refusals`, so scanning either without the
+        other would be scanning the same prose twice or missing half of where it lands.
+        The fixture has to carry one of each, or the modules half of the scan walks an
+        empty list and nothing here is being checked at all.
+        """
+        source = self.document["scoring"]["refusals"]
+        found = [
+            (module["id"], finding)
+            for module in self.document["modules"]
+            for finding in module["findings"]
+        ]
+
+        self.assertEqual(
+            {source[kind]["finding"] for kind in FINDINGS_A_CARD_PRINTS},
+            {finding["finding"] for _, finding in found},
+            "the fixture no longer carries one finding of each kind",
+        )
+        by_finding = {source[kind]["finding"]: source[kind]["because"]
+                      for kind in FINDINGS_A_CARD_PRINTS}
+        for module_id, finding in found:
+            self.assertEqual(by_finding[finding["finding"]], finding["because"], module_id)
 
     def test_the_two_refusal_findings_do_not_end_on_the_same_thought(self):
         """Two findings, and a reader has to be able to tell what is different about them.
@@ -369,13 +459,37 @@ class ThePageSaysItsLimitsOnTheSmallestRunThereIsTest(SourceTreeTest):
         Folding the verb into the `count` call that pluralises the noun fixes that one
         and breaks another: in "N of M modules are scored" the noun agrees with M and the
         verb with N, so one count driving both renders "1 of 74 modules are scored" on a
-        repository with a single scored module. The page counts them apart.
+        repository with a single scored module. The page counts them apart, and hands the
+        verb both numbers — see the class below for the run where N alone is not enough.
         """
-        self.assertIn("function verb(n, is, are)", self.rendered)
-        self.assertIn('verb(document_.scoring.modulesScored, "is", "are")', self.rendered)
+        self.assertIn("function verb(n, of, is, are)", self.rendered)
         self.assertIn(
-            'verb(document_.scoring.modulesNeverScored, "is", "are")', self.rendered
+            'verb(document_.scoring.modulesScored, document_.modules.length, "is", "are")',
+            self.rendered,
         )
+        self.assertIn(
+            'verb(document_.scoring.modulesNeverScored, document_.modules.length, '
+            '"is", "are")',
+            self.rendered,
+        )
+
+    def test_no_sentence_asks_the_verb_to_conjugate_on_one_number(self):
+        """Every call, not only the two named above, because the next one is the risk.
+
+        A third counted sentence written the old way — `verb(n, "is", "are")` — would
+        take `"is"` for the second number and render "1 of 1 module 74 scored" or worse,
+        and it would pass both assertions above by leaving them untouched. So every call
+        of the helper in the page is read, and each one has to hand over both numbers and
+        both spellings of the verb.
+        """
+        calls = re.findall(r"\bverb\(([^)]*)\)", self.rendered)
+        calls = [call for call in calls if call != "n, of, is, are"]
+
+        self.assertTrue(calls)
+        for call in calls:
+            handed = [part.strip() for part in call.split(",")]
+            self.assertEqual(4, len(handed), call)
+            self.assertEqual(['"is"', '"are"'], handed[2:], call)
 
     def test_what_was_counted_is_called_a_path_the_way_the_alarm_above_it_does(self):
         """`filesSeen` counts a directory that would not open, and the alarm box says so.
@@ -396,6 +510,51 @@ class ThePageSaysItsLimitsOnTheSmallestRunThereIsTest(SourceTreeTest):
         self.assertIn("exclusion.modulesExcluded > 0", self.rendered)
         self.assertIn("if (excludingRules.length > 0)", self.rendered)
         self.assertIn("Nothing was left out.", self.rendered)
+
+
+class ThePageSaysItsLimitsWhenNothingCouldBeScoredTest(SourceTreeTest):
+    """One module, and a rule declined to price it: the run a verb counted on N alone gets wrong.
+
+    "N of M modules are scored" has two numbers in it and either of them being one makes
+    the sentence singular. A verb agreeing with N alone reads correctly on every run this
+    repository can produce — none of its six packages is a single module nothing scored —
+    and renders "0 of 1 module drawn here are scored" on this one, which is a tree of one
+    module that a rule declines to price. Narrow, and still the page failing to agree
+    with itself inside six words.
+    """
+
+    def setUp(self):
+        super().setUp()
+        tree = self.tree("fixture")
+        # A record with nothing but its components is a data carrier, which the rules
+        # decline to price: one module drawn, none scored.
+        tree.java("shop.till", "Money", "public record Money(long cents) {}")
+        self.document = graph.build(
+            [graph.source_root(tree.root)], scoring.load(), A_SNAPSHOT
+        )
+        self.rendered = page.render(
+            self.document, graph.serialise(self.document)
+        ).decode("utf-8")
+
+    def test_the_run_really_is_the_one_a_verb_counted_on_n_alone_breaks_on(self):
+        """The fixture is worth nothing unless it is genuinely M of one and N of nought."""
+        self.assertEqual(1, len(self.document["modules"]))
+        self.assertEqual(0, self.document["scoring"]["modulesScored"])
+        self.assertEqual(1, self.document["scoring"]["modulesNeverScored"])
+
+    def test_the_verb_is_singular_when_either_number_beside_it_is_one(self):
+        """The rule itself, because this run is the one it exists for.
+
+        Read off the script: the sentence only exists once a browser has joined a dozen
+        strings, and there is no browser in this suite. What is held here is the rule the
+        browser will apply — singular when the number that governs the verb is one, and
+        singular when there is only one thing to be counted of, which is this run. The
+        rendered sentence was read in a browser on this fixture as well.
+        """
+        self.assertIn(
+            "function verb(n, of, is, are) { return n === 1 || of === 1 ? is : are; }",
+            self.rendered,
+        )
 
 
 class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
@@ -434,6 +593,55 @@ class TheUsageLineSaysWhatTheHelpSaysTest(unittest.TestCase):
             )
 
 
+class TheDocumentedWayToRegenerateDoesNotAgeTest(unittest.TestCase):
+    """The two lines a maintainer copies the command from, held to carrying no day.
+
+    A day written into either of them is a trap with a delay on it.
+    `TheCommittedOutputsAreWhatAFreshRunWrites` hands its fresh run the date it reads out
+    of the committed graph — it has to, because the date is the one value in those files
+    no reading of this repository can rediscover — so a maintainer who adds a class, sees
+    that test fail, copies the command as printed and regenerates gets two green byte
+    comparisons over a page dated before the source it describes. Nothing downstream can
+    catch that: a stale date is a perfectly well-formed one. What can be caught is the
+    literal, here, in the two places it would be copied from.
+    """
+
+    COPIED_FROM = (
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "..", "..", "..", "module-depth-map.py"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "..", "..", "README.md"),
+    )
+
+    def test_neither_place_spells_the_argument_with_a_day_that_will_go_stale(self):
+        for path in self.COPIED_FROM:
+            with self.subTest(path=os.path.basename(path)), \
+                    open(path, encoding="utf-8") as handle:
+                said = handle.read()
+
+                self.assertIn("--snapshot-date", said)
+                self.assertEqual(
+                    [],
+                    re.findall(r"--snapshot-date\s+[0-9]{4}-[0-9]{2}-[0-9]{2}", said),
+                    "%s tells a maintainer to regenerate with a day that will go stale; "
+                    "the tests say it as --snapshot-date <the day you are dating it>"
+                    % os.path.basename(path),
+                )
+
+    def test_both_places_say_it_the_way_the_failing_test_says_it(self):
+        """One spelling of the placeholder, and it is the one a failure hands a reader.
+
+        Somebody meets this in a failure message before they meet it in the README, and
+        two spellings of the same instruction is one of them being ignored.
+        """
+        for path in self.COPIED_FROM:
+            with self.subTest(path=os.path.basename(path)), \
+                    open(path, encoding="utf-8") as handle:
+                self.assertIn(
+                    "--snapshot-date <the day you are dating it>", handle.read()
+                )
+
+
 class ThisRepositoryIsDatedByWhoeverRanTheToolTest(SourceTreeTest):
     """The committed outputs carry a day, and it is the day somebody typed."""
 
@@ -461,6 +669,14 @@ class ThisRepositoryIsDatedByWhoeverRanTheToolTest(SourceTreeTest):
 # read out of the source — its id, its package, its methods, the types crossing its seam —
 # and those are the source's words rather than this page's claims about it.
 PROSE_THIS_TOOL_WROTE_ABOUT_A_MODULE = ("because", "finding", "verdict", "matched")
+
+# The disagreements under `scoring.refusals` whose prose is copied onto a card. Each of
+# these is written once and printed on every card whose module carries that finding, so
+# it is prose about a module wherever in the document it happens to be stored — the same
+# reason `scoring.exclusions[].because` is read. `scoring.refusals.because` is not one of
+# them: it is the band's own explanation, printed under a heading and about the measure
+# rather than about any module.
+FINDINGS_A_CARD_PRINTS = ("documentedNeverRaised", "raisedNeverDocumented")
 
 
 def _prose_about_a_module_in(document, path="modules", key=None):

@@ -8092,6 +8092,16 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     return;
   }
 
+  // The one spelling of the heading two paragraphs elsewhere send a reader to, written
+  // here and referred to by name from all three places. Written out three times it
+  // pointed two ways at once: the paragraph under the title said the section was
+  // "below" and the paragraph about what a bar leaves out said it was "at the top of
+  // this page", and it is neither — it sits between them, and how far down it sits moves
+  // with the run, because the band above it is only drawn when something would not open.
+  // A name is true from wherever a reader is standing, and survives the blocks being
+  // reordered, which has already happened once in the writing of this page.
+  var LIMITS = "What this page does not measure";
+
   var head = add(root, "header");
   add(head, "h1", null, "Module depth map");
   // The day this page is an observation of, said directly under the title. It is here
@@ -8108,8 +8118,8 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   add(dated, "span", null,
     " Not a list of work to be done: nothing here is ranked, nothing here is proposed, "
     + "and no module here is named as one that ought to change. What it did not measure "
-    + "is stated below in its own section, because a score read as the whole of an "
-    + "interface is the one way this page misleads.");
+    + "is stated under “" + LIMITS + "”, because a score read as the whole of "
+    + "an interface is the one way this page misleads.");
   // How many languages this run read is the document's own answer, and the prose follows
   // it. Written as a constant, a run of one source root rendered "both halves of it,
   // java" — a false sentence at the top of a page whose whole claim is that its numbers
@@ -8166,8 +8176,12 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // scored". The noun there agrees with M and the verb with N, and the two are not the
   // same number: one `count` conjugating both renders "1 of 74 modules are scored" on a
   // repository with one scored module and "1 of 1 module are scored" on a repository with
-  // one module in it. So the verb is counted apart from the noun it belongs to.
-  function verb(n, is, are) { return n === 1 ? is : are; }
+  // one module in it. So the verb is counted apart from the noun it belongs to — and
+  // given both numbers, because either of them being one makes the sentence singular. N
+  // alone rendered "0 of 1 module drawn here are scored" on a tree of one module that
+  // every rule declined: N is zero, which is plural on its own, but the noun beside it
+  // is the singular "module" and no verb can be plural next to that.
+  function verb(n, of, is, are) { return n === 1 || of === 1 ? is : are; }
 
   function fact(term, value) {
     var pair = add(list, "div");
@@ -8178,8 +8192,13 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   fact("Snapshot", document_.snapshot.date);
   fact("Source read", document_.source.roots.join(", "));
   fact("Languages", document_.source.languages.join(", "));
-  fact("Files parsed", document_.source.filesParsed + " of " + document_.source.filesSeen);
-  fact("Files not parsed", document_.source.filesUnparsed);
+  // "Source path" rather than "file", the word the alarm band and the coverage sentence
+  // both use, and for the reason they use it: a directory the operating system will not
+  // open is counted here too, so a run with one locked directory under it had this box
+  // calling it a file one screen above two other places calling it a path. One name for
+  // one thing, or the page is disagreeing with itself about what it read.
+  fact("Source paths parsed", document_.source.filesParsed + " of " + document_.source.filesSeen);
+  fact("Source paths not parsed", document_.source.filesUnparsed);
   fact("Paths not read", document_.source.notRead.paths.length + " — "
     + document_.source.notRead.rule);
   fact("Packages", document_.packages.length);
@@ -8206,7 +8225,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
   // exists to prevent. Two parts of every interface here are measured nowhere at all,
   // and they are not the small parts.
   var unmeasured = add(root, "section", "rules");
-  add(unmeasured, "h2", null, "What this page does not measure");
+  add(unmeasured, "h2", null, LIMITS);
   add(unmeasured, "p", null,
     "An interface is everything a caller has to know before they can use a module "
     + "correctly, and this page measures the part of it a machine can read. Two parts of "
@@ -8263,7 +8282,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
        : " — every one of them. ")
     + document_.scoring.modulesScored + " of "
     + count(document_.modules.length, "module", "modules") + " drawn here "
-    + verb(document_.scoring.modulesScored, "is", "are")
+    + verb(document_.scoring.modulesScored, document_.modules.length, "is", "are")
     + " scored, and what was left out of the scoring, and out of the "
     + "reading altogether, is listed under the two headings that follow.");
 
@@ -8331,7 +8350,7 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
     add(neverScored, "p", null,
       document_.scoring.modulesNeverScored + " of "
       + count(document_.modules.length, "module", "modules") + " "
-      + verb(document_.scoring.modulesNeverScored, "is", "are")
+      + verb(document_.scoring.modulesNeverScored, document_.modules.length, "is", "are")
       + " drawn but never scored, each by a named rule in "
       + document_.scoring.configuration + ". Anything a rule declines to price is shallow "
       + "by construction, and ranking it beside the modules that are not would bury the "
@@ -8380,16 +8399,18 @@ footer { margin-top: 3rem; color: var(--ink-soft); font-size: .85rem; }
       + "is charged nothing for: " + known[language].join(", ") + ".");
   });
   // The bar's own floors. The two an interface cannot do without — the invariants and the
-  // order — are named at the top of the page rather than a second time here, because that
-  // is where a reader meets them before they have been told what a bar is worth; this
-  // paragraph is the rest of what this particular measure cannot see. The constructor is
+  // order — have a section of their own rather than a second telling here, because a
+  // reader meets that section before they have been told what a bar is worth; this
+  // paragraph is the rest of what this particular measure cannot see. It sends a reader
+  // there by the section's name rather than by where it sits: "at the top of this page"
+  // was written here once, and the section is nowhere near the top. The constructor is
   // kept on one line of its own because a test names that phrase: it is the floor that
   // took six attempts to get onto the page at all, and a rewrap must not be what quietly
   // drops it again.
   add(rules, "p", null,
     "What a bar leaves out is part of the interface too, and is not measured: the "
-    + "invariants and the ordering constraints named at the top of this page, and besides "
-    + "those, what a type variable has to be, "
+    + "invariants and the ordering constraints named under “" + LIMITS
+    + "”, and besides those, what a type variable has to be, "
     + "the constructor a caller writes new against "
     + "\u2014 how a module is built is this framework's business rather than a "
     + "caller's \u2014 the methods a module inherits rather than declares \u2014 this "

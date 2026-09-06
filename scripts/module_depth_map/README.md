@@ -5,9 +5,19 @@ command reads the source, backend and frontend together, and writes two files: a
 document naming every module, and a self-contained page that is a pure rendering of that
 document.
 
-Run it from the repository root, saying which day the picture is of:
+Run it from the repository root, saying which day the picture is of — the day you are
+running it, written out where the placeholder is:
 
-    python3 scripts/module-depth-map.py --snapshot-date 2026-09-06
+    python3 scripts/module-depth-map.py --snapshot-date <the day you are dating it>
+
+The placeholder is deliberate and a day must not be written back into it. This line and
+the one in `scripts/module-depth-map.py` are the two a maintainer copies from, and a
+literal here ages into a trap: `TheCommittedOutputsAreWhatAFreshRunWrites` hands its
+fresh run the date it reads out of the committed graph, so regenerating new source under
+a stale copied date leaves both byte comparisons green and the page saying it is an
+observation of a day the source it describes had not reached.
+`TheDocumentedWayToRegenerateDoesNotAge` is what keeps a day from creeping back into
+either line.
 
 It reads `backend/src/main/java` and `frontend/src`, and writes
 `docs/module-depth-map.json` and `docs/module-depth-map.html`. Open the HTML file
@@ -196,11 +206,11 @@ proposed for change.
 
 Three things a reader is told before they are told what to read into the shapes.
 
-**Which day it is a picture of.** Under the title, and again in the box of counts: *an
-observation of this repository's source as it stood on 2026-09-06*. The date is the
-`--snapshot-date` the run was given, carried in the graph document and drawn from there,
-so the page and the graph beside it cannot disagree about when they are from. Nothing here
-reads a clock, so a page cannot date itself and does not pretend to.
+**Which day it is a picture of.** Under the title, and again as the first fact in the box
+of counts: *an observation of this repository's source as it stood on* the day the run was
+handed. The date is the `--snapshot-date` that run was given, carried in the graph document
+and drawn from there, so the page and the graph beside it cannot disagree about when they
+are from. Nothing here reads a clock, so a page cannot date itself and does not pretend to.
 
 **That it is an observation and not a backlog.** In the same sentence: *not a list of work
 to be done — nothing here is ranked, nothing here is proposed, and no module here is named
@@ -208,9 +218,16 @@ as one that ought to change*. This matters because of who reads it. A participan
 told; an agent picking up a ticket cannot, and an undated ranked list of shallow modules
 with no framing on it reads to one as an instruction to start merging things. The
 deletion-test verdict stops at the same line: it says what deleting a module would do, and
-never that anybody should. A test walks every string in the graph document — which is
-everything the page can say about any module — and fails on the words a proposal is
-written with.
+never that anybody should. A test fails on the words a proposal is written with, over the
+prose this tool wrote *about a module* — the four keys under `modules` that carry a
+sentence rather than a name read out of the source (`because`, `finding`, `verdict`,
+`matched`), plus the two places that prose is stored once and printed on many cards:
+`scoring.exclusions[].because`, which every excluded card prints, and the two
+disagreement kinds under `scoring.refusals`, which every card with a finding prints
+verbatim. Not every string in the document, on purpose and in both directions: a class
+called `TodoItem` is the source's word rather than this page's claim about it, and prose
+about a *measure* is allowed sentences prose about a module is not — "nothing to fix" is
+an accurate thing for a heading to say.
 
 **What it did not measure.** Its own section, above every section that explains a measure,
 because a reader who is told this after being told what the shapes mean has already formed
@@ -233,7 +250,9 @@ and each names its own blind spots where it is explained. The same section says 
 the source the picture was drawn from — source paths parsed of source paths seen, modules
 scored of modules drawn — so a reader can weigh what they are looking at. “Path” rather
 than “file” because a directory the operating system will not open is counted there too,
-and is named in the alarm band above it. The two headings under it are what was never read
+and is named in the alarm band above it — and the box of counts says it the same way, for
+the same reason: one name for one thing, or the page disagrees with itself about what it
+read. The two headings under it are what was never read
 at all and what was read and never scored, each with the named rule behind it — and only
 the rules that excluded something, because a rule listed with nothing to point at is the
 page breaking the promise it made one line earlier. A run where nothing was excluded says
