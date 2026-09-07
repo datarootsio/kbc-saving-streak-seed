@@ -16,7 +16,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
@@ -26,7 +26,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
 - [x] The €50 weekly minimum exists as a single named constant, not as a literal at each place it is compared against.
-- [ ] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
+- [x] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
 - [x] DEBUG logging shows the week boundaries the derivation used, in the zone it used, and the deposits it counted into the week.
 - [x] Points earned by a deposit are unchanged: one per whole euro.
 
@@ -419,3 +419,66 @@ Everything below was exercised against the running application, and all of it pa
 - Browser console at `.scratch/streak-bonus/logs/02-this-weeks-new-savings.review.2.browser.log`: no
   `pageerror`; the only `console:error` is the deliberate 400; the `net::ERR_ABORTED` entries are the
   page's pre-existing StrictMode `AbortController` cleanup. Vite's log holds only its start-up banner.
+
+## Response to the review - attempt 3
+
+All three defects are fixed, in the reviewer's numbering. Nothing in "What is already right" was
+reworked.
+
+1. **The clock reads forward again, and it is still a calendar week.** The calendar is consulted
+   once, at the moment the clock is moved — the reviewer's first suggestion — and what is kept
+   beside the days is the span it came to. A reading is then the real clock plus a constant, so it
+   moves at exactly the speed of the real one and cannot fall back; moving again cannot turn it
+   round either, because a move adds at least one calendar day and a calendar day is at least
+   23 hours, while the span for one more day is at least 23 hours longer. `movedForwardTo` is where
+   the calendar is read; `instant()` does no calendar arithmetic at all.
+
+   Both halves are now asserted at the widths of the year that break them, by standing the real
+   clock underneath the movable one where a test needs it (`clock/TheClockTheseTestsMove`, a bean
+   holder handed to the builder by name, no stereotype annotation, so no other application picks it
+   up). `TheMovedClockNeverReadsBackwardsApiTest` stands it at the reviewer's own moment — 02:59 on
+   2027-03-21 Brussels, whose local time seven days on is skipped — advances a week, makes a
+   deposit, lets one minute of real time pass and makes another: the second is dated exactly a
+   minute later and the history comes back in the order it happened.
+   `AWeekOnTheMovedClockIsACalendarWeekApiTest` stands it at 00:30 on Monday 2026-10-19, deposits
+   €60, advances seven days and asserts the clock reads Monday 2026-10-26 00:30 Brussels — 169
+   hours, not 168 — with the week back to `0.00 / 50.00` and the deposit untouched. Put attempt 2's
+   `instant()` back and the first goes red with `expected: 2027-03-28T02:00:00Z but was:
+   2027-03-28T01:00:00Z`; put a fixed 7×86400s span in and the second goes red with `expected:
+   2026-10-26T00:30 but was: 2026-10-25T23:30`. Both were run that way and reverted.
+
+   The latent flake the review named in the same section is gone too: `TheMovedClock` now hands out
+   the *window* a reading can fall in (`earliestReadingOf` / `latestReadingOf`, the earlier and the
+   later of the two calendar moves) rather than a pair of bounds in the order they were read, so the
+   bracket cannot invert. The one single-sided bound in `MovingTheClockForwardApiTest` is a fixed
+   span of a day less than the move, which holds whichever side of a clock change the move came out
+   on.
+
+2. **The two balances sit side by side again, from below where they used to.** Two columns from
+   24rem with the week spanning both, three from 56rem. 24rem rather than the ~387px the old
+   `auto-fit` rule needed, so no width that had them side by side has lost them. The comment now
+   says what the rule does. Measured with a Range over every text node in each `dd` (figure right
+   edge − cell content-box right edge) with `Saved € 1.002,50` / `2.002 points` /
+   `This week € 2.002,50` at 320, 360, 375, 380, 383, 384, 386, 390, 395, 400, 410, 420, 470, 520,
+   560, 595, 600, 620, 640, 700, 760, 800, 840, 860, 880, 890, 896, 900, 940, 1000, 1100, 1280 and
+   1440px: **nothing overflows at any width and `documentElement.scrollWidth − innerWidth == 0`
+   throughout**, and the money cells are two-up from 384px. A four-digit figure did not fit half of
+   a 400px row at the old type size — the pre-ticket page hid 27px of it there — so the figure is
+   now sized by the room its share of the row leaves: one ladder of three rules, a whole row, half a
+   row from 24rem, a third from 56rem. The old `@media (max-width: 30rem)` override that fixed it at
+   2rem is gone, because that was the rule that made the figure too wide to fit two-up. Probe with
+   `€ 99.999,00`: clears the edge by 8px at 400px and 46px at 1280px.
+
+3. **The skeleton's third cell carries `className="week"`**, so it spans the row exactly as the real
+   week cell does. Measured at 400/520/640/700/800px: cells at row 1 columns 1 and 2 and the third
+   spanning the full width; at 900px all three side by side. No empty square at any of them.
+
+4. **The notes.** `countedInto` no longer re-scales: a deposit is quoted to the cent once, where it
+   leaves the Deposits module (`AmountOfMoney.quotedToTheCent`, beside `asMoney`, which now uses
+   it), so `NewSavingsThisWeek.DECIMAL_PLACES` is that record's own again and private. The span a
+   move came to is now in the log beside the days — at the advance, at start-up, on the way back
+   from a restart and when the clock is asked where it stands — so "seven days came to 169 hours" is
+   greppable rather than something a reader has to get by subtracting two readings. The other notes
+   are left as the review said to leave them: `ClockConfiguration` still borrows the zone,
+   `NewSavingsThisWeek.week()` is still ticket-03 scaffolding, the deposit-refusal WARN is out of
+   scope, and the reversed-window guard stays untested.
