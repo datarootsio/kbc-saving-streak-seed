@@ -16,17 +16,17 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
 - [x] A withdrawal leaves the figure unchanged, however large it is.
-- [ ] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
+- [x] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
 - [x] Advancing the clock backwards restores the earlier week's figure — the derivation reads the ledger and holds no state that could go stale.
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
 - [x] The €50 weekly minimum exists as a single named constant, not as a literal at each place it is compared against.
-- [ ] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
+- [x] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
 - [x] DEBUG logging shows the week boundaries the derivation used, in the zone it used, and the deposits it counted into the week.
 - [x] Points earned by a deposit are unchanged: one per whole euro.
 
@@ -185,3 +185,35 @@ against the running application.
   are the page's pre-existing StrictMode `AbortController` cleanup. Vite's log holds only its
   start-up banner. Layout is fine at 420px, 560px and 900px+ and in dark mode — it is only the
   600px–860px band that clips.
+
+## Response to the review - attempt 2
+
+Every point above is addressed. What changed, in the reviewer's own numbering:
+
+1. **The clipping.** `.balances` is now two across with the week beneath it across the whole row from
+   37.5rem, and three across only from 56rem. Measured with a Range over every text node in each
+   `dd` (`figure right edge − cell content-box right edge`) at 360, 420, 520, 560, 595, 600, 620,
+   640, 700, 760, 800, 840, 860, 880, 896, 900, 940, 1000, 1100, 1280 and 1440px, with
+   `Saved € 2.002,50` / `2.052 points` / `This week € 2.052,50`: nothing overflows at any of them and
+   the page never scrolls sideways. The two money cells are 275px at 600px, which is the width the
+   reviewer measured for the pre-ticket page. In the three-column band the figure is sized by the
+   room a third of the row leaves (`clamp(1.6rem, 3.9vw, 2.5rem)`, back to 2.5rem by ~1030px), and a
+   probe with `€ 99.999,00` in the cell clears the edge by 31px at 896px and 46px at 1280px.
+   A second cause was found and fixed: the figure and "of € 50,00" had no break opportunity between
+   them, so the phrase could only leave the cell and be hidden — which it was at 1280px too, by 7px.
+2. **`advance {days: 7}`.** `MovableClock` now moves through the calendar of the zone the application
+   counts its days in rather than adding 86400 seconds a day, so a week is a week. Exercised live
+   over the endpoint: 42 days on reads `2026-10-19T16:42:08Z` (Mon 18:42 Brussels), a €60 deposit
+   makes the week `60.00`, and 7 more days reads `2026-10-26T17:42:08Z` — Mon 18:42 Brussels, an hour
+   later in UTC than a fixed span, and the week is back to `0.00 / 50.00` with money, points and the
+   deposit history untouched. Three existing tests asserted the fixed span to the millisecond and now
+   say what a moved clock reads, through one shared helper.
+3. **The test that could pass without doing anything.** Both that test and its sibling now go through
+   a `depositAccepted` helper that asserts `201` before anything is read, and the week figure is
+   asserted as the change the test caused. The three other set-up deposits in the file go through it
+   too.
+4. **The notes.** One `@Transactional(readOnly = true)` on the handler — confirmed in the log as
+   `Creating new transaction with name [...SavingsAccountController.savingsAccount]` with every module
+   read participating in it. `countedInto` quotes cents from `NewSavingsThisWeek.DECIMAL_PLACES`.
+   `depositsLandedBetween` refuses a reversed window with a WARN saying why. `NewSavingsThisWeek.week()`
+   and the local `WithdrawalView` are left as they are, as the review suggested.
