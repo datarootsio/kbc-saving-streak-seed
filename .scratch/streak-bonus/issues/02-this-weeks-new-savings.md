@@ -16,7 +16,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-review
+**Status:** needs-info
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
@@ -26,7 +26,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
 - [x] The €50 weekly minimum exists as a single named constant, not as a literal at each place it is compared against.
-- [x] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
+- [ ] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
 - [x] DEBUG logging shows the week boundaries the derivation used, in the zone it used, and the deposits it counted into the week.
 - [x] Points earned by a deposit are unchanged: one per whole euro.
 
@@ -217,3 +217,205 @@ Every point above is addressed. What changed, in the reviewer's own numbering:
    read participating in it. `countedInto` quotes cents from `NewSavingsThisWeek.DECIMAL_PLACES`.
    `depositsLandedBetween` refuses a reversed window with a WARN saying why. `NewSavingsThisWeek.week()`
    and the local `WithdrawalView` are left as they are, as the review suggested.
+
+## Review feedback - attempt 2
+
+Attempt 2 genuinely fixed both bugs it was sent back for, and I verified both against the running
+application — see "What is already right" below and do not rework it. What sends it back again is
+three defects that attempt 2 introduced, all in the two files it changed to make those fixes. One is
+a correctness regression in `MovableClock`; two are in the row of balances on the page.
+
+Set-up for every reproduction below: app on a throwaway database
+(`SAVING_STREAK_DB=$(mktemp -d)/s.db`) with `--logging.level.io.dataroots.savingstreak=DEBUG`, Vite
+on 5173, driven with Playwright (chromium, sync API) and curl.
+
+### 1. Blocker: the new calendar-day clock reads *backwards*, which the class forbids
+
+Expected: `MovableClock` never reads backwards. Its own javadoc (MovableClock.java:16-18) is built on
+that — "Backwards would let a demonstration produce records dated before ones already written, which
+is a database nobody can explain rather than a lesson".
+
+Seen: `instant()` is now `realMoment.atZone(daysAreCountedIn).plusDays(days).toInstant()`
+(MovableClock.java:81). `ZonedDateTime.plusDays` shifts a target local time that lands *inside* a
+spring-forward gap forward by the gap, then stops shifting at the first local time past the gap — so
+the reading drops an hour there. One real minute of elapsed time makes the clock go 59 minutes
+backwards.
+
+Reproduce (no application needed — this is the expression from line 81, run on its own):
+
+    ZoneId Z = ZoneId.of("Europe/Brussels");
+    Instant t1 = ZonedDateTime.of(2027,3,21,2,59,0,0,Z).toInstant();  // real
+    Instant t2 = ZonedDateTime.of(2027,3,21,3, 0,0,0,Z).toInstant();  // real, one minute later
+    t1.atZone(Z).plusDays(7).toInstant()   // 2027-03-28T01:59:00Z  (03:59+02:00)
+    t2.atZone(Z).plusDays(7).toInstant()   // 2027-03-28T01:00:00Z  (03:00+02:00)
+
+I ran exactly this under Java 17 and the second reading is 59 minutes **before** the first, with
+`m2.isBefore(m1) == true`. Sweeping the real hour 02:00-03:30 on 2027-03-21 at +7 days gives one
+regression, at real local 03:00.
+
+Why it matters beyond the invariant: two deposits made a minute apart across that moment are stamped
+up to 59 minutes out of order, so `findBySavingsAccountIdOrderByDepositedAtAscIdAsc` returns the
+deposit history in an order the deposits did not happen in. The window is the real hour before local
+03:00 on whichever day is N days before a spring-forward Sunday, dev profile only.
+
+The inline comment at MovableClock.java:70-80 half-admits this ("it can repeat or skip an hour") and
+is right that no record crosses a *date* — but the invariant it breaks is monotonicity, which the
+comment does not mention and the class javadoc treats as non-negotiable. It also leaves a latent
+flake in the three clock tests this attempt rewrote: `TheMovedClock.daysOnFrom` is used as
+`daysOnFrom(realMomentBefore, n) <= reading <= daysOnFrom(realMomentAfter, n)`, and those bounds are
+only a bracket if `daysOnFrom` is monotone in its real moment. In that hour it is not, and the
+bracket inverts.
+
+Please keep the calendar week — it was the right fix and criterion 4 depends on it — but get it
+without giving up monotonicity. One way: work the move out as a fixed `Duration` through the calendar
+*once, at the moment the clock is advanced*, and add that duration afterwards; "advance seven days"
+is still a Brussels week, and the reading stays a monotone function of the real clock. Clamping so
+the reading can never regress would also do. A comment explaining the trade is not enough on its
+own, because the trade gives away the one property the class says it must have.
+
+### 2. The two balances no longer sit side by side between about 400px and 599px
+
+Expected: the money and points balances keep the arrangement they had before this ticket; the new
+comment at index.css:481-484 claims exactly that — "The two money figures keep exactly the width they
+had before there was a week to show".
+
+Seen: false below 37.5rem. The base rule is now `grid-template-columns: 1fr` (index.css:475), so all
+three cells stack in one column until 600px. The pre-ticket rule
+`repeat(auto-fit, minmax(11rem, 1fr))` produced two tracks from about 400px of viewport upward. This
+also contradicts the intent stated two lines above it in the same file — "The balances side by side:
+the connection between saving and being rewarded is the point".
+
+Reproduce: sign in as `anke.peeters@example.be`, open savings account 1, and at each width compare
+the live layout with the pre-ticket rule injected into the DOM only (no file change):
+
+    .balances { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)) !important }
+    .balances .week { display: none !important }
+
+Measured rows occupied by the two money cells (`Saved`, `To spend`):
+
+    viewport   now                              pre-ticket rule      verdict
+    400px      1 track,  2 rows (366px)         2 tracks, 1 row      regressed
+    420px      1 track,  2 rows (384px)         2 tracks, 1 row      regressed
+    470px      1 track,  2 rows (430px)         2 tracks, 1 row      regressed
+    520px      1 track,  2 rows (476px)         2 tracks, 1 row      regressed
+    560px      1 track,  2 rows (513px)         2 tracks, 1 row      regressed
+    595px      1 track,  2 rows (545px)         2 tracks, 1 row      regressed
+    600px      2 tracks, 1 row  (275px ×2)      2 tracks, 1 row      same
+
+Nothing is clipped and no figure is wrong — this is a layout the ticket did not ask to change, in the
+band that covers most phones in portrait (430px) and landscape. At 520px the deposit and withdraw
+forms below are still two-up while the balances above them are one-up, which reads as the row having
+failed rather than as a choice. A two-column rule below 37.5rem with `.week` spanning the row would
+put it back; either way, correct the comment so it says what the rule does.
+
+### 3. The loading skeleton leaves an empty grey square in the balances row
+
+Expected: no empty cell in the row of balances. The comment added by this very diff
+(index.css:471-474) says why: "a grid that fits two of three leaves an empty square beside the third,
+and an empty square in a row of balances reads as a figure that failed to load".
+
+Seen: exactly that, in the loading state. The third skeleton `div` added at App.tsx:665-667 carries
+no `week` class, so `.balances .week { grid-column: 1 / -1 }` never matches it. Between 37.5rem and
+56rem the skeleton is three cells in a two-track grid: the third sits at row 2 column 1 and row 2
+column 2 has no item, so `.balances`' own `rgb(var(--line) / 0.14)` shows through where a cell's
+`var(--raised)` should be.
+
+Reproduce: hold the account request open and load the page at 700px —
+
+    page.route("**/api/savings-accounts/1", lambda route: None)
+
+then sign in and open savings account 1. Measured cell boxes at 700px:
+`(x=29,y=215,w=321)`, `(x=351,y=215,w=321)`, `(x=29,y=306,w=321)` — nothing at `(x=351,y=306)`. The
+screenshot shows a grey rectangle to the right of the third bar. Same at 640px and 800px. It is
+visible on every load of the page in that width band, not only under a stalled request.
+
+Fix is one word: `className="week"` on that third skeleton div, so it spans the row like the real
+week cell does.
+
+### 4. Notes, not requirements
+
+- `ClockConfiguration` (a dev-only affordance) now imports `streaks.SavingsWeek` to borrow the zone,
+  so the clock module depends on a domain module, and "what a whole day is for the clock" is welded
+  to "the zone weeks are counted in". Attempt 2 flagged this itself and the alternatives are all
+  worse than a second copy of the string, so I am not asking for a change — but if ticket 03 revisits
+  how weeks are counted, note that it will silently change how the development clock moves.
+- `NewSavingsThisWeek.week()` is still read by nothing (`StreaksService` logs its own local `week`,
+  the response drops it). Fine as ticket-03 scaffolding, as review 1 said; worth either using or
+  removing in 03.
+- `StreaksService.countedInto` re-scales each amount and re-renders the zone per deposit, duplicating
+  normalisation `NewSavingsThisWeek` already does on the total. Scaling once in the `DepositLanded`
+  mapping would keep one copy. Nit.
+- Deposit refusals still leave no WARN from `io.dataroots.savingstreak` — they surface only as
+  `DepositRefused` resolved by the web layer at DEBUG, while the withdrawal path does log a WARN with
+  its reason. This is pre-existing on `ticket/01-points-reported-by-reason`, not introduced here, and
+  the spec says this feature adds no new refusal. Out of scope for this ticket; someone should pick
+  it up.
+- The reversed-window guard in `depositsLandedBetween` is untested, which is right: it is unreachable
+  over the one test seam this repo has.
+
+### What is already right and should not be reworked
+
+Everything below was exercised against the running application, and all of it passed.
+
+- **The clipping is genuinely fixed.** I re-ran the attempt-1 measurement — a Range over every text
+  node in each `dd`, `figure right edge − cell content-box right edge` — with
+  `Saved € 2.002,50` / `2.052 points` / `This week € 2.052,50`, at 360, 420, 520, 560, 595, 600, 620,
+  640, 700, 760, 800, 840, 860, 880, 896, 900, 940, 1000, 1100, 1280 and 1440px. **Nothing overflows
+  at any width and `documentElement.scrollWidth − innerWidth == 0` throughout.** At 640px, the width
+  that previously read `€ 2.002,5`, the screenshot reads `€ 2.002,50` and `€ 2.052,50 of € 50,00` in
+  full; at 800px, which previously cut `of` mid-word, the phrase is whole. Money cells are 275px at
+  600px, the pre-ticket width. Headroom probe: `€ 99.999,00` clears the edge by 31px at 896px and
+  46px at 1280px.
+- **The calendar week works, and I reached the week the last review named.** `advance {days:42}` →
+  `2026-10-19T16:55:07Z`, deposit €60 → week `60.00`; `advance {days:7}` → `2026-10-26T17:55:07Z`,
+  week back to `0.00 / 50.00` with money `1062.5`, points `2112` and the deposit history untouched.
+  That reading is an hour later in UTC than 7×86400s would give — the 169-hour week accounted for.
+- **The three boundary tests are load-bearing, not decorative.** I mutated
+  `SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN` to `ZoneId.of("UTC")` and ran
+  `WeeksRunMondayToSundayInBrusselsApiTest`: 3 of 5 failed, all with `expected: 30.00 but was: 50.00`
+  — the Monday-early deposit falling into the ending week, in the plain case and across both clock
+  changes. Reverted afterwards; tree is clean.
+- **The hardened test really is hardened.** Every deposit in `ThisWeeksNewSavingsApiTest` now goes
+  through `depositAccepted`, which asserts `201` before reading a body, and
+  `a_week_that_has_taken_in_more_than_it_asks_for_needs_nothing_further` asserts `before + 80.00`.
+- **The single read transaction is real.** The tx log holds
+  `Creating new transaction with name [io.dataroots.savingstreak.web.SavingsAccountController.savingsAccount]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT,readOnly`
+  followed by five `Participating in existing transaction` and one commit, so `@Transactional` on the
+  package-private handler does take effect.
+
+### What I ran
+
+- `cd backend && ./mvnw test` → `Tests run: 126, Failures: 0, Errors: 0`, BUILD SUCCESS. Matches the
+  orchestrator's `checks.2.log`. New: `ThisWeeksNewSavingsApiTest` 7,
+  `WeeksRunMondayToSundayInBrusselsApiTest` 5, `TheWeekMovesWithTheDevelopmentClockApiTest` 1.
+- `cd frontend && npm run typecheck` → exit 0 (Node 24.16.0 first on PATH).
+- Start-up line confirms the new clock:
+  `application clock in use clock=MovableClock[SystemClock[Z] moved forward 0 calendar days in Europe/Brussels]`.
+- Over curl, savings account 1: `0.00 / 50.00` → +12.50 → `12.50 / 37.50` → +40.00 → `52.50 / 0.00`;
+  withdraw 50 → money `52.5 → 2.5`, week still `52.50`, points still `52`. Account 3: +75.00 →
+  `75.00`, withdraw the whole `75.00` → money `0`, week still `75.00`. Accounts 2 and 3 stayed
+  `0.00` while account 1 filled up. Points: 12.50→12, 40→40, 60→60, 0.50→0.
+- Clock: `advance {days:6}` → Sunday, week still `2052.50`; `advance {days:1}` → Monday, week
+  `0.00 / 50.00`, money and points unchanged. `advance {days:-7}` and `{days:0}` → 400 with
+  `WARN i.d.savingstreak.clock.ClockService : clock not advanced: ...`. The clock-backwards criterion
+  is only reachable from the test-supplied clock, and that test passes.
+- DEBUG boundaries read out of the live log, showing the weeks tile half-open with no gap:
+  `week=2026-10-19/2026-10-25 weekStartsAt=2026-10-18T22:00:00Z weekEndsAt=2026-10-25T23:00:00Z`
+  (169 hours) then `week=2026-10-26/2026-11-01 weekStartsAt=2026-10-25T23:00:00Z`. Each line also
+  carries `zone=Europe/Brussels` and every deposit counted, e.g.
+  `counted=[deposit 1 EUR 12.50 at 2026-09-07T16:50:39.649Z (2026-09-07T18:50:39.649+02:00[Europe/Brussels])]`.
+- Refusals unchanged word for word: `0`, `-5.00`, `0.001`, `abc`, `99999.00`, savings account 999
+  (404), over-withdrawal (400 + WARN naming the balance). `0 ERROR` lines and `0 Completed 500` in the
+  backend log; no `System.out` anywhere in `backend/src/main` or `frontend/src`.
+- Page: signed in, deposited 2000.00 and then 20.00 / 12.34 / 0.50 through the form, withdrew 1000.00
+  and 30.00, submitted `0`. The week cell went `€ 0,00 of € 50,00 / € 50,00 more to go` (bar 0%) →
+  `€ 20,00 / € 30,00 more to go` (bar 40%) → `€ 32,34 / € 17,66 more to go` (bar 64.68%) →
+  `€ 32,84 / € 17,16 more to go` while points stayed at 32, and the full case showed
+  `the week has what it asks for` with `week-bar full` at 100%. A 1000.00 withdrawal moved Saved
+  `€ 2.002,50 → € 1.002,50` with the week still `€ 2.052,50`. The `0` deposit gave the unchanged
+  banner *"A deposit has to be an amount of more than zero, and 0 is not."* with the week untouched.
+  Screenshots read at 420/520/640/700/800/860/900/1280 in light and at 1280/700 in dark: styled,
+  no blank frames.
+- Browser console at `.scratch/streak-bonus/logs/02-this-weeks-new-savings.review.2.browser.log`: no
+  `pageerror`; the only `console:error` is the deliberate 400; the `net::ERR_ABORTED` entries are the
+  page's pre-existing StrictMode `AbortController` cleanup. Vite's log holds only its start-up banner.
