@@ -16,12 +16,12 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-review
+**Status:** needs-info
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
 - [x] A withdrawal leaves the figure unchanged, however large it is.
-- [x] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
+- [ ] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
 - [x] Advancing the clock backwards restores the earlier week's figure — the derivation reads the ledger and holds no state that could go stale.
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
@@ -1061,3 +1061,263 @@ attempt 4 left them, and the clock's own arithmetic is untouched.
    `NewSavingsThisWeek.week()` is still ticket-03 scaffolding, the deposit-refusal WARN is still out
    of scope, the reversed-window guard stays untested, and `ClockOnStartUp`'s `[23h, 25h]` bound
    stays as it is.
+
+## Review feedback - attempt 5
+
+**Both findings from review 4 are genuinely fixed and I verified both against the running
+application — do not rework the week cell or the upgrade path.** The feature itself works: ten of
+the eleven criteria are met and I saw every one of them. What sends this back is one defect, and it
+lands on criterion 4: `ClockService.advanceBy` works the span out as a **total from the current real
+moment** instead of as an increment on the span the clock is standing on, so once real time has
+crossed a clock change since the previous advance, "advance seven days" is not seven calendar days
+and can land the clock back in the week it started in.
+
+Set-up for every reproduction below: app on a throwaway database
+(`SAVING_STREAK_DB=$(mktemp -d)/s.db`) with `--logging.level.io.dataroots.savingstreak=DEBUG`, Vite
+on 5173, driven with Playwright (chromium, sync API) and curl.
+
+### 1. Blocker: a second `advance {days: 7}` can move the clock 167 hours and leave it in the week it was already in
+
+Expected, per criterion 4 and per `MovableClock`'s own javadoc (MovableClock.java:21-26): *"'advance
+seven days' is asked for in order to reach the next week, and a week is Monday to Sunday in
+Brussels. Seven times 86400 seconds landing at 23:30 on the Sunday is a trainer pressing the button
+for the next week and being shown the week they were already in."*
+
+Seen: exactly that, reached the other way round. `ClockService.advanceBy` (ClockService.java:71) asks
+`clock.howFarForwardThatManyDaysIs(movedForwardByDays)` for the span of the **new total**, and
+`MovableClock.howFarForwardThatManyDaysIs` (MovableClock.java:131-139) counts those days through the
+calendar from `realClock.instant()` — *now*. The span the clock is actually standing on is thrown
+away. So the clock moves forward by
+
+    calendar(realNow, D_old + d) − calendar(realThen, D_old)
+
+which is `d` calendar days only while `realNow ≈ realThen`. This is the trap the same class's javadoc
+names two paragraphs later (MovableClock.java:41-43): *"A fresh one is the trap: the same number of
+days worked out against a different real moment is an hour shorter on the far side of a clock
+change."* Review 3 blocked on that sentence being false on the restart path; attempt 4 fixed the
+restart path by persisting the span, and this is the third caller — the advance path itself, which
+recomputes from scratch every time.
+
+Reproduce (no application needed — these are the two expressions above, run on their own under Java
+17; I ran exactly this and pasted the output):
+
+```java
+ZoneId Z = ZoneId.of("Europe/Brussels");
+Duration span(Instant realNow, long days) {                      // MovableClock.java:131-139
+    return Duration.between(realNow, realNow.atZone(Z).plusDays(days).toInstant());
+}
+Instant t1 = ZonedDateTime.of(2026,10,23,12, 0,0,0,Z).toInstant(); // 1st advance: 7 days
+Duration s1 = span(t1, 7);                                         // PT169H
+Instant t2 = ZonedDateTime.of(2026,11, 1,23,30,0,0,Z).toInstant(); // real time has passed the fall-back
+Instant before = t2.plus(s1);                                      // what the clock reads now
+Duration s2 = span(t2, 14);                                        // 2nd advance: ClockService asks for the TOTAL
+Instant after  = t2.plus(s2);
+```
+
+    real at 1st move        = 2026-10-23T12:00+02:00[Europe/Brussels]
+    advance 7 -> span       = PT169H   reading = 2026-10-30T12:00+01:00   week 2026-10-26
+    real later              = 2026-11-01T23:30+01:00[Europe/Brussels]
+    reading before 2nd move = 2026-11-09T00:30+01:00   week 2026-11-09
+    advance 7 more -> span  = PT336H   reading = 2026-11-15T23:30+01:00   week 2026-11-09
+    moved forward by        = PT167H
+    same week as before the move? true
+    reads backwards?        false
+
+So a trainer standing at Monday 00:30 who presses "next week" is put at Sunday 23:30 of the **same**
+week: `newSavingsThisWeek` does not reset, the deposits of the week they were in are still counted,
+and the headline demonstration this ticket exists for shows the week not resetting. Monotonicity is
+not broken (the delta is at least `d`×24h − 2h), so this is not review 2's or review 3's defect
+again — it is the criterion-4 defect review 1 named, surviving in a narrower window.
+
+How wide the window is, measured rather than guessed: I swept 210,240 (first-advance real moment,
+gap to the second advance) pairs across 2026-2027 — every real hour × gaps of
+1/5/13/29/53/97/167/168/169/340/721/1441 hours, two advances of 7 days each. **8,842 pairs (4.21%)
+moved the clock less than 7×24 h, and 36 (0.017%) landed it in the week it started in.** It needs
+real time to have crossed a DST transition between the two advances, which is what `ClockOffset`
+being persisted makes ordinary: advance in October, come back in November, advance again.
+
+The fix review 2 and review 3 both named still applies, one level up — count the increment from
+where the clock **is standing**, not from the real moment:
+
+```java
+Instant reading = clock.instant();
+Duration movedForwardBy = clock.movedForwardBy()
+        .plus(Duration.between(reading, reading.atZone(zone).plusDays(days).toInstant()));
+```
+
+That keeps everything the previous reviews said to keep: the calendar is still consulted once per
+move, the one `Duration` still goes to both the record and the clock, a restart still puts back what
+was written, and a reading is still the real clock plus a constant (so still monotone — each
+increment is at least 23 h per day). Note for whoever does it that `ClockOnStartUp`'s
+`[23h, 25h] × days` check then bounds an accumulated span rather than a single calendar span; with
+±1 h per move that is still inside the bound, but say so in the javadoc rather than leaving it to be
+rediscovered.
+
+Tests: nothing covers two advances with real time moving in between.
+`AWeekOnTheMovedClockIsACalendarWeekApiTest` stands the real clock once
+(`realClock.standAt(...)`, line 104) and advances once; `ARestartDoesNotWindTheMovedClockBackApiTest`
+does use `letThisMuchTimePass` across the fall-back but then restarts rather than advancing again.
+`TheClockTheseTestsMove` already gives you everything the test needs: `standAt` the Friday above,
+`advanceBy(7)`, `letThisMuchTimePass` to Sunday 2026-11-01 23:30 Brussels, `advanceBy(7)`, then
+assert the reading is Monday 2026-11-16 00:30 Brussels and that `newSavingsThisWeek` on an account
+with a deposit in the week of 2026-11-09 has reset to `0.00`.
+
+### 2. Notes, not requirements
+
+- I checked the claim that `@Transactional(readOnly = true)` on the package-private
+  `SavingsAccountController.savingsAccount` is silently ignored (proxy-based transaction management
+  skipping non-public methods). **It is not ignored** — with
+  `--logging.level.org.springframework.transaction=TRACE` the live log holds
+  `Creating new transaction with name [io.dataroots.savingstreak.web.SavingsAccountController.savingsAccount]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT,readOnly`
+  followed by `Getting transaction for [...savingsAccount]` and every module read
+  `Participating in existing transaction` on one `SessionImpl(1809369043<open>)`, then one
+  `Completing transaction for [...savingsAccount]`. Reviews 2-4 were right; nothing to do here.
+  Log kept at `…review.5.tx.log`.
+- `.week-bar i` losing its `transition: width 0.6s` is the right trade and the comment above the rule
+  says why. Worth knowing it means the bar no longer animates for someone who has
+  `prefers-reduced-motion` set — it snaps, which is what that setting wants.
+- One frame of the rise can read `€ 49,99 … € 0,00 more to go` with the bar not yet full, because
+  `euros.format(weeklyMinimum - shown)` rounds a sub-cent gap down to zero. Sub-cent, at most one
+  frame, and my per-frame checker (±2 cents) did not flag it in 364 frames. Cosmetic.
+- `ClockOnStartUp`'s `SHORTEST/LONGEST_A_CALENDAR_DAY_GETS` (23 h/25 h) is a second place that
+  encodes what `SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN` implies, while `SavingsWeek` documents itself
+  as the one place that decision is made. Change the zone to one with a two-hour transition and a
+  legitimate span is refused on the next restart. Review 4 said leave it; still true, still worth
+  knowing.
+- `NewSavingsThisWeek.week()` is read by nothing (`grep -rn '\.week()' backend/src` finds no caller).
+  Fine as ticket-03 scaffolding, as reviews 1-4 said; use it or drop it in 03.
+- `ClockConfiguration` still borrows the zone from `streaks.SavingsWeek`. Left as reviews 1-4 left it.
+- Deposit refusals still leave no WARN from `io.dataroots.savingstreak` — they surface as
+  `DepositRefused` resolved by the web layer at DEBUG, while withdrawals do WARN with their reason.
+  Pre-existing on `ticket/01-points-reported-by-reason`, out of scope here.
+- `ThisWeeksNewSavingsApiTest` still runs on the machine's clock and asserts `after == before +
+  amount`; a suite crossing Monday 00:00 Brussels between the two reads fails with no reproducible
+  cause. Seconds of exposure a week. As review 4 said.
+
+### What is already right and should not be reworked
+
+All of this I exercised myself on this attempt, against the running application.
+
+- **Review 4's blocker is fixed: the three parts of the week cell agree on every frame.** I installed
+  a recorder before the page loaded (`page.add_init_script`) that samples the figure, the "of € 50,00"
+  phrase, the sentence, the bar's class and the bar's width on every `requestAnimationFrame`, then
+  checked each frame four ways: the sentence and the bar's fullness against whether the figure has
+  reached €50, the bar's width against the figure's share of €50 (±1%), and, below €50, that
+  figure + "more to go" adds up to €50. **364 frames across six scenarios, 0 contradicting.** The
+  first-paint case review 4 reproduced now reads
+  `€ 0,00 / "€ 50,00 more to go" / week-bar w=0%` on frame one and
+  `€ 180,00 / "the week has what it asks for" / week-bar full w=100%` on the last, with everything in
+  between agreeing. Scenarios: load of an empty week (52), the crossing deposit of 60.00 (66, 72),
+  load of a week over the minimum (47, 57), after a withdrawal (74), a part-way deposit of 12.34
+  (68, settling on `€ 12,34 / € 37,66 more to go / w=24.68%` against the resource's
+  `newSavingsThisWeek: 12.34, stillNeededThisWeek: 37.66`), and a dark-mode load (52). No negative
+  first frame in any of them.
+- **Review 4's second finding is fixed: a database written before the span was recorded keeps its
+  position, and the next advance counts from it.** On a copy of the running throwaway database I set
+  the row to `1|10|NULL` (the shape `ddl-auto=update` leaves) and started a second instance on 8081:
+  `clock position recorded before this release given the span its days came to movedForwardByDays=10
+  movedForwardBy=PT240H`, then `clock put back where it was left movedForwardByDays=10
+  movedForwardBy=PT240H reading=2026-09-17T19:28:27Z` against a real clock reading `19:28:30Z`. The
+  endpoint reported `{"movedForwardByDays":10,"now":"2026-09-17T19:28:30.934315Z"}`, the row was
+  completed to `1|10|864000`, and `advance {days:7}` reached
+  `{"movedForwardByDays":17,"now":"2026-09-24T19:28:30.968946Z"}` — 17, not 7, so the "next advance
+  lands a year behind the ledger" damage is gone. Hand-edited to `7|-604800` the row is still refused
+  with `WARN i.d.savingstreak.clock.ClockOnStartUp : clock not put back: the record says 7 days came
+  to PT-168H, and no calendar makes that many days anything but PT161H to PT175H, so it is left at
+  the real moment` and the application comes up at the real moment. Logs: `…review.5.legacyrow.log`,
+  `…review.5.editedrow.log`.
+- **The derivation, the zone, the boundaries and the DEBUG line.** Over curl on the throwaway
+  database, savings account 1: `0.00 / 50.00` → +12.50 → `12.50 / 37.50` → +40.00 → `52.50 / 0.00`.
+  The line carries everything the answer was made of:
+  `this week's new savings derived from the ledger savingsAccountId=1 zone=Europe/Brussels clockReads=2026-09-07T19:27:09.817411Z week=2026-09-07/2026-09-13 weekStartsAt=2026-09-06T22:00:00Z weekEndsAt=2026-09-13T22:00:00Z deposits=2 counted=[deposit 1 EUR 12.50 at 2026-09-07T19:27:08.708Z (2026-09-07T21:27:08.708+02:00[Europe/Brussels]); deposit 2 EUR 40.00 at 2026-09-07T19:27:08.928Z (2026-09-07T21:27:08.928+02:00[Europe/Brussels])] newSavings=52.50 weeklyMinimum=50.00 stillNeeded=0.00`
+  — criterion 10, met (36 such lines in the session). `DepositsService` logs the window it was asked
+  about beside it: `deposits that landed in a stretch of time savingsAccountId=1 from=2026-09-06T22:00:00Z until=2026-09-13T22:00:00Z deposits=2`.
+- **The weeks tile half-open with no gap, and DST is in the zone rather than in the arithmetic.**
+  Boundaries read out of the live log after walking the clock forward:
+  `week=2026-10-19/2026-10-25 weekStartsAt=2026-10-18T22:00:00Z weekEndsAt=2026-10-25T23:00:00Z`
+  (169 h) and then `week=2026-10-26/2026-11-01 weekStartsAt=2026-10-25T23:00:00Z` — byte-for-byte the
+  previous week's end — and `week=2027-03-22/2027-03-28 weekStartsAt=2027-03-21T23:00:00Z
+  weekEndsAt=2027-03-28T22:00:00Z` (167 h). Every boundary is Brussels local midnight.
+- **The boundary tests are load-bearing, not decorative.** I mutated
+  `SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN` to `ZoneId.of("UTC")` and ran
+  `WeeksRunMondayToSundayInBrusselsApiTest`: 3 of 5 red, every one
+  `[the week starting on … read at 00:30 on that Monday] expected: 30.00 but was: 50.00` — for
+  2026-03-02 (plain), 2026-03-30 (spring change) and 2026-10-26 (autumn change), i.e. the
+  Monday-early deposit falling into the ending week. Reverted; full suite green again afterwards and
+  `git status --porcelain` empty. This is the only proof of criterion 6 available, since the endpoint
+  only moves the clock forward from the real moment.
+- **Gross counting.** Withdrawing the whole `52.50` off account 1 moved money `52.5 → 0` and left the
+  week at `52.50` with points at `52`. On the page a `40.00` withdrawal moved Saved
+  `€ 180,00 → € 140,00` and left the week at `€ 180,00`.
+- **Per-account isolation, including two accounts of the same customer.** Anke holds savings accounts
+  1 and 2. A `75.00` deposit into account 2 left account 1 at `52.50` and Bram's account 3 at
+  `0.00 / 50.00`; account 1 filling up left both others where they were.
+- **The week follows the clock forward in the ordinary case.** `advance {days:6}` → Sunday, week
+  still `52.50`; `advance {days:1}` → `2026-09-14T19:27:25Z`, week `0.00 / 50.00` on both of Anke's
+  accounts, money `0`/`75`, points `52`/`75` and the deposit history untouched. Across the autumn
+  change: 42 days reads `2026-10-19T19:34:33Z` (Mon 21:34 CEST) and 49 days reads
+  `2026-10-26T20:34:33Z` (Mon 21:34 CET) — an hour later in UTC, so that advance really was a
+  calendar week. It is only the composition of two advances with real DST in between that fails
+  (finding 1).
+- **Advancing the clock backwards restores the earlier week's figure.** The endpoint refuses
+  backwards (`advance {days:-7}` and `{days:0}` → 400 plus
+  `WARN i.d.savingstreak.clock.ClockService : clock not advanced: The clock only moves forward. Ask
+  for at least one day, not -7.`), so I stood the persisted position back by hand: with the clock at
+  7 days and both weeks reading `0.00`, I copied the database, set `clock_offset` to `0|0` and
+  started a second instance. It came up `clock put back where it was left movedForwardByDays=0
+  movedForwardBy=PT0S` and account 1 read `newSavingsThisWeek: 52.50, stillNeededThisWeek: 0.00`,
+  `week=2026-09-07/2026-09-13`, with money `0` and points `52` unmoved — the earlier week's figure
+  back, nothing stored that could have gone stale. Log: `…review.5.clockback.log`.
+- **The €50 is one constant.** `WEEKLY_MINIMUM` in `NewSavingsThisWeek` is the only `50.00` in
+  `backend/src/main` (the other grep hit is Bram's seeded `1150.00`), the page never names it — it
+  reads `account.balances.weeklyMinimum` — and `"Europe/Brussels"` appears once in code, in
+  `SavingsWeek`.
+- **The page.** Signed in as `anke.peeters@example.be`, opened savings account 1, deposited 60.00
+  twice and 2000.00, withdrew 40.00, submitted `0`, and deposited 12.34 into account 2. The week cell
+  reads `€ 2.180,00` / `of € 50,00` / a full bar / `the week has what it asks for`, formatted exactly
+  as the Saved cell formats money. Screenshots read at 400/700/900/1280 px light and 1280 px dark:
+  styled, no blank frames, nothing clipped. The refused `0` deposit rendered the unchanged banner
+  *"A deposit has to be an amount of more than zero, and 0 is not."* with the week and the points
+  where they were.
+- **Nothing clips, at any width.** A Range over every text node in each `dd`
+  (figure right edge − cell content-box right edge, so positive is hidden) with
+  `Saved € 2.140,00` / `2.232 points` / `This week € 2.180,00 of € 50,00` at 320, 360, 384, 400, 470,
+  520, 595, 600, 640, 700, 760, 800, 860, 896, 900, 1000, 1280 and 1440 px: **every cell negative at
+  every width** (worst −6 px, at 320 px) and `documentElement.scrollWidth − innerWidth == 0`
+  throughout. One track below 384 px, two from 384 px with `.week` spanning both, three from 896 px.
+- **No empty square in the loading row, and all three cells wear their own rule.** With
+  `page.route("**/api/savings-accounts/1", lambda r: None)` holding the request open:
+  `[saved x17 y205 w183] [earned x201 y205 w183] [week x17 y296 w366]` at 400 px,
+  `[saved x29 w321] [earned x351 w321] [week x29 y306 w642]` at 700 px, and three side by side at
+  x33/x311/x590 at 900 px. `::before` colours `rgb(0, 151, 219)` / `rgb(217, 130, 0)` /
+  `rgb(79, 189, 234)`. Screenshot `…review.5.skeleton-w700.png`.
+- **Points are unchanged: one per whole euro.** Every `deposit accepted` line in the session reads
+  `pointsByReason={BASE_ACCRUAL=n}` — `12.50 → 12`, `12.34 → 12`, `40.00 → 40`, `60.00 → 60`,
+  `75.00 → 75`, `2000.00 → 2000`.
+
+### What I ran
+
+- `cd backend && ./mvnw test` → BUILD SUCCESS, `Tests run: 134, Failures: 0, Errors: 0`, twice
+  (before the zone mutation and again after reverting it). Matches the orchestrator's `checks.5.log`.
+- `cd frontend && npm run typecheck` → exit 0 (Node 24.16.0 first on PATH; system node is 16).
+- Start-up line on the orchestrator's instance:
+  `application clock in use clock=MovableClock[SystemClock[Z] moved forward 0 calendar days in Europe/Brussels, which is PT0S] reads=2026-09-07T19:24:49.849660Z`.
+- Over curl against localhost:8080: the deposit/withdrawal/isolation sequence above, the clock
+  advances (6, 1, 35, 7, 147 days) and the two clock refusals. Transcript at `…review.5.curl.log`.
+- Four extra instances on port 8081 over copies of the throwaway database: the position stood back at
+  `0|0`, the legacy `10|NULL` row and its follow-up advance, the hand-edited `7|-604800` row, and one
+  with `org.springframework.transaction` at TRACE to settle the `@Transactional` question. Logs
+  `…review.5.clockback.log`, `…review.5.legacyrow.log`, `…review.5.editedrow.log`, `…review.5.tx.log`.
+  All four killed; port 8081 free; only the orchestrator's instance left running.
+- One zone mutation of `backend/src/main`, reverted; `git status --porcelain` empty.
+- Two standalone Java 17 runs of `MovableClock.howFarForwardThatManyDaysIs`'s expression outside the
+  repo: the hand-picked case in finding 1, and the 210,240-pair sweep.
+- Backend log `…app.5.backend.log`: `0` ERROR lines, `0` `Completed 500`, and the only WARNs from
+  `io.dataroots.savingstreak` are the two clock refusals I triggered. No `System.out`/`System.err` in
+  `backend/src/main`, no `console.*` in `frontend/src`.
+- Page driven with Playwright (chromium, sync API): the scenarios above, 18 widths, light and dark,
+  the held-open loading state at 400/700/900 px, and the per-frame recorder.
+  Browser console at `…review.5.browser.log` (42 lines): **no `pageerror`**; the only `console:error`
+  is the deliberate 400 from the refused `0` deposit; the `net::ERR_ABORTED` entries are the page's
+  pre-existing StrictMode `AbortController` cleanup. Vite's log (`…app.5.frontend.log`) holds only
+  its start-up banner — no transform errors.
