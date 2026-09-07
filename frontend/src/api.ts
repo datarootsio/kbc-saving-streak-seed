@@ -105,9 +105,9 @@ export async function fetchAccounts(
 }
 
 /**
- * A savings account and what it is worth, plus how far into this week's saving it has got. Every
- * figure is derived by the backend on every read and arrives here as a JSON number: this page
- * formats them and never works any of them out for itself.
+ * A savings account and what it is worth, plus how far into this week's saving it has got and the run
+ * of weeks behind it. Every figure is derived by the backend on every read and arrives here as a JSON
+ * number: this page formats them and never works any of them out for itself.
  *
  * <p>What the week asks for comes down with the progress towards it. The €50 a week costs is the
  * backend's figure and is named in one place there; a page that wrote it into its own markup would
@@ -130,6 +130,17 @@ export type SavingsAccountBalances = {
    * cell takes the same gap against the figure it is actually showing, and lands on this number.
    */
   stillNeededThisWeek: number
+  /**
+   * How many consecutive weeks this account has secured, counting back from the most recently
+   * secured one — and zero once the run has lapsed, which the backend decides. A week counts once
+   * `weeklyMinimum` of new saving has landed in it.
+   */
+  currentStreakWeeks: number
+  /**
+   * The longest run this account has ever had, which a lapse does not erase. Never smaller than
+   * `currentStreakWeeks`: a run happening now is a run that has happened.
+   */
+  bestStreakWeeks: number
 }
 
 export type RecordedDeposit = {

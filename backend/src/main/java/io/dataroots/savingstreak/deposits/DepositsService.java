@@ -239,6 +239,40 @@ public class DepositsService {
     }
 
     /**
+     * Everything that landed in this savings account before a moment, oldest first — the whole of its
+     * history up to that point.
+     *
+     * <p>Exclusive of the moment, so that this and {@link #depositsLandedBetween} split time at it
+     * the same way and a caller asking for both sides of a boundary counts nothing twice.
+     *
+     * <p>Up to a moment rather than all of it, because the application's clock moves: a trainer who
+     * winds it forward, pays money in and winds it back has left a deposit dated in the future, and a
+     * caller counting an account's history is entitled to ask for the part of it that has actually
+     * happened. Whoever asks names the moment; this module does not read the clock.
+     *
+     * <p>What landed rather than what is left, for the reason {@link DepositLanded} gives: a
+     * withdrawal since then draws a deposit down without un-happening it.
+     */
+    @Transactional(readOnly = true)
+    public List<DepositLanded> depositsLandedBefore(long savingsAccountId, Instant until) {
+        List<DepositLanded> landed = deposits.landedBefore(savingsAccountId, until).stream()
+                // Quoted to the cent here, once, for the reason the stretch-of-time query gives:
+                // SQLite hands EUR 12.50 back as 12.5, and a caller adding those up or writing one
+                // into a log line would either restate the rounding or print a figure that does not
+                // read as money.
+                .map(deposit -> new DepositLanded(
+                        deposit.getId(), quotedToTheCent(deposit.getAmount()), deposit.getDepositedAt()))
+                .toList();
+        // The boundary that was asked about and how many deposits fell before it, so that a caller's
+        // own figure can be checked against what this module handed it. The deposits themselves are
+        // left to whoever asked to log: it knows what it was counting them for, and this runs on
+        // every read of an account.
+        log.debug("deposits that landed before a moment savingsAccountId={} until={} deposits={}",
+                savingsAccountId, until, landed.size());
+        return landed;
+    }
+
+    /**
      * What the savings account holds, summed from what remains of the deposits made into it. Derived
      * on every read, so there is no stored figure that could drift away from them.
      *

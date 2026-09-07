@@ -710,6 +710,13 @@ function SavingsAccountPage({
                   <ThisWeek shown={shown} weeklyMinimum={account.balances.weeklyMinimum} />
                 )}
               />
+              {/* The run of weeks, beside the week it is made of. Outside the rise on purpose:
+                  neither figure is climbing anywhere, and the two of them are about weeks already
+                  settled rather than about the amount still moving above. */}
+              <Streak
+                currentWeeks={account.balances.currentStreakWeeks}
+                bestWeeks={account.balances.bestStreakWeeks}
+              />
             </dd>
           </div>
         </dl>
@@ -832,6 +839,42 @@ function ThisWeek({ shown, weeklyMinimum }: { shown: number; weeklyMinimum: numb
       </span>
     </>
   )
+}
+
+/**
+ * The run of consecutive weeks this account has secured, and the longest run it has ever had, said
+ * beside the week that is part of the run.
+ *
+ * <p>Beside the week's progress rather than in a cell of its own, because the two are one story: the
+ * week above is the week this run is currently made of, and what a customer is deciding is whether to
+ * carry it on. Both figures are the backend's — how long a run is and whether it is still alive are
+ * decided there, so a zero here is a lapse the page was told about rather than one it worked out.
+ *
+ * <p>Two figures rather than one, so that a lapse leaves something behind. The current run is what
+ * there is to lose and the best-ever run is what there is to beat, and an account that has never
+ * secured a week has neither: it gets one sentence saying so, because "best ever 0 weeks" is a
+ * record nobody set.
+ */
+function Streak({ currentWeeks, bestWeeks }: { currentWeeks: number; bestWeeks: number }) {
+  if (bestWeeks <= 0) {
+    return <span className="streak">no week secured yet</span>
+  }
+  return (
+    <span className="streak">
+      <span className="streak-now">{currentWeeks === 0 ? 'no weeks' : inWeeks(currentWeeks)} in a row</span>
+      <span className="streak-best">best ever {inWeeks(bestWeeks)}</span>
+    </span>
+  )
+}
+
+/**
+ * A number of weeks with its noun agreeing with it, which one week and five weeks do not share.
+ *
+ * <p>Written out rather than run through a formatter: a run of weeks is a small count the backend
+ * sends as a whole number, and there is no thousands separator or decimal in it to get wrong.
+ */
+function inWeeks(weeks: number): string {
+  return weeks === 1 ? '1 week' : `${weeks} weeks`
 }
 
 /**

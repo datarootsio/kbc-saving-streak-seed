@@ -632,6 +632,39 @@ body {
   color: var(--ink-soft);
 }
 
+/* The run of weeks, under a rule that separates "this week" from "the weeks behind it" without a
+   second heading. Its own type size, weight and letter-spacing rather than the figure's: it sits
+   inside the cell's <dd>, which is a 2.5rem bold number, and a sentence has no business being read
+   at that size.
+
+   Wrapping rather than one line: the cell hides what does not fit, so at a third of a narrow row
+   "3 weeks in a row  best ever 5 weeks" has to be free to drop onto two lines rather than be cut
+   off — a sentence with the record snapped off it is worse than a taller cell. */
+.streak {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(var(--line) / 0.14);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+/* What there is to lose, in the ink the cell's own figures are written in: it is the live figure of
+   the two, and the one a deposit this week changes. */
+.streak-now {
+  color: var(--brand-deep);
+}
+
+/* What there is to beat, a step quieter, because it is a record rather than a state. */
+.streak-best {
+  color: var(--ink-faint);
+}
+
 .balances .unit {
   margin-left: 0.3rem;
   font-size: 0.9rem;

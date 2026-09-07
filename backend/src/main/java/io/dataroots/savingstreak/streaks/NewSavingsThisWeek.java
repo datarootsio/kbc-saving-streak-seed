@@ -50,6 +50,30 @@ public record NewSavingsThisWeek(SavingsWeek week, BigDecimal newSavings) {
     }
 
     /**
+     * Whether the week has taken in what it asks for, and so counts towards a streak.
+     *
+     * <p>The comparison lives beside the figure being compared against, because "at least EUR 50 has
+     * landed in it" is the whole definition of a secured week and a caller restating it is a second
+     * place the threshold is decided. At least, not more than: a week that took in exactly the
+     * minimum has done what the week asked.
+     */
+    public boolean isSecured() {
+        return securedBy(newSavings);
+    }
+
+    /**
+     * The same question about a week this record was not made for: whether that much gross new
+     * saving secures a week.
+     *
+     * <p>Here because whoever walks back through an account's earlier weeks has a total per week and
+     * no reason to build a record around each one. Static so that there is still exactly one
+     * comparison against {@link #WEEKLY_MINIMUM} in the application.
+     */
+    public static boolean securedBy(BigDecimal grossNewSavings) {
+        return grossNewSavings.compareTo(WEEKLY_MINIMUM) >= 0;
+    }
+
+    /**
      * How much more the week needs, and nothing below zero: a week that has taken EUR 80 in needs no
      * more, and reporting that it needs minus thirty would be arithmetic rather than an answer.
      */

@@ -45,6 +45,25 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
                                 @Param("until") Instant until);
 
     /**
+     * Everything that landed before a moment, oldest first, with the identifier settling ties at the
+     * millisecond the application records.
+     *
+     * <p>Exclusive of the moment itself, for the reason {@link #landedBetween} gives: a caller
+     * splitting time at that moment gets each deposit on exactly one side of it. The two queries
+     * agree about the boundary, so a caller can ask this for everything before a week and that for
+     * the week itself and count nothing twice.
+     *
+     * <p>No lower bound, because there is nothing below the first deposit ever made into the
+     * account. A caller wanting the whole of an account's history wants exactly this.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.savingsAccountId = :savingsAccountId "
+            + "and deposit.depositedAt < :until "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> landedBefore(@Param("savingsAccountId") long savingsAccountId,
+                               @Param("until") Instant until);
+
+    /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many
      * that was.
      *

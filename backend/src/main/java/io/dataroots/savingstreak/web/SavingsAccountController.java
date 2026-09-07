@@ -57,10 +57,14 @@ class SavingsAccountController {
     }
 
     /**
-     * The four figures in one read transaction, so that they describe the same instant of the
-     * ledger. Each module opens a read of its own otherwise, and a deposit committing between two of
-     * them would have the page state a balance of EUR 0,00 beside a week that has taken EUR 60,00
-     * in — an answer that contradicts itself and that neither module is wrong about.
+     * The figures in one read transaction, so that they describe the same instant of the ledger. Each
+     * module opens a read of its own otherwise, and a deposit committing between two of them would
+     * have the page state a balance of EUR 0,00 beside a week that has taken EUR 60,00 in — an answer
+     * that contradicts itself and that neither module is wrong about.
+     *
+     * <p>The week and the streak come back together from one call for the same reason one step
+     * further in: they are one derivation off one reading of the clock, and asking for them
+     * separately is what would have them describe two different weeks.
      */
     @Transactional(readOnly = true)
     @GetMapping("/{savingsAccountId}")
@@ -72,7 +76,7 @@ class SavingsAccountController {
                 owner,
                 deposits.moneyBalanceOf(savingsAccountId),
                 points.balanceOf(savingsAccountId),
-                streaks.newSavingsThisWeekIn(savingsAccountId));
+                streaks.weekAndStreakOf(savingsAccountId));
     }
 
     @GetMapping("/{savingsAccountId}/deposits")

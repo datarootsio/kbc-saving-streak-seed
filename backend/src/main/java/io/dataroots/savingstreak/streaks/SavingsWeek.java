@@ -56,6 +56,18 @@ public record SavingsWeek(LocalDate startsOn) {
         return startsOn.plusDays(6);
     }
 
+    /**
+     * The week before this one, for whoever is walking a run of weeks backwards.
+     *
+     * <p>A week back through the calendar rather than seven days off a moment: the Monday before a
+     * Monday is a Monday whatever the clocks did in between, and subtracting a fixed span from
+     * midnight would land at 23:00 or 01:00 on the Sunday twice a year — a different week from the
+     * one a customer would name.
+     */
+    public SavingsWeek previous() {
+        return new SavingsWeek(startsOn.minusWeeks(1));
+    }
+
     /** Midnight at the start of the Monday, in the zone weeks are counted in. Inclusive. */
     public Instant startsAt() {
         return startsOn.atStartOfDay(ZONE_WEEKS_ARE_COUNTED_IN).toInstant();
