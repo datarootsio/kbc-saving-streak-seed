@@ -698,6 +698,10 @@ function SavingsAccountPage({
                 value={account.balances.newSavingsThisWeek}
                 format={(shown) => euros.format(shown)}
               />
+              {/* A space, and it is load-bearing: without one the figure and "of € 50,00" are a
+                  single unbreakable run, and a narrow cell has nowhere to put the second half but
+                  outside itself, where it is hidden. With it the phrase drops to its own line. */}
+              {' '}
               <ThisWeek balances={account.balances} />
             </dd>
           </div>
