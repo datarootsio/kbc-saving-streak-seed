@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type ReactNode,
 } from 'react'
 import {
   claimReward,
@@ -699,15 +700,16 @@ function SavingsAccountPage({
           <div className={weekMoved(celebrated) ? 'week bumped' : 'week'}>
             <dt>This week</dt>
             <dd>
+              {/* The figure, the bar and the sentence are one thing here rather than a figure with
+                  two things said beside it: the whole cell is drawn from whatever figure the rise is
+                  showing at this moment, so no frame of it can say the week is done while the figure
+                  on the screen is still short of what the week asks for. */}
               <Rising
                 value={account.balances.newSavingsThisWeek}
-                format={(shown) => euros.format(shown)}
+                format={(shown) => (
+                  <ThisWeek shown={shown} weeklyMinimum={account.balances.weeklyMinimum} />
+                )}
               />
-              {/* A space, and it is load-bearing: without one the figure and "of € 50,00" are a
-                  single unbreakable run, and a narrow cell has nowhere to put the second half but
-                  outside itself, where it is hidden. With it the phrase drops to its own line. */}
-              {' '}
-              <ThisWeek balances={account.balances} />
             </dd>
           </div>
         </dl>
@@ -789,33 +791,44 @@ function weekMoved(celebrated: Celebration | null): boolean {
 }
 
 /**
- * What the week the account is part-way through still asks for: the amount, a bar for the same thing
+ * The whole of the week cell: what the week has taken in, what it asks for, a bar for the same thing
  * at a glance, and what is left to find said in words.
  *
- * <p>Every figure is the backend's, including the €50 — it comes down with the account, so this page
- * never names it and a repricing needs no change here. The bar's width is the only arithmetic on the
- * screen, and it is a length rather than a figure: the amounts either side of it are the answer, and
- * a bar is how far along it looks.
+ * <p>All four are drawn from one number — the figure on the screen at this moment, which is handed
+ * in by {@link Rising} while it is still climbing towards what the account now holds. That is the
+ * point of this taking the shown figure rather than the balances: three parts of one cell reading
+ * off two different numbers is a cell that contradicts itself, and a bar drawn full under
+ * "the week has what it asks for" beside a figure still passing € 21,00 tells a customer their week
+ * is done while showing them that it is not.
+ *
+ * <p>The €50 is the backend's, so this page never names it and a repricing needs no change here.
+ * What the week still asks for is the gap up to it — the same subtraction the backend publishes as
+ * {@code stillNeededThisWeek}, taken here against the figure actually on the screen so that the
+ * words are never about a figure the customer cannot see. Once the figure has arrived, the two are
+ * the same amount.
  *
  * <p>The bar is hidden from a screen reader because the sentence under it says the same thing in
  * words, and hearing the same fact twice is worse than hearing it once.
  */
-function ThisWeek({ balances }: { balances: SavingsAccountBalances }) {
-  const asksForNoMore = balances.stillNeededThisWeek <= 0
+function ThisWeek({ shown, weeklyMinimum }: { shown: number; weeklyMinimum: number }) {
+  const asksForNoMore = shown >= weeklyMinimum
   const howFarAlong =
-    balances.weeklyMinimum <= 0
-      ? 100
-      : Math.min(100, Math.max(0, (balances.newSavingsThisWeek / balances.weeklyMinimum) * 100))
+    weeklyMinimum <= 0 ? 100 : Math.min(100, Math.max(0, (shown / weeklyMinimum) * 100))
   return (
     <>
-      <span className="unit">of {euros.format(balances.weeklyMinimum)}</span>
+      {euros.format(shown)}
+      {/* A space, and it is load-bearing: without one the figure and "of € 50,00" are a single
+          unbreakable run, and a narrow cell has nowhere to put the second half but outside itself,
+          where it is hidden. With it the phrase drops to its own line. */}
+      {' '}
+      <span className="unit">of {euros.format(weeklyMinimum)}</span>
       <span className={asksForNoMore ? 'week-bar full' : 'week-bar'} aria-hidden="true">
         <i style={{ width: `${howFarAlong}%` }} />
       </span>
       <span className="week-note">
         {asksForNoMore
           ? 'the week has what it asks for'
-          : `${euros.format(balances.stillNeededThisWeek)} more to go`}
+          : `${euros.format(weeklyMinimum - shown)} more to go`}
       </span>
     </>
   )
@@ -1346,8 +1359,14 @@ function Confetti() {
 /**
  * A figure on its way to a new value. The value itself is never touched — only how much of the way
  * there has been drawn — and someone who has asked for less motion is simply shown the new figure.
+ *
+ * <p>What is drawn from the figure part-way there is the caller's, and it is a whole piece of the
+ * screen rather than a string: anything said beside a figure that is still moving has to be said
+ * about the figure being shown, not about the one it is heading for. A bar and a sentence drawn from
+ * the destination while the figure climbs towards it contradict the figure for as long as the climb
+ * lasts — see {@link ThisWeek}, which is drawn entirely from what it is handed here.
  */
-function Rising({ value, format }: { value: number; format: (shown: number) => string }) {
+function Rising({ value, format }: { value: number; format: (shown: number) => ReactNode }) {
   const [shown, setShown] = useState(stillness ? value : 0)
   const from = useRef(stillness ? value : 0)
 
@@ -1361,7 +1380,11 @@ function Rising({ value, format }: { value: number; format: (shown: number) => s
     const startedAt = from.current
     let frame = 0
     const draw = (now: number) => {
-      const through = Math.min(1, (now - started) / 900)
+      // Never below nothing of the way there: the moment a frame carries is the moment the browser
+      // began it, which can be a hair earlier than the moment this effect read, and a negative
+      // fraction of the way draws a figure below the one being left — € -0,04 on a sign-in, and a
+      // week that has taken in less than nothing.
+      const through = Math.max(0, Math.min(1, (now - started) / 900))
       const eased = 1 - Math.pow(1 - through, 3)
       const reached = startedAt + (value - startedAt) * eased
       from.current = reached

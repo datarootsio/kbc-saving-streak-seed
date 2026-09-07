@@ -40,7 +40,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * and to this clock, and a restart hands back the value that was written down rather than a fresh one
  * ({@link ClockOnStartUp}). A fresh one is the trap: the same number of days worked out against a
  * different real moment is an hour shorter on the far side of a clock change, and an hour shorter is
- * a rewind. All this class enforces is that a span is not itself backwards.
+ * a rewind. The one span that comes from neither is the one for a record written before spans were
+ * written down, and it is not a fresh calendar answer either — it is the fixed 86 400 seconds a day
+ * that the build which wrote that record was adding, so it too is a span some application really
+ * stood at. All this class enforces is that a span is not itself backwards.
  *
  * <p>How far it has moved lives in memory, so that reading the time costs nothing — every deposit
  * and every claim reads it. What survives a restart is written down separately, by

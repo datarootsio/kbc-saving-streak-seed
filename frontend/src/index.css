@@ -606,12 +606,15 @@ body {
   overflow: hidden;
 }
 
+/* No transition on the width, on purpose. The width is redrawn on every frame of the figure's rise,
+   from that same figure, so a transition would leave the bar trailing a length the figure had
+   already stopped showing — a bar at 40% under a sentence saying the week has what it asks for. The
+   rise is the animation; this only follows it. */
 .week-bar i {
   display: block;
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--brand);
-  transition: width 0.6s var(--ease);
 }
 
 /* A week that needs nothing more is filled in the deeper blue, so "there" reads differently from

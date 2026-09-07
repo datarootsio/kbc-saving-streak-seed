@@ -45,8 +45,10 @@ class ClockOffset {
      * Nullable, for one case: a database written before this column existed has it added empty by
      * the schema update, and such a row says how many days but not what they came to. Read back as
      * nothing rather than as zero, because zero is a real position — the clock standing where the
-     * real one does — and a row that does not say is a row {@link ClockOnStartUp} has to refuse
-     * rather than believe.
+     * real one does — and "this row does not say" is a different statement that
+     * {@link ClockOnStartUp} answers on its own, with the fixed 86 400 seconds a day the build that
+     * wrote the row was adding. It then fills the column in, so a row is short of its span once and
+     * never again.
      */
     private Long movedForwardBySeconds;
 

@@ -121,7 +121,14 @@ export type SavingsAccountBalances = {
   /** Gross new saving that has landed since Monday, counted in the backend's own timezone. */
   newSavingsThisWeek: number
   weeklyMinimum: number
-  /** What the week still asks for, and never below zero. */
+  /**
+   * What the week still asks for, and never below zero.
+   *
+   * <p>Part of the resource, and deliberately not what the cell reads: the figure it sits beside is
+   * drawn while it is still climbing to what has landed, and a gap belonging to the figure it is
+   * climbing towards would contradict the one on the screen for as long as the climb lasted. The
+   * cell takes the same gap against the figure it is actually showing, and lands on this number.
+   */
   stillNeededThisWeek: number
 }
 
