@@ -9,7 +9,11 @@ import java.util.Map;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.points.PointsByReason;
+import io.dataroots.savingstreak.points.PointsReason;
 import io.dataroots.savingstreak.points.PointsService;
+import io.dataroots.savingstreak.streaks.StreakMultiplier;
+import io.dataroots.savingstreak.streaks.WeekAndStreak;
+import io.dataroots.savingstreak.streaks.WeekAndStreakDerivation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,7 +54,18 @@ public class DepositsService {
      *
      * <p>How many points the amount is worth is not decided here. The Points module owns that rule
      * and reports what it credited. Nor is what is in the current account: Accounts is asked to take
-     * the money and answers whether there was any to take.
+     * the money and answers whether there was any to take. Nor is the rate the deposit is paid at:
+     * that is the run of weeks the deposit has just been counted into, which the Streaks module
+     * derives.
+     *
+     * <p>The order of the last three steps is the whole feature. The deposit is recorded first, the
+     * run of weeks is walked <em>after</em> it, and the points are credited at what that run pays.
+     * One rule decides every case that way: a deposit is paid at the rate of the run as it stands
+     * once that deposit has been counted. A deposit that carries its week past the weekly minimum has
+     * lengthened the run by the time it is priced, so it is already paid at the new, higher rate; one
+     * that does not secure the week is paid whatever the live run was already paying; and with no
+     * live run the length is nothing and the rate is the ordinary one. There are no special cases
+     * here to get wrong because there are no special cases.
      *
      * @throws DepositRefused if there is no such transfer to make: either account unknown, an amount
      *                         that is not an amount of money, or not enough money to move
@@ -87,15 +102,43 @@ public class DepositsService {
         // balance up by hand needs to see it recorded rather than assume it.
         log.debug("deposit records what remains of it depositId={} amount={} remainingAmount={}",
                 deposit.getId(), asMoney(deposit.getAmount()), asMoney(deposit.getRemainingAmount()));
-        PointsByReason credited = points.creditPointsFor(savingsAccountId, deposit.getId(), amount, now);
-        // The breakdown as well as the total, so that a reader can see what the total is made of
-        // rather than having to trust that base accrual is still all there is to it.
+        // The run of weeks as it stands with this deposit in it. Derived rather than asked of the
+        // Streaks module's service, because that service reads its ledger from this one and a
+        // service that read back into a service that called it would be a cycle: the derivation is a
+        // function both of us call, off the moment the money moved rather than off a second reading
+        // of the clock.
+        //
+        // The deposit is in the ledger by the time the walk queries it: the row above was saved
+        // inside this transaction, and a query against the deposits flushes it first. That is what
+        // "once that deposit has been counted" means, and the test that a deposit crossing the
+        // weekly minimum is itself paid at the new rate is the one that would fail if it were not so.
+        WeekAndStreak saving = WeekAndStreakDerivation.asAt(this, savingsAccountId, now);
+        BigDecimal multiplier = saving.streak().multiplier();
+        // Written on the deposit before the points are credited, so that what the ledger was paid and
+        // what the deposit says it was paid are one decision rather than two.
+        deposit.paidAt(multiplier);
+        PointsByReason credited =
+                points.creditPointsFor(savingsAccountId, deposit.getId(), amount, multiplier, now);
+        // Everything that decided the outcome, on one line: the week the deposit landed in, what has
+        // now landed in it, whether this deposit is the one that carried the week over the line, how
+        // long the run is with the week counted, the rate that run pays, and the two figures the
+        // points are made of. A reviewer can redo the whole pricing from this line — floor the
+        // amount, multiply by the rate, floor again — and the DEBUG lines underneath it say which
+        // weeks the walk went through to arrive at the run.
         log.info("deposit accepted depositId={} savingsAccountId={} fromCurrentAccountId={} "
-                        + "amount={} pointsEarned={} pointsByReason={} depositedAt={}",
+                        + "amount={} week={} newSavingsThisWeek={} securedByThisDeposit={} "
+                        + "streakWeeks={} multiplier={} basePoints={} streakBonusPoints={} "
+                        + "pointsEarned={} pointsByReason={} depositedAt={}",
                 deposit.getId(), savingsAccountId, fromCurrentAccountId, asMoney(amount),
+                saving.week().week(), asMoney(saving.week().newSavings()),
+                saving.week().wasCarriedOverBy(amount), saving.streak().currentWeeks(), multiplier,
+                credited.earnedAs(PointsReason.BASE_ACCRUAL),
+                credited.earnedAs(PointsReason.STREAK_BONUS),
                 credited.total(), credited.points(), deposit.getDepositedAt());
         return new RecordedDeposit(
-                deposit.getId(), deposit.getAmount(), credited.total(), deposit.getDepositedAt());
+                deposit.getId(), deposit.getAmount(), credited.total(),
+                credited.earnedAs(PointsReason.BASE_ACCRUAL),
+                credited.earnedAs(PointsReason.STREAK_BONUS), multiplier, deposit.getDepositedAt());
     }
 
     /**
@@ -173,9 +216,15 @@ public class DepositsService {
      * reason the deposit itself does not record it: the two are one event, and one of them owning
      * the answer is what stops them from ever disagreeing.
      *
-     * <p>The ledger answers with a breakdown by reason and what is reported is its total, which is
-     * every point the deposit earned however it earned it. A deposit the ledger has never heard of
-     * earned nothing, which is the figure a deposit whose euros floored away earned as well.
+     * <p>The ledger answers with a breakdown by reason, and both the total and what it is made of are
+     * reported: the total is every point the deposit earned however it earned it, and the two parts
+     * say which of them was the euros and which the run of weeks. A deposit the ledger has never
+     * heard of earned nothing, which is the figure a deposit whose euros floored away earned as well.
+     *
+     * <p>The rate comes off the deposit itself rather than out of a fresh derivation, which is the
+     * whole reason it was written down: a past deposit explains itself the same way after the ladder
+     * changes, after the run it was paid on lapses, and after a trainer has wound the clock in either
+     * direction.
      */
     @Transactional(readOnly = true)
     public List<RecordedDeposit> depositsInto(long savingsAccountId) {
@@ -183,12 +232,38 @@ public class DepositsService {
         Map<Long, PointsByReason> pointsEarned =
                 points.pointsEarnedBy(made.stream().map(Deposit::getId).toList());
         return made.stream()
-                .map(deposit -> new RecordedDeposit(
-                        deposit.getId(),
-                        deposit.getAmount(),
-                        pointsEarned.getOrDefault(deposit.getId(), PointsByReason.nothing()).total(),
-                        deposit.getDepositedAt()))
+                .map(deposit -> asRecorded(
+                        deposit,
+                        pointsEarned.getOrDefault(deposit.getId(), PointsByReason.nothing())))
                 .toList();
+    }
+
+    /** One deposit and what the ledger says it earned, put together for whoever is listing them. */
+    private static RecordedDeposit asRecorded(Deposit deposit, PointsByReason earned) {
+        return new RecordedDeposit(
+                deposit.getId(),
+                deposit.getAmount(),
+                earned.total(),
+                earned.earnedAs(PointsReason.BASE_ACCRUAL),
+                earned.earnedAs(PointsReason.STREAK_BONUS),
+                rateItWasPaidAt(deposit),
+                deposit.getDepositedAt());
+    }
+
+    /**
+     * The rate the deposit was paid at, and the ordinary rate for one recorded before any rate was
+     * written down.
+     *
+     * <p>Not a guess: a deposit made before this scheme existed earned one point per whole euro and
+     * nothing else, and the ordinary rate is that figure written as a rate. Quoted to two places
+     * because the figure has been through SQLite, which has no decimal type and hands 1.50 back as
+     * 1.5 — the rate a deposit reports here has to read the way it read in the answer to the deposit
+     * itself.
+     */
+    private static BigDecimal rateItWasPaidAt(Deposit deposit) {
+        return deposit.getMultiplierApplied() == null
+                ? StreakMultiplier.THE_ORDINARY_RATE
+                : StreakMultiplier.asARate(deposit.getMultiplierApplied());
     }
 
     /**

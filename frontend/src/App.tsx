@@ -36,6 +36,13 @@ const points = new Intl.NumberFormat('nl-BE')
 const dateAndTime = new Intl.DateTimeFormat('nl-BE', { dateStyle: 'short', timeStyle: 'short' })
 
 /**
+ * A multiplier, always to two places. 1,5 and 1,50 are the same number and only one of them reads as
+ * a rate on a ladder that climbs in tenths; both places are kept so that the rungs line up with each
+ * other however the backend's JSON happened to write the figure.
+ */
+const rate = new Intl.NumberFormat('nl-BE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/**
  * Whether the person at the screen has asked their system for less movement. Read once: it decides
  * whether a figure counts up to its new value or simply arrives at it, and a balance must never be
  * animated for someone who has said they do not want that.
@@ -716,6 +723,7 @@ function SavingsAccountPage({
               <Streak
                 currentWeeks={account.balances.currentStreakWeeks}
                 bestWeeks={account.balances.bestStreakWeeks}
+                multiplier={account.balances.currentMultiplier}
               />
             </dd>
           </div>
@@ -842,27 +850,46 @@ function ThisWeek({ shown, weeklyMinimum }: { shown: number; weeklyMinimum: numb
 }
 
 /**
- * The run of consecutive weeks this account has secured, and the longest run it has ever had, said
- * beside the week that is part of the run.
+ * What a euro paid into this account earns right now, the run of consecutive weeks that rate comes
+ * from, and the longest run the account has ever had — said beside the week they are all about.
  *
- * <p>Beside the week's progress rather than in a cell of its own, because the two are one story: the
- * week above is the week this run is currently made of, and what a customer is deciding is whether to
- * carry it on. Both figures are the backend's — how long a run is and whether it is still alive are
- * decided there, so a zero here is a lapse the page was told about rather than one it worked out.
+ * <p>Beside the week's progress rather than in a cell of its own, because they are one story: the
+ * week above is the week this run is currently made of, the rate is what carrying it on is worth,
+ * and what a customer is deciding is whether to pay in before Sunday. Every figure is the backend's
+ * — how long a run is, whether it is still alive and what it pays are all decided there, so a rate
+ * of 1,00 here is a lapse the page was told about rather than one it worked out.
  *
- * <p>Two figures rather than one, so that a lapse leaves something behind. The current run is what
- * there is to lose and the best-ever run is what there is to beat, and an account that has never
+ * <p>The rate first, because it is the figure being acted on and the other two explain it. It is
+ * shown even when there is no run at all: 1,00× is what a euro has always earned, and a customer who
+ * cannot see the ordinary rate has nothing to read the better ones against.
+ *
+ * <p>Two week figures rather than one, so that a lapse leaves something behind. The current run is
+ * what there is to lose and the best-ever run is what there is to beat, and an account that has never
  * secured a week has neither: it gets one sentence saying so, because "best ever 0 weeks" is a
  * record nobody set.
  */
-function Streak({ currentWeeks, bestWeeks }: { currentWeeks: number; bestWeeks: number }) {
-  if (bestWeeks <= 0) {
-    return <span className="streak">no week secured yet</span>
-  }
+function Streak({
+  currentWeeks,
+  bestWeeks,
+  multiplier,
+}: {
+  currentWeeks: number
+  bestWeeks: number
+  multiplier: number
+}) {
   return (
     <span className="streak">
-      <span className="streak-now">{currentWeeks === 0 ? 'no weeks' : inWeeks(currentWeeks)} in a row</span>
-      <span className="streak-best">best ever {inWeeks(bestWeeks)}</span>
+      <span className="streak-rate">earning {rate.format(multiplier)}× per euro</span>
+      {bestWeeks <= 0 ? (
+        <span className="streak-best">no week secured yet</span>
+      ) : (
+        <>
+          <span className="streak-now">
+            {currentWeeks === 0 ? 'no weeks' : inWeeks(currentWeeks)} in a row
+          </span>
+          <span className="streak-best">best ever {inWeeks(bestWeeks)}</span>
+        </>
+      )}
     </span>
   )
 }

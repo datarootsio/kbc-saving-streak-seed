@@ -72,6 +72,9 @@ class AWeekWithNothingInItEndsTheStreakApiTest extends ApiIntegrationTest {
         // Nothing else moved: no job runs, no history is rewritten, and the money and points are
         // where two weeks of saving left them.
         assertThat(theWeekAfterTheEmptyOne.moneyBalance()).isEqualByComparingTo("120.00");
-        assertThat(theWeekAfterTheEmptyOne.pointsBalance()).isEqualTo(120);
+        // The first EUR 60 at the ordinary rate and the second at 1.10, because it secured a second
+        // consecutive week and a deposit is paid at the rate of the run that includes it. Losing the
+        // run afterwards takes neither figure back.
+        assertThat(theWeekAfterTheEmptyOne.pointsBalance()).isEqualTo(60 + 66);
     }
 }

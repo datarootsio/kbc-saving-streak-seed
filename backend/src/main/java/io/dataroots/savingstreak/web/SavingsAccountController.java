@@ -27,9 +27,9 @@ import org.springframework.web.server.ResponseStatusException;
  * A savings account, its two balances, the deposits made into it and the rewards claimed out of it.
  *
  * <p>The figures come from four modules that do not know about each other — who owns the account,
- * what has been paid into it, what that earned, and how far into this week's saving it is — and are
- * assembled here. Assembling an answer is not a rule: no decision about money, points, rewards or
- * weeks is taken in this class.
+ * what has been paid into it, what that earned, and how the run of weeks behind it is going and what
+ * it pays — and are assembled here. Assembling an answer is not a rule: no decision about money,
+ * points, rewards, weeks or rates is taken in this class.
  */
 @RestController
 @RequestMapping("/api/savings-accounts")

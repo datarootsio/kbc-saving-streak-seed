@@ -107,9 +107,46 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         assertThat(moved.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
-    /** The account as the API reports it: both balances, the week, and the run of weeks behind it. */
+    /**
+     * The account as the API reports it: both balances, the week, the run of weeks behind it, and
+     * what that run pays.
+     */
     public BalancesView balancesOf(long savingsAccountId) {
         return http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
+    }
+
+    /**
+     * Every deposit into the account as the history reports it, newest first — what a customer sees
+     * when they look back at what a deposit earned, rather than what they were told at the time.
+     */
+    public DepositView[] depositsInto(long savingsAccountId) {
+        return http.getForObject(
+                "/api/savings-accounts/{id}/deposits", DepositView[].class, savingsAccountId);
+    }
+
+    /**
+     * A reward claimed out of the account, with the refusal ruled out: a claim that was turned down
+     * would leave a test asserting that points nobody spent are still there — and passing.
+     */
+    public ClaimedRewardView claim(long savingsAccountId, String reward) {
+        ResponseEntity<ClaimedRewardView> claimed = http.postForEntity(
+                "/api/savings-accounts/{id}/redemptions",
+                Map.of("reward", reward),
+                ClaimedRewardView.class,
+                savingsAccountId);
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return claimed.getBody();
+    }
+
+    /** Why a claim this account could not afford was refused, in the words the customer is given. */
+    public String whyTheClaimWasRefused(long savingsAccountId, String reward) {
+        ResponseEntity<ProblemView> refused = http.postForEntity(
+                "/api/savings-accounts/{id}/redemptions",
+                Map.of("reward", reward),
+                ProblemView.class,
+                savingsAccountId);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        return refused.getBody().detail();
     }
 
     @Override
@@ -119,5 +156,12 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
 
     /** As much of a withdrawal as these tests read back: that it happened, and for how much. */
     private record WithdrawalView(Long id, BigDecimal amount, Instant withdrawnAt) {
+    }
+
+    /**
+     * A refusal as the API answers with one (RFC 9457), of which these tests read the sentence the
+     * customer is shown and nothing else.
+     */
+    private record ProblemView(String detail) {
     }
 }

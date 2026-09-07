@@ -1,5 +1,7 @@
 package io.dataroots.savingstreak.streaks;
 
+import java.math.BigDecimal;
+
 /**
  * A run of consecutive weeks of real saving: the one the account is on now, and the longest one it
  * has ever been on.
@@ -16,6 +18,9 @@ package io.dataroots.savingstreak.streaks;
  * <p>The best-ever run outlives the current one. Losing a streak costs the run and not the record,
  * which is the whole reason two figures are reported rather than one — a lapse leaves a customer
  * with a figure to beat instead of with nothing.
+ *
+ * <p>And a run pays: the rate a euro earns at is a function of how many consecutive weeks the run
+ * is, which is {@link StreakMultiplier}'s answer and is stated there once.
  *
  * <p>Neither figure is stored. Both are derived from the deposit records every time they are asked
  * for, so that a development clock wound in either direction cannot leave a counter behind
@@ -37,5 +42,22 @@ public record StreakOfSecuredWeeks(int currentWeeks, int bestWeeks) {
                     + "best of " + bestWeeks + " weeks cannot be shorter than the " + currentWeeks
                     + " weeks running now");
         }
+    }
+
+    /**
+     * What a euro paid into this account earns right now: the rate the run happening <em>now</em>
+     * pays.
+     *
+     * <p>Off the current run and never off the best-ever one, because a rate is a state and a record
+     * is not: a customer whose run lapsed last month is paying the ordinary rate today, however good
+     * their record is.
+     *
+     * <p>The one function the whole scheme is priced by, and the reason it lives here rather than in
+     * whoever is pricing something. Read on a savings account it answers "what is my rate"; read on
+     * the run a deposit has just been counted into it answers "what was this deposit paid" — the same
+     * question about the same number of weeks, so the two can never disagree.
+     */
+    public BigDecimal multiplier() {
+        return StreakMultiplier.paidByAStreakOf(currentWeeks);
     }
 }

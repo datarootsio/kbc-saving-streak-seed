@@ -74,6 +74,20 @@ public record NewSavingsThisWeek(SavingsWeek week, BigDecimal newSavings) {
     }
 
     /**
+     * Whether this amount is what carried the week over the line: the week has what it asks for now,
+     * and would not have had it without this.
+     *
+     * <p>The amount has to have been counted into the figure already, which is what makes this a
+     * question about a deposit that has landed rather than about one somebody is thinking of making.
+     * It is the one thing a deposit's own log line can say that the week's figures cannot — "this is
+     * the deposit that secured the week" — and it is asked here so that the subtraction is compared
+     * against {@link #WEEKLY_MINIMUM} in the class that owns it rather than at the call site.
+     */
+    public boolean wasCarriedOverBy(BigDecimal justLanded) {
+        return isSecured() && !securedBy(newSavings.subtract(justLanded));
+    }
+
+    /**
      * How much more the week needs, and nothing below zero: a week that has taken EUR 80 in needs no
      * more, and reporting that it needs minus thirty would be arithmetic rather than an answer.
      */

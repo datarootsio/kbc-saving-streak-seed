@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
@@ -42,8 +43,12 @@ public class PointsService {
      * The reasons a deposit can have earned points under, which is what a lookup by deposit asks
      * for. Named here rather than left to the query, so that a new way for a deposit to earn is
      * added to one list and is then reported by every caller that lists deposits.
+     *
+     * <p>Unmodifiable, because it is handed to the repository and written into a log line: a set a
+     * caller could add to is a query that could quietly come to ask for something else.
      */
-    private static final Set<PointsReason> EARNED_BY_A_DEPOSIT = EnumSet.of(PointsReason.BASE_ACCRUAL);
+    private static final Set<PointsReason> EARNED_BY_A_DEPOSIT = Collections.unmodifiableSet(
+            EnumSet.of(PointsReason.BASE_ACCRUAL, PointsReason.STREAK_BONUS));
 
     private final PointsCreditRepository credits;
 
@@ -52,35 +57,88 @@ public class PointsService {
     }
 
     /**
-     * Credits the points an amount of money earns and answers what was credited, broken down by the
-     * reason each part of it was earned under.
+     * Credits the points an amount of money earns at a given rate and answers what was credited,
+     * broken down by the reason each part of it was earned under.
      *
-     * <p>One point per whole euro, rounding down: EUR 12.50 earns 12 points and EUR 0.99 earns none.
-     * Base accrual is the whole of it for now, so the breakdown has one entry — a caller reading the
-     * total gets the same figure it always did. A deposit that earns nothing is still credited, so
-     * that every deposit has a batch to point at when it is asked what it earned.
+     * <p>Rounding down twice, and points stay whole. The amount is floored to whole euros first —
+     * one point per whole euro, the rule that has always held, so EUR 12.50 is 12 and EUR 0.99 is
+     * none — then multiplied by the rate, then floored again. EUR 7.60 at 1.30 is 7 base points and
+     * 9 altogether, so a bonus of 2. A deposit whose euros floor away earns nothing at any rate,
+     * because a multiple of nothing is nothing.
      *
-     * <p>A breakdown rather than a total, because the total is the part that will stop being the
-     * whole story: a deposit that earns a bonus as well as its euros has two answers to give, and a
-     * caller that was handed one number would have no way to say which of them it holds.
+     * <p>Two batches rather than one, and the second only when there is an uplift to credit. The
+     * base accrual is credited exactly as it always was, so the figure the deposit history has
+     * reported since before there were streaks still means the euros; the bonus is the difference
+     * between that and what the deposit was actually worth. A deposit that earns nothing is still
+     * credited its nothing, so that every deposit has a batch to point at when it is asked what it
+     * earned — but an uplift of nothing is not an event and leaves no batch behind.
+     *
+     * <p>The rate arrives already decided. What a run of weeks pays is the Streaks module's rule and
+     * this ledger has no opinion about it; what it does insist on is that a rate never pays less than
+     * the euros put in, because a bonus is an uplift and a negative one is a caller that has worked
+     * something out wrongly.
      *
      * <p>The caller says when, because the points were earned at the moment the money moved rather
      * than at the moment this method happened to run.
+     *
+     * @throws IllegalArgumentException if the rate would pay less than one point per whole euro
      */
     @Transactional
     public PointsByReason creditPointsFor(long savingsAccountId, long depositId, BigDecimal amountInEuros,
-                                          Instant earnedAt) {
+                                          BigDecimal multiplier, Instant earnedAt) {
+        refuseARateThatPaysLessThanTheEuros(savingsAccountId, depositId, multiplier);
         long wholeEuros = wholeEurosIn(amountInEuros);
-        // The amount and what the flooring made of it, so that a credit of nothing for a deposit of
-        // EUR 0.99 reads as the rule working rather than as points having gone missing.
+        long paidAtTheRate = pointsOn(wholeEuros, multiplier);
+        long streakBonus = paidAtTheRate - wholeEuros;
+        // The amount, the rate and what each flooring made of them, so that a credit of nothing for a
+        // deposit of EUR 0.99 reads as the rule working rather than as points having gone missing —
+        // and so that a bonus of 2 on a base of 7 can be checked against the multiplication a
+        // reviewer would do by hand.
         log.debug("points to credit worked out from the amount savingsAccountId={} depositId={} "
-                        + "amountInEuros={} wholeEuros={} earnedAt={}",
-                savingsAccountId, depositId, amountInEuros, wholeEuros, earnedAt);
+                        + "amountInEuros={} wholeEuros={} multiplier={} paidAtTheRate={} "
+                        + "streakBonus={} earnedAt={}",
+                savingsAccountId, depositId, amountInEuros, wholeEuros, multiplier, paidAtTheRate,
+                streakBonus, earnedAt);
         credits.save(PointsCredit.baseAccrualFor(savingsAccountId, depositId, wholeEuros, earnedAt));
         PointsByReason credited = PointsByReason.of(PointsReason.BASE_ACCRUAL, wholeEuros);
-        log.info("points credited savingsAccountId={} depositId={} pointsByReason={} points={}",
-                savingsAccountId, depositId, credited.points(), credited.total());
+        if (streakBonus > 0) {
+            credits.save(PointsCredit.streakBonusFor(savingsAccountId, depositId, streakBonus, earnedAt));
+            credited = new PointsByReason(Map.of(
+                    PointsReason.BASE_ACCRUAL, wholeEuros, PointsReason.STREAK_BONUS, streakBonus));
+        }
+        log.info("points credited savingsAccountId={} depositId={} multiplier={} pointsByReason={} points={}",
+                savingsAccountId, depositId, multiplier, credited.points(), credited.total());
         return credited;
+    }
+
+    /**
+     * What that many whole euros are worth at that rate: the product, floored, because points are
+     * whole. Fractional points would ripple into spending, the balance, the API and the screen for
+     * no benefit a customer can see.
+     */
+    private static long pointsOn(long wholeEuros, BigDecimal multiplier) {
+        return BigDecimal.valueOf(wholeEuros)
+                .multiply(multiplier)
+                .setScale(0, RoundingMode.FLOOR)
+                .longValueExact();
+    }
+
+    /**
+     * Refuses a rate below one, which would credit a bonus of less than nothing.
+     *
+     * <p>Not a refusal anybody can cause: nobody types a rate, so the only way here is a mistake in
+     * whoever worked one out. Said out loud rather than credited anyway, because the alternative is a
+     * deposit that quietly earned fewer points than its euros and a balance nobody can explain.
+     */
+    private static void refuseARateThatPaysLessThanTheEuros(long savingsAccountId, long depositId,
+                                                            BigDecimal multiplier) {
+        if (multiplier == null || multiplier.compareTo(BigDecimal.ONE) < 0) {
+            String reason = "a rate never pays less than one point per whole euro, and this one was "
+                    + multiplier;
+            log.warn("points not credited savingsAccountId={} depositId={} reason={}",
+                    savingsAccountId, depositId, reason);
+            throw new IllegalArgumentException(reason);
+        }
     }
 
     /**

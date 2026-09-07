@@ -141,6 +141,13 @@ export type SavingsAccountBalances = {
    * `currentStreakWeeks`: a run happening now is a run that has happened.
    */
   bestStreakWeeks: number
+  /**
+   * What a whole euro paid in earns right now, as a multiple of a point: 1.00 with no run behind the
+   * account, a tenth more for each further consecutive secured week, and never past the backend's
+   * cap. The rate the account is on, not a rate any past deposit was paid at — what a deposit was
+   * actually paid was settled when it was made and travels with the deposit.
+   */
+  currentMultiplier: number
 }
 
 export type RecordedDeposit = {

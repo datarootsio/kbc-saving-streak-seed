@@ -40,7 +40,7 @@ class PointsCredit {
     @Enumerated(EnumType.STRING)
     private PointsReason reason;
 
-    /** What earned the points — a deposit, for as long as base accrual is the only reason. */
+    /** What earned the points — a deposit, under either of the reasons a deposit earns under. */
     private long sourceReferenceId;
 
     protected PointsCredit() {
@@ -60,6 +60,17 @@ class PointsCredit {
     /** The points a deposit earns simply by being made, all of them still there to be spent. */
     static PointsCredit baseAccrualFor(long savingsAccountId, long depositId, long points, Instant earnedAt) {
         return new PointsCredit(savingsAccountId, points, PointsReason.BASE_ACCRUAL, depositId, earnedAt);
+    }
+
+    /**
+     * The uplift a deposit earned on top of its euros because the account was on a run of weeks.
+     *
+     * <p>A batch of its own, dated at the same moment as the base accrual it sits beside. A batch is
+     * a batch to everything that reads them: spending draws from the oldest first and neither knows
+     * nor cares which reason wrote it, so a bonus is spendable exactly as the euros are.
+     */
+    static PointsCredit streakBonusFor(long savingsAccountId, long depositId, long points, Instant earnedAt) {
+        return new PointsCredit(savingsAccountId, points, PointsReason.STREAK_BONUS, depositId, earnedAt);
     }
 
     long getRemainingPoints() {

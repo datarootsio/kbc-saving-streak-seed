@@ -82,7 +82,10 @@ class AWeekShortOfTheMinimumEndsTheStreakApiTest extends ApiIntegrationTest {
         BalancesView afterTheLapse = app.balancesOf(savingsAccount);
         assertThat(afterTheLapse.currentStreakWeeks()).isEqualTo(1);
         assertThat(afterTheLapse.bestStreakWeeks()).isEqualTo(2);
-        // Every euro that moved still earned its point, whatever the run was doing.
-        assertThat(afterTheLapse.pointsBalance()).isEqualTo(50 + 50 + 30 + 50);
+        // Every euro that moved still earned its point, and each deposit earned at whatever the run
+        // was paying when it landed: the first week at the ordinary rate, the second at 1.10 because
+        // its deposit secured a second consecutive week, the EUR 30 at the same 1.10 because the run
+        // was still alive while that week ran, and the one after the lapse back at the ordinary rate.
+        assertThat(afterTheLapse.pointsBalance()).isEqualTo(50 + 55 + 33 + 50);
     }
 }

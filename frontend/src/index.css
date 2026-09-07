@@ -654,6 +654,15 @@ body {
   color: var(--ink-soft);
 }
 
+/* What a euro is worth right now, in the ink points are written in everywhere else on the page: it is
+   a statement about points rather than about weeks, and it is the figure a customer is deciding on.
+   The multiplication sign and the figure stay together — a rate with the × on the next line reads as
+   a number with something snapped off it. */
+.streak-rate {
+  color: var(--points);
+  white-space: nowrap;
+}
+
 /* What there is to lose, in the ink the cell's own figures are written in: it is the live figure of
    the two, and the one a deposit this week changes. */
 .streak-now {

@@ -51,6 +51,27 @@ class Deposit {
      */
     private BigDecimal remainingAmount;
 
+    /**
+     * The rate this deposit was paid at, per whole euro.
+     *
+     * <p>History, and the reason it is written down rather than derived. What a run of weeks pays is
+     * worked out from the ledger every time it is asked for, so that a movable clock cannot leave a
+     * counter behind describing a week that is now in the future — but what a deposit <em>was</em>
+     * paid must not move when the ladder changes or when the run it was paid on lapses. The
+     * derivation answers "what is my rate"; this answers "what was this deposit paid".
+     *
+     * <p>Written a moment after the row is inserted rather than in the constructor, because the rate
+     * is the rate of the run that includes this deposit and the run cannot be walked until the
+     * deposit is in the ledger to be walked over.
+     *
+     * <p>Nullable in the database only because a deposit recorded before this column existed has no
+     * value in it. Those were all paid at the ordinary rate, which is what
+     * {@link DepositsService#depositsInto} reports for them — nothing is backfilled, because nothing
+     * sums this column and a null read as the ordinary rate is the same answer a backfill would
+     * write.
+     */
+    private BigDecimal multiplierApplied;
+
     private Instant depositedAt;
 
     protected Deposit() {
@@ -84,6 +105,26 @@ class Deposit {
             throw new IllegalArgumentException("cannot reduce a deposit by more than remains");
         }
         remainingAmount = remainingAmount.subtract(amount);
+    }
+
+    /**
+     * Records the rate this deposit was paid at, once and never again — a deposit's reward cannot
+     * change after the fact.
+     *
+     * @throws IllegalStateException if this deposit has already been priced, which would be a second
+     *                               answer to a question that has one
+     */
+    void paidAt(BigDecimal multiplier) {
+        if (multiplierApplied != null) {
+            throw new IllegalStateException("deposit " + id + " was already paid at "
+                    + multiplierApplied + " and cannot be repriced at " + multiplier);
+        }
+        multiplierApplied = multiplier;
+    }
+
+    /** The rate it was paid at, or nothing at all for a deposit recorded before the column existed. */
+    BigDecimal getMultiplierApplied() {
+        return multiplierApplied;
     }
 
     Instant getDepositedAt() {
