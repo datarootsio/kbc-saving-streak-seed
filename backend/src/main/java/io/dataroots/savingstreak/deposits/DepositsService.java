@@ -206,9 +206,20 @@ public class DepositsService {
      * <p>The deposits rather than a total of them, because what a total means is the caller's rule
      * and not this module's: whoever is asking is the one who knows whether a week is judged on
      * everything that landed in it, and a total handed over would have decided that here.
+     *
+     * @throws IllegalArgumentException if the stretch ends before it begins
      */
     @Transactional(readOnly = true)
     public List<DepositLanded> depositsLandedBetween(long savingsAccountId, Instant from, Instant until) {
+        // A stretch that ends before it begins is a caller that worked its boundaries out wrongly,
+        // and the query would answer it with an empty list — which reads as "nothing landed in that
+        // week" and would have a week silently reporting nothing rather than reporting a fault. Said
+        // out loud instead: nobody types these two moments, so the only way to get here is a bug.
+        if (from.isAfter(until)) {
+            String reason = "a stretch of time runs forwards, and " + from + " is after " + until;
+            log.warn("deposits not counted savingsAccountId={} reason={}", savingsAccountId, reason);
+            throw new IllegalArgumentException(reason);
+        }
         List<DepositLanded> landed = deposits.landedBetween(savingsAccountId, from, until).stream()
                 .map(deposit -> new DepositLanded(
                         deposit.getId(), deposit.getAmount(), deposit.getDepositedAt()))

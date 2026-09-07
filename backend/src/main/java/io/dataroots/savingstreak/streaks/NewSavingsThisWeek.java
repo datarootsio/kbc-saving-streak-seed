@@ -25,8 +25,13 @@ public record NewSavingsThisWeek(SavingsWeek week, BigDecimal newSavings) {
      */
     public static final BigDecimal WEEKLY_MINIMUM = new BigDecimal("50.00");
 
-    /** Euros are quoted to the cent, and a figure that came back off a float has to be put back. */
-    private static final int DECIMAL_PLACES = 2;
+    /**
+     * Euros are quoted to the cent, and a figure that came back off a float has to be put back. Open
+     * to the module rather than to this record alone, so that a sibling writing an amount out — the
+     * log line in {@link StreaksService}, for one — quotes it to the same number of places instead
+     * of restating the figure.
+     */
+    static final int DECIMAL_PLACES = 2;
 
     public NewSavingsThisWeek {
         // To the cent on the way in, because the terms came out of SQLite, which has no decimal type

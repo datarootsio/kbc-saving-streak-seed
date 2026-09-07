@@ -90,7 +90,9 @@ public class StreaksService {
     private static String countedInto(List<DepositLanded> landed) {
         return landed.stream()
                 .map(deposit -> "deposit " + deposit.id()
-                        + " EUR " + deposit.amount().setScale(2, RoundingMode.HALF_UP).toPlainString()
+                        + " EUR " + deposit.amount()
+                                .setScale(NewSavingsThisWeek.DECIMAL_PLACES, RoundingMode.HALF_UP)
+                                .toPlainString()
                         + " at " + deposit.depositedAt()
                         + " (" + deposit.depositedAt().atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN) + ")")
                 .collect(Collectors.joining("; "));
