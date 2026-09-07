@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.clock;
 
 import java.time.Clock;
 
+import io.dataroots.savingstreak.streaks.SavingsWeek;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
@@ -49,11 +50,18 @@ class ClockConfiguration {
      * <p>Twelve-month rules — points expiring, a loyalty bonus vesting — cannot be reached inside a
      * training day against a clock that only moves at the speed of the day, and this is how a trainer
      * reaches them.
+     *
+     * <p>It is handed the zone its whole days are counted in, and that zone is the one the streak
+     * module names: a trainer advances the clock a week in order to see the next week, so the days
+     * the clock moves in have to be the days the weeks are made of. Borrowed from
+     * {@link SavingsWeek} rather than written out again here, because a second copy of
+     * "Europe/Brussels" is a copy that can be changed on its own — and the reading the clock is set
+     * to is still an {@link java.time.Instant} in UTC, which is what every record keeps.
      */
     @Bean
     @Profile("dev")
     MovableClock movableApplicationClock() {
-        return new MovableClock(Clock.systemUTC());
+        return new MovableClock(Clock.systemUTC(), SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN);
     }
 
     /**

@@ -1,7 +1,6 @@
 package io.dataroots.savingstreak.runningajob;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
+import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -163,8 +163,8 @@ class RunningAScheduledJobApiTest extends ApiIntegrationTest {
         Instant realMomentAfter = Instant.now();
 
         assertThat(response.getBody().ranAt())
-                .isAfterOrEqualTo(realMomentBefore.plus(movedForwardByDays, ChronoUnit.DAYS).minusMillis(1))
-                .isBeforeOrEqualTo(realMomentAfter.plus(movedForwardByDays, ChronoUnit.DAYS));
+                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, movedForwardByDays).minusMillis(1))
+                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, movedForwardByDays));
     }
 
     /**

@@ -2,7 +2,6 @@ package io.dataroots.savingstreak.movingtheclock;
 
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
 import io.dataroots.savingstreak.SavingStreakApplication;
@@ -21,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
+import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -93,9 +93,9 @@ class TheClockStaysWhereItWasMovedApiTest extends ApiIntegrationTest {
         assertThat(made.depositedAt())
                 // A moment is kept to the millisecond, so it can sit up to a millisecond below the
                 // real moment this test read just before making it.
-                .isAfterOrEqualTo(realMomentBefore
-                        .plus(DAYS_MOVED_BEFORE_THE_RESTART, ChronoUnit.DAYS).minusMillis(1))
-                .isBeforeOrEqualTo(realMomentAfter.plus(DAYS_MOVED_BEFORE_THE_RESTART, ChronoUnit.DAYS));
+                .isAfterOrEqualTo(
+                        daysOnFrom(realMomentBefore, DAYS_MOVED_BEFORE_THE_RESTART).minusMillis(1))
+                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, DAYS_MOVED_BEFORE_THE_RESTART));
     }
 
     private static ConfigurableApplicationContext startAnApplicationAgainstTheFile() {

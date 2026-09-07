@@ -33,7 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Its own application and its own database, like the other tests that move a clock. Seven days
  * rather than any other number because it lands on the same weekday, so the move is into the next
- * week whichever day of the week the run happens on.
+ * week whichever day of the week the run happens on — and the clock counts those seven as calendar
+ * days in the zone weeks are counted in, so this holds on the two weekends a year that are 167 or
+ * 169 hours long as well.
  */
 class TheWeekMovesWithTheDevelopmentClockApiTest extends ApiIntegrationTest {
 

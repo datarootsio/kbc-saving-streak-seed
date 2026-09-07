@@ -1,7 +1,6 @@
 package io.dataroots.savingstreak.movingtheclock;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
+import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -93,8 +93,8 @@ class MovingTheClockForwardApiTest extends ApiIntegrationTest {
         assertThat(response.getBody().movedForwardByDays()).isEqualTo(standingAt + 30);
         // And it really is a clock that far on, not only a figure reported about one.
         assertThat(response.getBody().now())
-                .isAfterOrEqualTo(realMomentBefore.plus(standingAt + 30, ChronoUnit.DAYS))
-                .isBeforeOrEqualTo(realMomentAfter.plus(standingAt + 30, ChronoUnit.DAYS));
+                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, standingAt + 30))
+                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, standingAt + 30));
     }
 
     /**
@@ -113,11 +113,11 @@ class MovingTheClockForwardApiTest extends ApiIntegrationTest {
         assertThat(made.depositedAt())
                 // A moment is kept to the millisecond, so it can sit up to a millisecond below the
                 // real moment this test read just before making it.
-                .isAfterOrEqualTo(realMomentBefore.plus(movedForwardByDays, ChronoUnit.DAYS).minusMillis(1))
-                .isBeforeOrEqualTo(realMomentAfter.plus(movedForwardByDays, ChronoUnit.DAYS));
+                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, movedForwardByDays).minusMillis(1))
+                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, movedForwardByDays));
         // Which is a moment no machine in this run is at: the point of moving the clock is that the
         // records land somewhere the calendar has not reached.
-        assertThat(made.depositedAt()).isAfter(realMomentAfter.plus(A_YEAR_AND_A_BIT - 1, ChronoUnit.DAYS));
+        assertThat(made.depositedAt()).isAfter(daysOnFrom(realMomentAfter, A_YEAR_AND_A_BIT - 1));
     }
 
     /**
