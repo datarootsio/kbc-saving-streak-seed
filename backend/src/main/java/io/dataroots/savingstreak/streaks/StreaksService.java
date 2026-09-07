@@ -1,7 +1,6 @@
 package io.dataroots.savingstreak.streaks;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -90,9 +89,9 @@ public class StreaksService {
     private static String countedInto(List<DepositLanded> landed) {
         return landed.stream()
                 .map(deposit -> "deposit " + deposit.id()
-                        + " EUR " + deposit.amount()
-                                .setScale(NewSavingsThisWeek.DECIMAL_PLACES, RoundingMode.HALF_UP)
-                                .toPlainString()
+                        // Written out as it arrives: Deposits quotes an amount to the cent on its
+                        // way out of the module, so there is nothing to round here.
+                        + " EUR " + deposit.amount().toPlainString()
                         + " at " + deposit.depositedAt()
                         + " (" + deposit.depositedAt().atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN) + ")")
                 .collect(Collectors.joining("; "));

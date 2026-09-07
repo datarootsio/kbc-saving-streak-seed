@@ -468,21 +468,25 @@ body {
    week beside them is what there is still time to do something about. */
 .balances {
   display: grid;
-  /* One under another, then two with the week across the foot of them, then all three side by side.
-     Sized by how many there are rather than by how many happen to fit: a grid that fits two of three
-     leaves an empty square beside the third, and an empty square in a row of balances reads as a
-     figure that failed to load. */
+  /* Stated in a fixed number of columns at every width rather than in however many happen to fit,
+     because the number of cells is known and three of them do not divide into two: a grid that fits
+     two would leave an empty square beside the third, and an empty square in a row of balances reads
+     as a figure that failed to load. Below the two-column width there is only room for one, which is
+     where a phone held upright ends up. */
   grid-template-columns: 1fr;
   gap: 1px;
   margin: 0;
   background: rgb(var(--line) / 0.14);
 }
 
-/* Two across, with the week beneath them across the whole row. Three columns at these widths are
-   each narrower than a four-digit euro figure — € 2.002,50 is an ordinary balance here — and the
-   cells hide what does not fit, so the page would state a different amount from the one it holds.
-   The two money figures keep exactly the width they had before there was a week to show. */
-@media (min-width: 37.5rem) {
+/* Money and points side by side, with the week beneath them across both. From 24rem because that is
+   where two cells first hold their figures — a little below the width the row used to find room for
+   two, so no screen that had them side by side before there was a week to show has lost them, and
+   the pairing of saving with being rewarded is the point of the row. Three columns here would each
+   be narrower than a four-digit euro figure (€ 2.002,50 is an ordinary balance on these accounts)
+   and the cells hide what does not fit, so the page would state a different amount from the one it
+   holds. */
+@media (min-width: 24rem) {
   .balances {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -493,9 +497,9 @@ body {
 }
 
 /* All three side by side, from the width where a column holds the longest figure this page shows.
-   The figure gives a little as the row narrows towards that width rather than being cut off at it —
-   see the type size below: a figure that is small is still the figure, and a figure that is clipped
-   is a different number. */
+   The figure gives a little as a column narrows rather than being cut off — see the type sizes
+   below: a figure that is small is still the figure, and a figure that is clipped is a different
+   number. */
 @media (min-width: 56rem) {
   .balances {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -547,6 +551,9 @@ body {
   font-weight: 600;
 }
 
+/* The figure's size follows how many cells the row has, and the three rules below are one ladder:
+   a whole row here, half a row from 24rem, a third of one from 56rem. A cell hides what does not
+   fit, so a figure that does not fit is a different number — see the layout rules above. */
 .balances dd {
   margin: 0.3rem 0 0;
   font-size: clamp(1.85rem, 6vw, 2.5rem);
@@ -556,10 +563,19 @@ body {
   line-height: 1.1;
 }
 
-/* A third of the row is the narrowest a figure ever gets, so from the width the three-column rule
-   above starts at, the figure is sized by the room a third leaves rather than by the whole page. It
-   reaches the same 2.5rem as everywhere else by about 1030px and holds it. Written here rather than
-   in that rule because this has to come after the size it is narrowing. */
+/* Two across: sized by the room half a row leaves, which at the narrow end of the band is a good
+   deal less than the size above — € 1.002,50 at 2rem is half again as wide as half of a 400px row.
+   Measured against € 1.002,50, and against € 99.999,00 as a figure this page will never have to
+   show, at 384, 390, 400, 410, 420, 470, 520, 560, 595 and every width up to 1440px: room to spare
+   at each, and the page never scrolls sideways. */
+@media (min-width: 24rem) {
+  .balances dd {
+    font-size: clamp(1.35rem, 5.6vw, 2.5rem);
+  }
+}
+
+/* Three across: sized by the room a third of a row leaves, which is the narrowest a figure ever
+   gets. It reaches the same 2.5rem as everywhere else by about 1030px and holds it. */
 @media (min-width: 56rem) {
   .balances dd {
     font-size: clamp(1.6rem, 3.9vw, 2.5rem);
@@ -1708,10 +1724,6 @@ button.quiet.back svg {
     height: 18rem;
     opacity: 0.16;
     filter: blur(70px);
-  }
-
-  .balances dd {
-    font-size: 2rem;
   }
 
   .deposit button {

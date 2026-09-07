@@ -58,6 +58,15 @@ final class AmountOfMoney {
      * it.
      */
     static String asMoney(BigDecimal amount) {
-        return amount.setScale(DECIMAL_PLACES, RoundingMode.HALF_UP).toPlainString();
+        return quotedToTheCent(amount).toPlainString();
+    }
+
+    /**
+     * The same amount as a figure rather than as words, for a caller handing one to another module
+     * to print or to add up. The rounding lives here alone: two places that decided how many places
+     * money has could decide differently.
+     */
+    static BigDecimal quotedToTheCent(BigDecimal amount) {
+        return amount.setScale(DECIMAL_PLACES, RoundingMode.HALF_UP);
     }
 }

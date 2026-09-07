@@ -69,16 +69,20 @@ public class ClockService {
         clock.moveForwardTo(movedForwardByDays);
 
         Instant now = clock.instant();
-        log.info("clock advanced byDays={} movedForwardByDays={} wasReading={} nowReading={}",
-                days, movedForwardByDays, wasReading, now);
+        // The span as well as the days, because they are not the same statement: seven days are 169
+        // hours in the week the clocks go back, and this is where a reader sees which week they are
+        // in without subtracting two readings by hand.
+        log.info("clock advanced byDays={} movedForwardByDays={} movedForwardBy={} wasReading={} "
+                        + "nowReading={}",
+                days, movedForwardByDays, clock.movedForwardBy(), wasReading, now);
         return new HowFarTheClockHasMoved(movedForwardByDays, now);
     }
 
     /** Where the clock is standing, for somebody mid-exercise who needs to know where in time they are. */
     public HowFarTheClockHasMoved howFarItHasMoved() {
         HowFarTheClockHasMoved moved = new HowFarTheClockHasMoved(clock.movedForwardByDays(), clock.instant());
-        log.debug("clock asked where it is standing movedForwardByDays={} reading={}",
-                moved.movedForwardByDays(), moved.now());
+        log.debug("clock asked where it is standing movedForwardByDays={} movedForwardBy={} reading={}",
+                moved.movedForwardByDays(), clock.movedForwardBy(), moved.now());
         return moved;
     }
 

@@ -20,7 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
-import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
+import static io.dataroots.savingstreak.support.TheMovedClock.earliestReadingOf;
+import static io.dataroots.savingstreak.support.TheMovedClock.latestReadingOf;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -93,9 +94,10 @@ class TheClockStaysWhereItWasMovedApiTest extends ApiIntegrationTest {
         assertThat(made.depositedAt())
                 // A moment is kept to the millisecond, so it can sit up to a millisecond below the
                 // real moment this test read just before making it.
-                .isAfterOrEqualTo(
-                        daysOnFrom(realMomentBefore, DAYS_MOVED_BEFORE_THE_RESTART).minusMillis(1))
-                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, DAYS_MOVED_BEFORE_THE_RESTART));
+                .isAfterOrEqualTo(earliestReadingOf(
+                        realMomentBefore, realMomentAfter, DAYS_MOVED_BEFORE_THE_RESTART).minusMillis(1))
+                .isBeforeOrEqualTo(latestReadingOf(
+                        realMomentBefore, realMomentAfter, DAYS_MOVED_BEFORE_THE_RESTART));
     }
 
     private static ConfigurableApplicationContext startAnApplicationAgainstTheFile() {

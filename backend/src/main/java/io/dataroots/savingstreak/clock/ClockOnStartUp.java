@@ -61,7 +61,10 @@ class ClockOnStartUp implements SmartInitializingSingleton {
             return;
         }
         clock.moveForwardTo(movedForwardByDays);
-        log.info("clock put back where it was left movedForwardByDays={} reading={}",
-                movedForwardByDays, clock.instant());
+        // With the span the days came to through the calendar, worked out afresh against the real
+        // moment this application started at: the same number of days is an hour more or less
+        // depending on which clock changes it now spans.
+        log.info("clock put back where it was left movedForwardByDays={} movedForwardBy={} reading={}",
+                movedForwardByDays, clock.movedForwardBy(), clock.instant());
     }
 }

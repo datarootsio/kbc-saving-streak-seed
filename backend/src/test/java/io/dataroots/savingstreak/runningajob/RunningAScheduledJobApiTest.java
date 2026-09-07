@@ -23,7 +23,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
-import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
+import static io.dataroots.savingstreak.support.TheMovedClock.earliestReadingOf;
+import static io.dataroots.savingstreak.support.TheMovedClock.latestReadingOf;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -163,8 +164,9 @@ class RunningAScheduledJobApiTest extends ApiIntegrationTest {
         Instant realMomentAfter = Instant.now();
 
         assertThat(response.getBody().ranAt())
-                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, movedForwardByDays).minusMillis(1))
-                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, movedForwardByDays));
+                .isAfterOrEqualTo(earliestReadingOf(realMomentBefore, realMomentAfter, movedForwardByDays)
+                        .minusMillis(1))
+                .isBeforeOrEqualTo(latestReadingOf(realMomentBefore, realMomentAfter, movedForwardByDays));
     }
 
     /**

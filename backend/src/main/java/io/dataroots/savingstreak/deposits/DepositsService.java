@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import static io.dataroots.savingstreak.deposits.AmountOfMoney.asMoney;
+import static io.dataroots.savingstreak.deposits.AmountOfMoney.quotedToTheCent;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.AGAINST_THE_RULES;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NOT_ENOUGH_MONEY;
 import static io.dataroots.savingstreak.deposits.DepositRefused.Kind.NO_SUCH_ACCOUNT;
@@ -221,8 +222,12 @@ public class DepositsService {
             throw new IllegalArgumentException(reason);
         }
         List<DepositLanded> landed = deposits.landedBetween(savingsAccountId, from, until).stream()
+                // Quoted to the cent here, once, because this is where the amount leaves the module:
+                // SQLite has no decimal type and hands EUR 12.50 back as 12.5, and a caller adding
+                // those up or writing them into a log line would either restate the rounding or
+                // print a figure that does not read as money.
                 .map(deposit -> new DepositLanded(
-                        deposit.getId(), deposit.getAmount(), deposit.getDepositedAt()))
+                        deposit.getId(), quotedToTheCent(deposit.getAmount()), deposit.getDepositedAt()))
                 .toList();
         // The stretch that was asked about and how many deposits were in it, so that a caller's own
         // figure can be checked against the deposits this module handed it. The deposits themselves

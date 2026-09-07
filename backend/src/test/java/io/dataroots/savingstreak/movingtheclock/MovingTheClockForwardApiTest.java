@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.movingtheclock;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 
@@ -21,7 +22,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.util.DefaultUriBuilderFactory;
 
 import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
-import static io.dataroots.savingstreak.support.TheMovedClock.daysOnFrom;
+import static io.dataroots.savingstreak.support.TheMovedClock.earliestReadingOf;
+import static io.dataroots.savingstreak.support.TheMovedClock.latestReadingOf;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -93,8 +95,8 @@ class MovingTheClockForwardApiTest extends ApiIntegrationTest {
         assertThat(response.getBody().movedForwardByDays()).isEqualTo(standingAt + 30);
         // And it really is a clock that far on, not only a figure reported about one.
         assertThat(response.getBody().now())
-                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, standingAt + 30))
-                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, standingAt + 30));
+                .isAfterOrEqualTo(earliestReadingOf(realMomentBefore, realMomentAfter, standingAt + 30))
+                .isBeforeOrEqualTo(latestReadingOf(realMomentBefore, realMomentAfter, standingAt + 30));
     }
 
     /**
@@ -113,11 +115,15 @@ class MovingTheClockForwardApiTest extends ApiIntegrationTest {
         assertThat(made.depositedAt())
                 // A moment is kept to the millisecond, so it can sit up to a millisecond below the
                 // real moment this test read just before making it.
-                .isAfterOrEqualTo(daysOnFrom(realMomentBefore, movedForwardByDays).minusMillis(1))
-                .isBeforeOrEqualTo(daysOnFrom(realMomentAfter, movedForwardByDays));
+                .isAfterOrEqualTo(earliestReadingOf(realMomentBefore, realMomentAfter, movedForwardByDays)
+                        .minusMillis(1))
+                .isBeforeOrEqualTo(latestReadingOf(realMomentBefore, realMomentAfter, movedForwardByDays));
         // Which is a moment no machine in this run is at: the point of moving the clock is that the
-        // records land somewhere the calendar has not reached.
-        assertThat(made.depositedAt()).isAfter(daysOnFrom(realMomentAfter, A_YEAR_AND_A_BIT - 1));
+        // records land somewhere the calendar has not reached. A day short of the move and counted
+        // as a fixed span, so that this bound holds whichever side of a clock change the calendar
+        // move came out on — the assertion above is the one that says where the clock is precisely.
+        assertThat(made.depositedAt())
+                .isAfter(realMomentAfter.plus(Duration.ofDays(A_YEAR_AND_A_BIT - 1)));
     }
 
     /**

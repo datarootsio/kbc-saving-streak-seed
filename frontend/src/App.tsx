@@ -662,7 +662,10 @@ function SavingsAccountPage({
           <div>
             <Waiting label="" bars={['4rem', '8rem']} />
           </div>
-          <div>
+          {/* The week's own class, so the third cell spans the row while it is loading exactly as it
+              does once it has loaded. Without it the row is three cells in a two-column grid and the
+              square beside the third one stays empty, which reads as a balance that failed. */}
+          <div className="week">
             <Waiting label="" bars={['4rem', '8rem']} />
           </div>
         </div>
