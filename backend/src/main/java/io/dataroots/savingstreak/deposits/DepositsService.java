@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
+import io.dataroots.savingstreak.points.PointsByReason;
 import io.dataroots.savingstreak.points.PointsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,12 +86,15 @@ public class DepositsService {
         // balance up by hand needs to see it recorded rather than assume it.
         log.debug("deposit records what remains of it depositId={} amount={} remainingAmount={}",
                 deposit.getId(), asMoney(deposit.getAmount()), asMoney(deposit.getRemainingAmount()));
-        long pointsEarned = points.creditBasePointsFor(savingsAccountId, deposit.getId(), amount, now);
+        PointsByReason credited = points.creditPointsFor(savingsAccountId, deposit.getId(), amount, now);
+        // The breakdown as well as the total, so that a reader can see what the total is made of
+        // rather than having to trust that base accrual is still all there is to it.
         log.info("deposit accepted depositId={} savingsAccountId={} fromCurrentAccountId={} "
-                        + "amount={} pointsEarned={} depositedAt={}",
+                        + "amount={} pointsEarned={} pointsByReason={} depositedAt={}",
                 deposit.getId(), savingsAccountId, fromCurrentAccountId, asMoney(amount),
-                pointsEarned, deposit.getDepositedAt());
-        return new RecordedDeposit(deposit.getId(), deposit.getAmount(), pointsEarned, deposit.getDepositedAt());
+                credited.total(), credited.points(), deposit.getDepositedAt());
+        return new RecordedDeposit(
+                deposit.getId(), deposit.getAmount(), credited.total(), deposit.getDepositedAt());
     }
 
     /**
@@ -167,17 +171,21 @@ public class DepositsService {
      * <p>What each one earned is asked of the Points module rather than kept here, for the same
      * reason the deposit itself does not record it: the two are one event, and one of them owning
      * the answer is what stops them from ever disagreeing.
+     *
+     * <p>The ledger answers with a breakdown by reason and what is reported is its total, which is
+     * every point the deposit earned however it earned it. A deposit the ledger has never heard of
+     * earned nothing, which is the figure a deposit whose euros floored away earned as well.
      */
     @Transactional(readOnly = true)
     public List<RecordedDeposit> depositsInto(long savingsAccountId) {
         List<Deposit> made = deposits.findBySavingsAccountIdOrderByDepositedAtDescIdDesc(savingsAccountId);
-        Map<Long, Long> pointsEarned =
-                points.basePointsEarnedBy(made.stream().map(Deposit::getId).toList());
+        Map<Long, PointsByReason> pointsEarned =
+                points.pointsEarnedBy(made.stream().map(Deposit::getId).toList());
         return made.stream()
                 .map(deposit -> new RecordedDeposit(
                         deposit.getId(),
                         deposit.getAmount(),
-                        pointsEarned.getOrDefault(deposit.getId(), 0L),
+                        pointsEarned.getOrDefault(deposit.getId(), PointsByReason.nothing()).total(),
                         deposit.getDepositedAt()))
                 .toList();
     }
