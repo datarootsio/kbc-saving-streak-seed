@@ -16,7 +16,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
@@ -26,7 +26,7 @@ derived from the deposit records on read — there is no stored weekly total to 
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
 - [x] The €50 weekly minimum exists as a single named constant, not as a literal at each place it is compared against.
-- [ ] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
+- [x] The savings account page shows the week's progress towards €50 beside the money and points balances, formatted the way money already is on that page.
 - [x] DEBUG logging shows the week boundaries the derivation used, in the zone it used, and the deposits it counted into the week.
 - [x] Points earned by a deposit are unchanged: one per whole euro.
 
@@ -980,3 +980,84 @@ Everything below I exercised myself on this attempt, against the running applica
   `pageerror`**; the only `console:error` is the deliberate 400; the five `net::ERR_ABORTED` entries
   are the page's pre-existing StrictMode `AbortController` cleanup. Vite's log holds only its
   start-up banner — no transform errors.
+
+## Response to the review - attempt 5
+
+Both findings are fixed. Nothing in "What is already right and should not be reworked" was touched:
+the derivation, the zone, the boundaries, gross counting, the single constant, the DEBUG line, the
+per-move span, the restart fix, the two-then-three column layout and the loading row are all as
+attempt 4 left them, and the clock's own arithmetic is untouched.
+
+1. **The three parts of the week cell are now one statement, on every frame.** The whole cell is
+   drawn from the figure the rise is currently showing rather than the figure it is heading for:
+   `Rising`'s `format` may now return a whole piece of the screen (its return type widened from
+   `string` to `ReactNode`), and `ThisWeek` takes that shown figure and the weekly minimum and draws
+   the amount, "of € 50,00", the bar and the sentence from it. What the week still asks for is the
+   gap up to the minimum — the same subtraction the backend publishes as `stillNeededThisWeek`,
+   taken against the figure actually on the screen, and equal to the backend's figure once the rise
+   has arrived (checked: the cell settles on `€ 12,34 / € 37,66 more to go` against the resource's
+   `newSavingsThisWeek: 12.34, stillNeededThisWeek: 37.66`).
+
+   `.week-bar i`'s `transition: width 0.6s` had to go with it, and that is deliberate: the width is
+   now redrawn every frame from the same figure, so a transition would leave the bar trailing a
+   length the figure had stopped showing — the same contradiction from the other side. The reason is
+   written above the rule.
+
+   Measured the way the review asked, but per animation frame rather than every 100 ms: a recorder
+   installed before the page loads (`page.add_init_script`) samples the figure, the note, the bar's
+   class and its width on every `requestAnimationFrame` and the run then checks each frame for
+   agreement — the sentence and the bar's fullness against whether the figure has reached the
+   minimum, the bar's width against the figure's share of the minimum (±1%), and, below the minimum,
+   that figure + "more to go" adds up to € 50,00. **332 frames across five scenarios, 0 of them
+   contradicting**: a load of a week over the minimum (65 frames), the crossing deposit the review
+   reproduced (104), a load of a week the clock had just reset (48+52) and a load of a part-way week
+   (63). The crossing frames read `€ 45,56 / € 4,44 more to go / w=91.13%`, then
+   `€ 49,63 / € 0,37 more to go / w=99.25%`, then `€ 54,89 / the week has what it asks for /
+   week-bar full w=100%` — the words change on the frame the figure crosses, not before it. A 100 ms
+   sampling of the same deposit is in `…app.5.anim.log` above the frame counts.
+
+   The negative first frame the review noted in the same component is gone too, since the week cell
+   now inherits it: `through` is clamped at zero, because a frame's timestamp can precede the moment
+   the effect read. No frame in any of the runs showed a negative figure.
+
+2. **A dev database written before the span was recorded keeps its position.** A row that says how
+   many days but not what they came to is filled in rather than refused, with the fixed 86 400
+   seconds a day — which is not an approximation: the build that wrote such a row read
+   `realClock.instant().plus(days, DAYS)`, so that is exactly the span it was adding, put back to the
+   second. It is then written into the row, so a row is short of its span once and never again. The
+   `[23h, 25h] × days` check still applies to it (24 h a day passes), and a hand-edited span is
+   refused exactly as before, word for word.
+
+   Why this rather than the refusal, out loud in three javadocs (`ClockOnStartUp`'s class comment and
+   `putTheClockBack`, plus `whatThoseDaysCameToBeforeSpansWereWrittenDown`, which is the one place the
+   arithmetic lives): refusing costs the days as well, and the next advance counts from
+   `clock.movedForwardByDays()` — a record of a year refused and then "advance seven days" lands the
+   clock 358 days behind records already on the ledger. `ClockOffset`'s field comment and
+   `MovableClock`'s javadoc paragraph about where spans come from now say what the code does.
+
+   `ADatabaseWrittenBeforeTheSpanWasRecordedApiTest` is the test, built the way
+   `ADatabaseWrittenBeforeThisApiTest` builds its older database: an application is started, the
+   clock advanced 10 days, the application stopped, and `moved_forward_by_seconds` dropped from the
+   file. Four tests: the days are put back (10, not 0); a deposit afterwards is dated exactly
+   `Duration.ofDays(10)` on from the real moment; the row is left holding 864 000; and the next
+   advance reaches 17 days with a reading later than both the reading before it and the deposit
+   already written. Refuse the row instead (one line put back) and all four go red.
+
+   Exercised live as well, on a second instance on port 8081 over a throwaway database (logs
+   `…app.5.upgrade.log`, `…app.5.upgraderestart.log`, `…app.5.editedrecord.log`): row `1|10|864000`
+   → column dropped → restart reports
+   `clock position recorded before this release given the span its days came to movedForwardByDays=10
+   movedForwardBy=PT240H` and `clock put back where it was left … reading=2026-09-17T19:21:05Z`
+   against a real clock at `19:21:05Z`; `advance {days:7}` → `movedForwardByDays=17`,
+   `movedForwardBy=PT408H`; the deposit that follows is dated `2026-09-24T19:21:05Z` and the history
+   comes back with it ahead of the `2026-09-17` one. The row then held `17|1468800`. Hand-edited to
+   `7|-604800` it is still refused with
+   `WARN … the record says 7 days came to PT-168H, and no calendar makes that many days anything but
+   PT161H to PT175H`, and the application comes up at the real moment.
+
+3. **The notes.** The negative-first-frame note is fixed (above). The rest are left as reviews 1-4
+   left them: `ThisWeeksNewSavingsApiTest` still runs on the machine's clock, `TheMovedClock`'s
+   window is still a bracket for its endpoints, `ClockConfiguration` still borrows the zone,
+   `NewSavingsThisWeek.week()` is still ticket-03 scaffolding, the deposit-refusal WARN is still out
+   of scope, the reversed-window guard stays untested, and `ClockOnStartUp`'s `[23h, 25h]` bound
+   stays as it is.
