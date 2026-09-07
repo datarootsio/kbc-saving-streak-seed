@@ -38,12 +38,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * writes the span down and the only place that decides a move is allowed. The two ways the span can
  * be set therefore agree by construction — a move computes it and hands the same value to the record
  * and to this clock, and a restart hands back the value that was written down rather than a fresh one
- * ({@link ClockOnStartUp}). A fresh one is the trap: the same number of days worked out against a
- * different real moment is an hour shorter on the far side of a clock change, and an hour shorter is
- * a rewind. The one span that comes from neither is the one for a record written before spans were
- * written down, and it is not a fresh calendar answer either — it is the fixed 86 400 seconds a day
- * that the build which wrote that record was adding, so it too is a span some application really
- * stood at. All this class enforces is that a span is not itself backwards.
+ * ({@link ClockOnStartUp}). A fresh one is the trap, and it is a trap on both paths: the same number
+ * of days worked out against a different real moment is an hour shorter on the far side of a clock
+ * change, and an hour shorter is a rewind on the restart path and a week that fails to reset on the
+ * move path. So a span is never worked out from scratch for a total — a move adds to the span it is
+ * standing at what the days asked for come to from the moment it is reading (see
+ * {@link #howFarForwardThatManyMoreDaysIs}), and a restart puts back what was written. The one span
+ * that comes from neither is the one for a record written before spans were written down, and it is
+ * not a fresh calendar answer either — it is the fixed 86 400 seconds a day that the build which
+ * wrote that record was adding, so it too is a span some application really stood at. All this class
+ * enforces is that a span is not itself backwards.
  *
  * <p>How far it has moved lives in memory, so that reading the time costs nothing — every deposit
  * and every claim reads it. What survives a restart is written down separately, by
@@ -120,24 +124,48 @@ final class MovableClock extends Clock {
     }
 
     /**
-     * What that many whole days comes to as a span, counted through the calendar from where the real
-     * clock is standing at this moment.
+     * The span this clock will stand at once it has moved that many more whole days on: the span it
+     * is standing at now, plus what that many days come to counted through the calendar from the
+     * moment it is now <em>reading</em>.
      *
-     * <p>Asked here because this is the object that knows both the real clock and the calendar its
-     * days belong to; answered rather than applied, because the span has to be written down before
-     * the clock is moved to it — see {@link ClockService}. Reading it and moving to it are two calls
-     * so that one value serves both the record and the clock, and a restart therefore has the span
-     * the running application was using rather than one it works out again for itself.
+     * <p>An increment on where the clock is, and not the whole span worked out afresh for the new
+     * total number of days, because the calendar answer depends on the moment it is counted from and
+     * that moment moves. Worked out afresh, a move forward is
+     * {@code calendar(realNow, total) − calendar(realWhenLastMoved, previousTotal)}, which is the
+     * days asked for only while real time has not crossed a clock change since the previous move —
+     * and {@link ClockService} writes its position down, so coming back a fortnight later and
+     * advancing again is the ordinary way to use this. Across an autumn change that difference is an
+     * hour short: "advance seven days" moves the clock 167 hours, and a trainer standing half an hour
+     * into a Monday is put at 23:30 on the Sunday of the week they were already in — the week not
+     * resetting, which is the one thing counting days through a calendar exists to prevent. Counted
+     * from the reading, each move is that many calendar days of the clock's own calendar, whatever
+     * real time did in between.
+     *
+     * <p>Still monotone, which is the other promise: the span only ever grows, because a day counted
+     * through this calendar is at least twenty-three hours. And still one span for one move — the
+     * calendar is consulted once here, and the answer serves both the record and the clock.
+     *
+     * <p>Asked here because this is the object that knows the real clock, the span it is standing at
+     * and the calendar its days belong to; answered rather than applied, because the span has to be
+     * written down before the clock is moved to it — see {@link ClockService}. Reading it and moving
+     * to it are two calls so that one value serves both the record and the clock, and a restart
+     * therefore has the span the running application was using rather than one it works out again
+     * for itself.
      */
-    Duration howFarForwardThatManyDaysIs(long days) {
+    Duration howFarForwardThatManyMoreDaysIs(long days) {
+        // One read of the position, so that the span the increment is added to is the same span the
+        // reading it is counted from was made of. ClockService is synchronised and is the only
+        // mover, so nothing shifts underneath this; taking it once means a later reader does not
+        // have to check that.
+        HowFarForward standingAt = movedForward.get();
         if (days == 0) {
-            return Duration.ZERO;
+            return standingAt.by();
         }
-        Instant realMomentNow = realClock.instant();
-        Instant thatManyDaysOn = realMomentNow.atZone(daysAreCountedIn)
+        Instant reading = realClock.instant().plus(standingAt.by());
+        Instant thatManyDaysOn = reading.atZone(daysAreCountedIn)
                 .plusDays(days)
                 .toInstant();
-        return Duration.between(realMomentNow, thatManyDaysOn);
+        return standingAt.by().plus(Duration.between(reading, thatManyDaysOn));
     }
 
     /**

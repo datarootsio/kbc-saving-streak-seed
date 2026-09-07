@@ -51,6 +51,17 @@ class ClockOnStartUp implements SmartInitializingSingleton {
      * twenty-five, so a span outside this range for that many days is not one any calendar produced —
      * and since only this pair bounds how far a record can put the clock, the cap in days is what
      * bounds the span too.
+     *
+     * <p>What it bounds is an accumulated span, not a single calendar answer: a recorded span is the
+     * sum of one increment per advance, each of them that advance's days counted through the calendar
+     * from where the clock was then standing. That is still inside the bound, and for the same reason
+     * — in a zone whose clock changes are an hour, an increment of {@code d} days is between
+     * {@code 24d − 1} and {@code 24d + 1} hours, and a move is at least a day, so across a recorded
+     * total of {@code D} days there are at most {@code D} of those hours to gain or lose and the sum
+     * stays between {@code 23D} and {@code 25D}. Said here rather than left to be rediscovered by
+     * whoever next reads the check and expects one calendar span. A zone with a two-hour transition
+     * would break it, which is the note {@code SavingsWeek} carries about being the one place the
+     * zone is chosen.
      */
     private static final Duration SHORTEST_A_CALENDAR_DAY_GETS = Duration.ofHours(23);
     private static final Duration LONGEST_A_CALENDAR_DAY_GETS = Duration.ofHours(25);

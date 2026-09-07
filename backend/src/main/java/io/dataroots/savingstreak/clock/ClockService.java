@@ -56,19 +56,40 @@ public class ClockService {
      */
     public synchronized HowFarTheClockHasMoved advanceBy(long days) {
         long alreadyMovedBy = clock.movedForwardByDays();
+        Duration alreadyMovedByASpanOf = clock.movedForwardBy();
         Instant wasReading = clock.instant();
         // The figures the decision below is made of, so that a reader of the log can work out the
-        // new position by hand rather than take the reported one on trust.
-        log.debug("clock asked to advance days={} alreadyMovedByDays={} reading={}",
-                days, alreadyMovedBy, wasReading);
+        // new position by hand rather than take the reported one on trust. The span as well as the
+        // days, because the days asked for are counted on from the reading and the reading is the
+        // real moment plus that span.
+        log.debug("clock asked to advance days={} alreadyMovedByDays={} alreadyMovedBy={} reading={}",
+                days, alreadyMovedBy, alreadyMovedByASpanOf, wasReading);
         refuseUnlessAMoveForward(days, alreadyMovedBy);
 
         long movedForwardByDays = alreadyMovedBy + days;
         // The calendar is read once, here, and the one span it gives goes to both the record and the
-        // clock. Two reads would be two answers: the same number of days worked out against a real
-        // moment on the other side of a clock change is an hour shorter, and the record's job is to
-        // hand a restart the span this application is about to start using, not a plausible one.
-        Duration movedForwardBy = clock.howFarForwardThatManyDaysIs(movedForwardByDays);
+        // clock. Two reads would be two answers, because a calendar answer depends on the moment it
+        // is counted from — and the record's job is to hand a restart the span this application is
+        // about to start using, not a plausible one.
+        //
+        // What is counted is the days asked for now, on from where the clock is standing, and the
+        // answer is added to the span it is standing on. Not the new total counted from the real
+        // moment: those differ once real time has crossed a clock change since the previous move,
+        // which a position that survives a restart makes ordinary — advance in October, come back in
+        // November, advance again, and the total worked out afresh is an hour short of seven days on
+        // from the reading. An hour short is the trainer pressing the button for the next week and
+        // being shown the week they were already in, which is the whole reason these days go through
+        // a calendar at all.
+        Duration movedForwardBy = clock.howFarForwardThatManyMoreDaysIs(days);
+        // What the calendar said, on its own rather than buried in a total: this is the span the
+        // days asked for came to from where the clock was reading, and it is the figure that says
+        // whether this move really was that many calendar days. A reader who only had the totals
+        // would have to subtract two of them, and the whole defect this guards against is a total
+        // that is not the previous total plus a calendar span.
+        log.debug("clock move counted through the calendar from the reading days={} reading={} "
+                        + "thisMoveAdds={} alreadyMovedBy={} movedForwardBy={}",
+                days, wasReading, movedForwardBy.minus(alreadyMovedByASpanOf),
+                alreadyMovedByASpanOf, movedForwardBy);
         // Written down before the running clock is moved, and by a call that commits on its own: if
         // the record cannot be kept, the clock has not moved, and an application that came back up
         // would not disagree with the one that went down. The other order would leave a restart
