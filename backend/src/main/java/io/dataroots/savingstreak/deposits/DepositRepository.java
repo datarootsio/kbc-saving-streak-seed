@@ -1,10 +1,12 @@
 package io.dataroots.savingstreak.deposits;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Package-private: the rest of the application goes through {@link DepositsService}. */
@@ -20,6 +22,27 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
 
     /** Oldest first, with the identifier settling ties at the millisecond the application records. */
     List<Deposit> findBySavingsAccountIdOrderByDepositedAtAscIdAsc(long savingsAccountId);
+
+    /**
+     * The deposits that landed in a stretch of time, oldest first, with the identifier settling ties
+     * at the millisecond the application records.
+     *
+     * <p>Half-open — from the first moment inclusive, to the last exclusive — so that two adjacent
+     * stretches agree about which of them owns the moment between them. A deposit on the stroke of
+     * Monday belongs to the week beginning and not to both, and a closed interval on either side
+     * would count it twice or not at all depending on which end was asked first.
+     *
+     * <p>Written out rather than derived from the method name: the name that says this reads
+     * {@code findBySavingsAccountIdAndDepositedAtGreaterThanEqualAndDepositedAtLessThanOrderBy...},
+     * which is a sentence nobody can check against the query it stands for.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.savingsAccountId = :savingsAccountId "
+            + "and deposit.depositedAt >= :from and deposit.depositedAt < :until "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> landedBetween(@Param("savingsAccountId") long savingsAccountId,
+                                @Param("from") Instant from,
+                                @Param("until") Instant until);
 
     /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many

@@ -105,14 +105,24 @@ export async function fetchAccounts(
 }
 
 /**
- * A savings account and what it is worth. Both figures are derived by the backend on every read and
- * arrive here as JSON numbers: this page formats them and never works either one out for itself.
+ * A savings account and what it is worth, plus how far into this week's saving it has got. Every
+ * figure is derived by the backend on every read and arrives here as a JSON number: this page
+ * formats them and never works any of them out for itself.
+ *
+ * <p>What the week asks for comes down with the progress towards it. The €50 a week costs is the
+ * backend's figure and is named in one place there; a page that wrote it into its own markup would
+ * be the second place it lived, and the two would be one repricing away from disagreeing.
  */
 export type SavingsAccountBalances = {
   id: number
   customerName: string
   moneyBalance: number
   pointsBalance: number
+  /** Gross new saving that has landed since Monday, counted in the backend's own timezone. */
+  newSavingsThisWeek: number
+  weeklyMinimum: number
+  /** What the week still asks for, and never below zero. */
+  stillNeededThisWeek: number
 }
 
 export type RecordedDeposit = {

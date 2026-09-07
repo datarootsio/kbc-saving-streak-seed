@@ -464,13 +464,24 @@ body {
   font-size: 0.82rem;
 }
 
-/* The two balances, side by side: the connection between saving and being rewarded is the point. */
+/* The balances side by side: the connection between saving and being rewarded is the point, and the
+   week beside them is what there is still time to do something about. */
 .balances {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  /* One under another until all three fit side by side, and then all three at once. Sized by how
+     many there are rather than by how many happen to fit: a grid that fits two of three leaves an
+     empty square beside the third, and an empty square in a row of balances reads as a figure that
+     failed to load. */
+  grid-template-columns: 1fr;
   gap: 1px;
   margin: 0;
   background: rgb(var(--line) / 0.14);
+}
+
+@media (min-width: 37.5rem) {
+  .balances {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .balances > div {
@@ -480,10 +491,11 @@ body {
   overflow: hidden;
 }
 
-/* A rule in the figure's own colour along the top of it, so which of the two you are reading is
+/* A rule in the figure's own colour along the top of it, so which of the three you are reading is
    answered before the words are. */
 .saved::before,
-.earned::before {
+.earned::before,
+.week::before {
   content: '';
   position: absolute;
   top: 0;
@@ -498,6 +510,12 @@ body {
 
 .earned::before {
   background: var(--points);
+}
+
+/* The week is money, so it wears the money colour a shade lighter rather than the warm one: points
+   are the only warm thing on these screens and nothing else may borrow that. */
+.week::before {
+  background: var(--brand-soft);
 }
 
 .balances dt {
@@ -523,6 +541,44 @@ body {
 
 .earned dd {
   color: var(--points);
+}
+
+.week dd {
+  color: var(--brand-deep);
+}
+
+/* How far the week has got, as a length. The figure above it and the sentence below it are the
+   answer; this is only how far along it looks. */
+.week-bar {
+  display: block;
+  height: 0.4rem;
+  margin: 0.7rem 0 0;
+  border-radius: var(--radius-pill);
+  background: rgb(var(--line) / 0.12);
+  overflow: hidden;
+}
+
+.week-bar i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  transition: width 0.6s var(--ease);
+}
+
+/* A week that needs nothing more is filled in the deeper blue, so "there" reads differently from
+   "nearly there" without the words changing. */
+.week-bar.full i {
+  background: var(--brand-deep);
+}
+
+.week-note {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-soft);
 }
 
 .balances .unit {

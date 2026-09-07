@@ -662,6 +662,9 @@ function SavingsAccountPage({
           <div>
             <Waiting label="" bars={['4rem', '8rem']} />
           </div>
+          <div>
+            <Waiting label="" bars={['4rem', '8rem']} />
+          </div>
         </div>
       )}
       {account !== null && (
@@ -684,6 +687,18 @@ function SavingsAccountPage({
                 format={(shown) => points.format(Math.round(shown))}
               />
               <span className="unit">points</span>
+            </dd>
+          </div>
+          {/* The week, beside the two totals rather than under them: "saved altogether" is history
+              and "saved since Monday" is the thing there is still time to change. */}
+          <div className={weekMoved(celebrated) ? 'week bumped' : 'week'}>
+            <dt>This week</dt>
+            <dd>
+              <Rising
+                value={account.balances.newSavingsThisWeek}
+                format={(shown) => euros.format(shown)}
+              />
+              <ThisWeek balances={account.balances} />
             </dd>
           </div>
         </dl>
@@ -753,6 +768,48 @@ function SavingsAccountPage({
 /** Deposits and withdrawals move money. Claiming a reward never touches euros. */
 function moneyMoved(celebrated: Celebration | null): boolean {
   return celebrated?.kind === 'deposit' || celebrated?.kind === 'withdrawal'
+}
+
+/**
+ * Whether the week's progress changed. Only a deposit adds to it: a withdrawal takes money back out
+ * without un-happening the deposit it came from, so the week is where it was and flashing it would
+ * say the money had been taken off the week as well as out of the account.
+ */
+function weekMoved(celebrated: Celebration | null): boolean {
+  return celebrated?.kind === 'deposit'
+}
+
+/**
+ * What the week the account is part-way through still asks for: the amount, a bar for the same thing
+ * at a glance, and what is left to find said in words.
+ *
+ * <p>Every figure is the backend's, including the €50 — it comes down with the account, so this page
+ * never names it and a repricing needs no change here. The bar's width is the only arithmetic on the
+ * screen, and it is a length rather than a figure: the amounts either side of it are the answer, and
+ * a bar is how far along it looks.
+ *
+ * <p>The bar is hidden from a screen reader because the sentence under it says the same thing in
+ * words, and hearing the same fact twice is worse than hearing it once.
+ */
+function ThisWeek({ balances }: { balances: SavingsAccountBalances }) {
+  const asksForNoMore = balances.stillNeededThisWeek <= 0
+  const howFarAlong =
+    balances.weeklyMinimum <= 0
+      ? 100
+      : Math.min(100, Math.max(0, (balances.newSavingsThisWeek / balances.weeklyMinimum) * 100))
+  return (
+    <>
+      <span className="unit">of {euros.format(balances.weeklyMinimum)}</span>
+      <span className={asksForNoMore ? 'week-bar full' : 'week-bar'} aria-hidden="true">
+        <i style={{ width: `${howFarAlong}%` }} />
+      </span>
+      <span className="week-note">
+        {asksForNoMore
+          ? 'the week has what it asks for'
+          : `${euros.format(balances.stillNeededThisWeek)} more to go`}
+      </span>
+    </>
+  )
 }
 
 /**

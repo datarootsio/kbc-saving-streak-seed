@@ -9,6 +9,7 @@ import io.dataroots.savingstreak.deposits.WithdrawalsService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
+import io.dataroots.savingstreak.streaks.StreaksService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,10 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * A savings account, its two balances, the deposits made into it and the rewards claimed out of it.
  *
- * <p>The balances come from three modules that do not know about each other — who owns the account,
- * what has been paid into it, and what that earned — and are assembled here. Assembling an answer is
- * not a rule: no decision about money, points or rewards is taken in this class.
+ * <p>The figures come from four modules that do not know about each other — who owns the account,
+ * what has been paid into it, what that earned, and how far into this week's saving it is — and are
+ * assembled here. Assembling an answer is not a rule: no decision about money, points, rewards or
+ * weeks is taken in this class.
  */
 @RestController
 @RequestMapping("/api/savings-accounts")
@@ -39,26 +41,30 @@ class SavingsAccountController {
     private final WithdrawalsService withdrawals;
     private final PointsService points;
     private final RewardsService rewards;
+    private final StreaksService streaks;
 
     SavingsAccountController(AccountsService accounts, DepositsService deposits, WithdrawalsService withdrawals,
                              PointsService points,
-                             RewardsService rewards) {
+                             RewardsService rewards,
+                             StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.withdrawals = withdrawals;
         this.points = points;
         this.rewards = rewards;
+        this.streaks = streaks;
     }
 
     @GetMapping("/{savingsAccountId}")
     SavingsAccountResponse savingsAccount(@PathVariable long savingsAccountId) {
         String owner = accounts.ownerNameOfSavingsAccount(savingsAccountId)
                 .orElseThrow(() -> noSuchSavingsAccount(savingsAccountId));
-        return new SavingsAccountResponse(
+        return SavingsAccountResponse.of(
                 savingsAccountId,
                 owner,
                 deposits.moneyBalanceOf(savingsAccountId),
-                points.balanceOf(savingsAccountId));
+                points.balanceOf(savingsAccountId),
+                streaks.newSavingsThisWeekIn(savingsAccountId));
     }
 
     @GetMapping("/{savingsAccountId}/deposits")

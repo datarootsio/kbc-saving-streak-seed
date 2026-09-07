@@ -191,6 +191,38 @@ public class DepositsService {
     }
 
     /**
+     * The deposits that landed in this savings account inside a stretch of time, oldest first.
+     *
+     * <p>The stretch is half-open — the first moment counts, the last does not — so that whoever
+     * splits time into adjacent stretches gets each deposit in exactly one of them. A caller
+     * counting calendar weeks is the reason this exists, and a deposit made on the stroke of Monday
+     * has to fall in one week rather than in both or in neither.
+     *
+     * <p>What landed rather than what is left: {@link DepositLanded} carries the amount that was
+     * paid in, and a withdrawal since then has not changed it. This module keeps both figures and a
+     * caller asking what came in during a stretch of time is asking for the first — the second is
+     * {@link #moneyBalanceOf}, which answers about the account rather than about a stretch of time.
+     *
+     * <p>The deposits rather than a total of them, because what a total means is the caller's rule
+     * and not this module's: whoever is asking is the one who knows whether a week is judged on
+     * everything that landed in it, and a total handed over would have decided that here.
+     */
+    @Transactional(readOnly = true)
+    public List<DepositLanded> depositsLandedBetween(long savingsAccountId, Instant from, Instant until) {
+        List<DepositLanded> landed = deposits.landedBetween(savingsAccountId, from, until).stream()
+                .map(deposit -> new DepositLanded(
+                        deposit.getId(), deposit.getAmount(), deposit.getDepositedAt()))
+                .toList();
+        // The stretch that was asked about and how many deposits were in it, so that a caller's own
+        // figure can be checked against the deposits this module handed it. The deposits themselves
+        // are left to whoever asked to log: it knows what it was counting them for, and this runs on
+        // every read of an account.
+        log.debug("deposits that landed in a stretch of time savingsAccountId={} from={} until={} "
+                + "deposits={}", savingsAccountId, from, until, landed.size());
+        return landed;
+    }
+
+    /**
      * What the savings account holds, summed from what remains of the deposits made into it. Derived
      * on every read, so there is no stored figure that could drift away from them.
      *
