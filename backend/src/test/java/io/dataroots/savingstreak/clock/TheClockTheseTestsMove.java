@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.dataroots.savingstreak.streaks.SavingsWeek;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
@@ -26,11 +27,22 @@ import org.springframework.context.annotation.Primary;
  * application scans would quietly give every other application these tests start a clock a test had
  * moved.
  *
- * <p>Shared by the two tests that need it rather than nested in one of them, because the pairing of
+ * <p>Shared by the tests that need it rather than nested in one of them, because the pairing of
  * a movable clock with a real one underneath is the seam itself, and two copies of it could disagree
  * about what they were standing on.
  */
 public final class TheClockTheseTestsMove {
+
+    /**
+     * The property a test starts the application with to say where real time is standing as it comes
+     * up: {@code --the-clock-these-tests-move.stands-at=2026-10-25T21:30:00Z}.
+     *
+     * <p>Needed because putting a moved clock back happens during start-up, before a test holding
+     * the context can reach in and stand the clock anywhere. A test whose question is what a restart
+     * does — and the restart is where an hour can be lost — has to have real time already standing
+     * where it wants it by then.
+     */
+    public static final String WHERE_REAL_TIME_STANDS = "the-clock-these-tests-move.stands-at";
 
     /**
      * The real clock the movable one is built on. Declared as a bean of its own type so that a test
@@ -38,10 +50,12 @@ public final class TheClockTheseTestsMove {
      * for a {@link Clock} and gets the movable one below.
      */
     @Bean
-    ARealClockATestStands theRealClockUnderneath() {
+    ARealClockATestStands theRealClockUnderneath(
+            @Value("${" + WHERE_REAL_TIME_STANDS + ":}") String standsAt) {
         // Where the real one is, until a test says otherwise: an application that came up standing
         // in 2027 before any test had asked it to would be a surprise in the log.
-        return new ARealClockATestStands(Instant.now(), ZoneOffset.UTC);
+        return new ARealClockATestStands(
+                standsAt.isBlank() ? Instant.now() : Instant.parse(standsAt), ZoneOffset.UTC);
     }
 
     /**

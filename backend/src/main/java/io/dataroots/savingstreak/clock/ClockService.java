@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.clock;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import org.slf4j.Logger;
@@ -14,8 +15,10 @@ import org.springframework.stereotype.Service;
  * started without that profile has no way to move time and nothing in it that writes down where time
  * was moved to. Nothing a customer can see reaches this class.
  *
- * <p>Moving the clock is two things — the figure that survives a restart, and the clock the running
- * application actually reads — and this is the only place that knows both.
+ * <p>Moving the clock is two things — the record that survives a restart, and the clock the running
+ * application actually reads — and this is the only place that knows both. It is therefore also the
+ * one place the calendar is consulted about what a number of days comes to, so that the record and
+ * the clock are given the same answer rather than each working one out.
  */
 @Service
 @Profile("dev")
@@ -61,12 +64,17 @@ public class ClockService {
         refuseUnlessAMoveForward(days, alreadyMovedBy);
 
         long movedForwardByDays = alreadyMovedBy + days;
+        // The calendar is read once, here, and the one span it gives goes to both the record and the
+        // clock. Two reads would be two answers: the same number of days worked out against a real
+        // moment on the other side of a clock change is an hour shorter, and the record's job is to
+        // hand a restart the span this application is about to start using, not a plausible one.
+        Duration movedForwardBy = clock.howFarForwardThatManyDaysIs(movedForwardByDays);
         // Written down before the running clock is moved, and by a call that commits on its own: if
         // the record cannot be kept, the clock has not moved, and an application that came back up
         // would not disagree with the one that went down. The other order would leave a restart
         // rewinding a demonstration that had already reported itself moved.
-        offsets.save(new ClockOffset(movedForwardByDays));
-        clock.moveForwardTo(movedForwardByDays);
+        offsets.save(new ClockOffset(movedForwardByDays, movedForwardBy));
+        clock.moveForwardTo(movedForwardByDays, movedForwardBy);
 
         Instant now = clock.instant();
         // The span as well as the days, because they are not the same statement: seven days are 169

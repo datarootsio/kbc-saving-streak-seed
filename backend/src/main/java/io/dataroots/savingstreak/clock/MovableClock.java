@@ -25,17 +25,22 @@ import java.util.concurrent.atomic.AtomicReference;
  * at 23:30 on the Sunday is a trainer pressing the button for the next week and being shown the week
  * they were already in.
  *
- * <p>The calendar is consulted once, when the clock is moved, and what is kept is the span it worked
- * out. Between moves the reading is the real clock plus that fixed span, so it runs at exactly the
- * speed of the real one and can never turn round: consulting the calendar on every reading would,
- * because a local time that lands in the hour a spring clock change skips resolves forward to the
- * far side of the gap and then stops moving until the real clock has crossed it — an hour in which
- * the reading falls back by up to fifty-nine minutes as real time passes. Two deposits made a minute
- * apart would be stamped out of the order they happened in.
+ * <p>So the calendar is consulted once, by whoever is moving the clock, and what this class is handed
+ * and keeps is the span it came to. Between moves a reading is the real clock plus that fixed span,
+ * so it runs at exactly the speed of the real one and cannot turn round. Consulting the calendar on
+ * every reading would turn it round: a local time landing in the hour a spring clock change skips
+ * resolves forward to the far side of the gap and then stops moving until the real clock has crossed
+ * it — an hour in which the reading falls back by up to fifty-nine minutes as real time passes, and
+ * two deposits made a minute apart are stamped out of the order they happened in.
  *
- * <p>Moving it again cannot turn it round either: a move is refused unless it adds at least one more
- * day (see {@link ClockService}), and one calendar day is at least twenty-three hours, so the span
- * only ever grows.
+ * <p>This class holds no opinion about which spans it is given, and that is deliberate: every span it
+ * has ever stood at is worked out in one place, {@link ClockService}, which is also the place that
+ * writes the span down and the only place that decides a move is allowed. The two ways the span can
+ * be set therefore agree by construction — a move computes it and hands the same value to the record
+ * and to this clock, and a restart hands back the value that was written down rather than a fresh one
+ * ({@link ClockOnStartUp}). A fresh one is the trap: the same number of days worked out against a
+ * different real moment is an hour shorter on the far side of a clock change, and an hour shorter is
+ * a rewind. All this class enforces is that a span is not itself backwards.
  *
  * <p>How far it has moved lives in memory, so that reading the time costs nothing — every deposit
  * and every claim reads it. What survives a restart is written down separately, by
@@ -103,23 +108,52 @@ final class MovableClock extends Clock {
 
     /**
      * The span those days came to through the calendar, which is what a reading is actually made of.
-     * For the log: seven days that came to 169 hours are a week containing a clock change, and
-     * without the span a reader has to work that out from two readings.
+     * For the log, and for the record that has to survive a restart: seven days that came to 169
+     * hours are a week containing a clock change, and without the span a reader has to work that out
+     * from two readings.
      */
     Duration movedForwardBy() {
         return movedForward.get().by();
     }
 
     /**
-     * Puts the clock a given number of days ahead of the real one — the total, not a step, because
-     * the total is the figure that is written down and reported back.
+     * What that many whole days comes to as a span, counted through the calendar from where the real
+     * clock is standing at this moment.
      *
-     * <p>This is where the calendar is read: those days become the span between the real moment now
-     * and the moment that many calendar days on from it, and that span is what every later reading
-     * adds.
+     * <p>Asked here because this is the object that knows both the real clock and the calendar its
+     * days belong to; answered rather than applied, because the span has to be written down before
+     * the clock is moved to it — see {@link ClockService}. Reading it and moving to it are two calls
+     * so that one value serves both the record and the clock, and a restart therefore has the span
+     * the running application was using rather than one it works out again for itself.
      */
-    void moveForwardTo(long days) {
-        movedForward.set(HowFarForward.thatMany(days, realClock.instant(), daysAreCountedIn));
+    Duration howFarForwardThatManyDaysIs(long days) {
+        if (days == 0) {
+            return Duration.ZERO;
+        }
+        Instant realMomentNow = realClock.instant();
+        Instant thatManyDaysOn = realMomentNow.atZone(daysAreCountedIn)
+                .plusDays(days)
+                .toInstant();
+        return Duration.between(realMomentNow, thatManyDaysOn);
+    }
+
+    /**
+     * Puts the clock a given number of days ahead of the real one — the total, not a step, because
+     * the total is the figure that is written down and reported back — and the span those days come
+     * to, which is what every later reading adds.
+     *
+     * @throws IllegalArgumentException if that span is backwards, which no reading off this clock
+     *         may be. Nothing in the application asks for one: a move computes the span through the
+     *         calendar and a restart puts back a span that was checked before it was used. It is
+     *         refused here as well because the promise belongs to this class, and a class whose
+     *         central promise is only kept by its callers is one a later caller will break.
+     */
+    void moveForwardTo(long days, Duration by) {
+        if (by.isNegative()) {
+            throw new IllegalArgumentException("the clock cannot be moved by " + by
+                    + ": that is backwards, and this clock only reads forward of the real one");
+        }
+        movedForward.set(new HowFarForward(days, by));
     }
 
     /**
@@ -147,15 +181,5 @@ final class MovableClock extends Clock {
 
         /** A clock nobody has moved, which is the real clock and touches no calendar at all. */
         static final HowFarForward NOT_MOVED = new HowFarForward(0, Duration.ZERO);
-
-        static HowFarForward thatMany(long days, Instant realMomentOfTheMove, ZoneId daysAreCountedIn) {
-            if (days == 0) {
-                return NOT_MOVED;
-            }
-            Instant thatManyDaysOn = realMomentOfTheMove.atZone(daysAreCountedIn)
-                    .plusDays(days)
-                    .toInstant();
-            return new HowFarForward(days, Duration.between(realMomentOfTheMove, thatManyDaysOn));
-        }
     }
 }
