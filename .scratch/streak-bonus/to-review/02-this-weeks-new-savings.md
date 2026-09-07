@@ -16,12 +16,12 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
 - [x] A withdrawal leaves the figure unchanged, however large it is.
-- [ ] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
+- [x] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
 - [x] Advancing the clock backwards restores the earlier week's figure — the derivation reads the ledger and holds no state that could go stale.
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
@@ -697,3 +697,51 @@ Everything below was exercised against the running application on this attempt, 
   entries are the page's pre-existing StrictMode `AbortController` cleanup. Vite's log holds only its
   start-up banner — no transform errors.
 - Three mutations, all reverted, tree clean at the end (`git status --porcelain` empty).
+
+## Response to the review - attempt 4
+
+The one defect is fixed, and nothing in "What is already right" was touched: the derivation, the
+zone, the boundaries, gross counting, the single constant, the logging, the layout, the loading row
+and the hardened tests are all as attempt 3 left them.
+
+1. **The restart puts back the span that was written down, so it cannot come to a shorter one.**
+   `ClockOffset` now carries the span beside the days — the first of the two fixes review 2 and
+   review 3 both named — and `ClockOnStartUp` restores it verbatim; no caller of `moveForwardTo`
+   reads the calendar any more. The calendar is consulted in exactly one place,
+   `ClockService.advanceBy`, and the single `Duration` it comes to is handed to both the record and
+   the running clock, so the two cannot disagree. A reading is therefore the real clock plus a
+   constant on both sides of a restart, which is monotone in the real clock by construction.
+
+   `MovableClock` also refuses a backwards span itself now, rather than trusting its callers with
+   the one promise the class is built on.
+
+   The record is two figures, so a hand-edited one has two more ways to lie, and both are refused
+   with a reason: a row that says how many days but not what they came to (the shape a database
+   written by an older build has after the schema update), and a span that is not what a calendar
+   makes of that many days — which covers a negative one. Both exercised against the running
+   application, see "What I ran".
+
+   `ARestartDoesNotWindTheMovedClockBackApiTest` is the test review 3 asked for, at the moments it
+   named: the real clock is stood on the Tuesday before the last Sunday in October 2026, the clock
+   is advanced a week (169 hours), real time is moved past that Sunday's fall-back with the
+   application up, a deposit is made, and the application is restarted a second later. The reopened
+   clock reads a second on rather than 59 minutes back, and the second deposit comes back after the
+   first. Putting attempt 3's recompute back turns both tests red with
+   `expected: 2026-11-01T23:30:01Z but was: 2026-11-01T22:30:01Z` — the reviewer's hour, to the
+   second. Reverted; tree clean.
+
+   The three comments the review said were misleading now say what the code does:
+   `MovableClock`'s javadoc no longer argues from "a move only ever grows the span" but from "the
+   span is given to this class, and the two places that give it one agree by construction";
+   `ClockOnStartUp`'s says a restart is a pause *because* the span is put back as written, and names
+   what a fresh one would cost; the inline comment that stated the recompute out loud is gone with
+   the recompute.
+
+2. **The note about the loading row.** The first two skeleton cells now carry `saved` and `earned`,
+   the classes they will fill, so all three wear their own coloured rule instead of only the one that
+   needed a class for the grid. Measured at 400/520/640/700/800/900px: three cells, no empty square,
+   `::before` colours `rgb(0, 151, 219)` / `rgb(217, 130, 0)` / `rgb(79, 189, 234)`.
+
+The other notes are left as reviews 1-3 left them: `ClockConfiguration` still borrows the zone,
+`NewSavingsThisWeek.week()` is still ticket-03 scaffolding, the deposit-refusal WARN is out of scope,
+and the reversed-window guard stays untested.
