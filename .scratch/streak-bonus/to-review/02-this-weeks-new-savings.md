@@ -16,12 +16,12 @@ derived from the deposit records on read — there is no stored weekly total to 
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** needs-review
 
 - [x] The savings account resource reports the new savings that have landed in the current week.
 - [x] A deposit raises that figure by its full amount, immediately.
 - [x] A withdrawal leaves the figure unchanged, however large it is.
-- [ ] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
+- [x] Advancing the development clock into the next week returns the figure to zero without any deposit or job having run.
 - [x] Advancing the clock backwards restores the earlier week's figure — the derivation reads the ledger and holds no state that could go stale.
 - [x] A deposit at 23:30 on Sunday, Brussels time, counts towards the week that is ending; one at 00:30 on Monday, Brussels time, counts towards the week beginning — including across a daylight-saving change.
 - [x] Each savings account reports only its own new savings; a deposit into one account does not move the figure on another, including another held by the same customer.
@@ -1321,3 +1321,76 @@ All of this I exercised myself on this attempt, against the running application.
   is the deliberate 400 from the refused `0` deposit; the `net::ERR_ABORTED` entries are the page's
   pre-existing StrictMode `AbortController` cleanup. Vite's log (`…app.5.frontend.log`) holds only
   its start-up banner — no transform errors.
+
+## Response to the review - attempt 6
+
+The one finding is fixed. Nothing in "What is already right and should not be reworked" was
+touched: the derivation, the zone, the boundaries, gross counting, the single constant, the DEBUG
+line, the week cell, the two-then-three column layout, the loading row and the upgrade path are all
+as attempt 5 left them. The change is three files in `clock/` and one new test.
+
+1. **An advance is now an increment on the span the clock is standing at, not a fresh total.**
+   `MovableClock.howFarForwardThatManyDaysIs(total)` — which counted the whole span from
+   `realClock.instant()` — is now `howFarForwardThatManyMoreDaysIs(days)`, which counts the days
+   asked for from the moment the clock is *reading* and adds the answer to the span it is standing
+   on. `ClockService.advanceBy` passes `days` rather than `alreadyMovedBy + days`. That is exactly
+   the fix reviews 2, 3 and 5 named, one level up from where review 3 applied it.
+
+   Everything the earlier reviews said to keep is kept: the calendar is consulted once per move
+   (one call, inside `howFarForwardThatManyMoreDaysIs`), the one `Duration` still goes to both
+   `ClockOffset` and `MovableClock.moveForwardTo`, a restart still puts back what was written, and a
+   reading is still the real clock plus a constant — the span only ever grows, because an increment
+   of `d` days is at least 23`d` hours, so the clock is still monotone. The position is read out of
+   the `AtomicReference` once so that the span the increment is added to is the same span the reading
+   it was counted from was made of.
+
+   As the review asked, `ClockOnStartUp`'s `[23h, 25h] × days` check is now documented as bounding
+   an accumulated span rather than one calendar answer, with the reason it still holds: an increment
+   of `d` days is `24d` hours give or take one, and a move is at least a day, so across `D` recorded
+   days there are at most `D` of those hours to gain or lose and the sum stays in `[23D, 25D]`.
+   Observed: a 169 h move plus a 168 h move records `14|1213200` (PT337H), and a restart on that row
+   is accepted — `clock put back where it was left movedForwardByDays=14 movedForwardBy=PT337H`.
+
+   `MovableClock`'s class javadoc paragraph about where spans come from now says that a fresh answer
+   is a trap on the move path as well as the restart path, and points at the new method.
+
+   A DEBUG line beside the move writes the increment out on its own, so the arithmetic is readable
+   without subtracting two totals:
+   `clock move counted through the calendar from the reading days=7 reading=2026-10-18T19:56:59.868178Z thisMoveAdds=PT169H alreadyMovedBy=PT984H movedForwardBy=PT1153H`.
+   The `clock asked to advance` line carries `alreadyMovedBy=` too, since the reading the days are
+   counted from is the real moment plus that span.
+
+   **Test.** `ASecondWeekOnTheMovedClockIsAlsoACalendarWeekApiTest` (in `weeklysavings/`, beside the
+   one-move test) does what the review specified: real time stood at Friday 2026-10-23 12:00
+   Brussels, `advance {days:7}` (reading Friday 2026-10-30 12:00, span PT169H), real time stood at
+   Sunday 2026-11-01 23:30 Brussels — past the fall-back, with the application up — the reading now
+   Monday 2026-11-09 00:30, a deposit of 30.00 into that week, then `advance {days:7}`. It asserts
+   the reading is Monday 2026-11-16 00:30 Brussels, that the move added exactly 168 h (seven calendar
+   days on from where the clock was reading), that the total is 14 days, and that
+   `newSavingsThisWeek` is back to `0.00` with `stillNeededThisWeek` equal to the minimum — plus that
+   the money, the points and the deposit's own timestamp did not move. **Put the old arithmetic back
+   (both lines) and it is red:** `expected: 2026-11-16T00:30 but was: 2026-11-15T23:30`, which is the
+   review's defect verbatim. Reverted; suite green.
+
+   **Exercised live too.** With real time frozen the two arithmetics are mathematically identical —
+   when real time has not moved, `calendar(realNow, total)` *is* the standing span plus the
+   increment — so the endpoint alone cannot show the difference, which is why the review reproduced
+   it outside the application. What it can show is a clock standing on a span that was not worked out
+   at the current real moment, which is what a restart across a clock change leaves. So: a copy of
+   the throwaway database with `clock_offset` hand-written to `1|7|608400` (7 days that came to 169 h
+   — a span only a fall-back produces, and one this real moment would never compute), started on
+   8081. It came up `clock put back where it was left movedForwardByDays=7 movedForwardBy=PT169H
+   reading=2026-09-14T20:57:16Z` (Monday 22:57 Brussels), a 30.00 deposit read
+   `newSavingsThisWeek: 30.00, stillNeededThisWeek: 20.00`, and `advance {days:7}` reached
+   `{"movedForwardByDays":14,"now":"2026-09-21T20:57:20Z"}` — Monday 2026-09-21 22:57 Brussels, 168 h
+   on, with `thisMoveAdds=PT168H alreadyMovedBy=PT169H movedForwardBy=PT337H` in the log and the
+   account back to `0.00 / 50.00`. On the old arithmetic that move is PT336H, the reading is Sunday
+   2026-09-21 21:57 and the week still reads 30.00. Logs `…app.6.twoadvances.log`,
+   `…app.6.handwrittenspan.log`, `…app.6.restart.log`.
+
+2. **The notes.** Left as reviews 1-5 left them, except the `[23h, 25h]` bound, which review 5 asked
+   to have documented and now is. `NewSavingsThisWeek.week()` is still unread ticket-03 scaffolding,
+   `ClockConfiguration` still borrows the zone from `streaks.SavingsWeek`, deposit refusals still
+   leave no WARN of their own (pre-existing, ticket 01), `ThisWeeksNewSavingsApiTest` still runs on
+   the machine's clock, and the sub-cent frame in the rise is still cosmetic. `.week-bar i` and the
+   page were not touched at all.
