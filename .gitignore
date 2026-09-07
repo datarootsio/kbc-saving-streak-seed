@@ -22,3 +22,7 @@ data/*.db-shm
 # Console logs written by the Playwright CLI when an agent drives the page. Same reason as
 # the run logs above: left untracked, they trip the clean-working-tree gate.
 .playwright-cli/
+
+# Maven output from a run made at the repository root rather than in backend/. Left
+# untracked it trips the clean-working-tree gate that every ticket branch switch needs.
+/target/
