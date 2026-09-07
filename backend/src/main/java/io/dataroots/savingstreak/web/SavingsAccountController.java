@@ -13,6 +13,7 @@ import io.dataroots.savingstreak.streaks.StreaksService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -55,6 +56,13 @@ class SavingsAccountController {
         this.streaks = streaks;
     }
 
+    /**
+     * The four figures in one read transaction, so that they describe the same instant of the
+     * ledger. Each module opens a read of its own otherwise, and a deposit committing between two of
+     * them would have the page state a balance of EUR 0,00 beside a week that has taken EUR 60,00
+     * in — an answer that contradicts itself and that neither module is wrong about.
+     */
+    @Transactional(readOnly = true)
     @GetMapping("/{savingsAccountId}")
     SavingsAccountResponse savingsAccount(@PathVariable long savingsAccountId) {
         String owner = accounts.ownerNameOfSavingsAccount(savingsAccountId)
