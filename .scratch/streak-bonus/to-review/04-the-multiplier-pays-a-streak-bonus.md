@@ -27,22 +27,22 @@ resource and page gain the current multiplier — the rate the next deposit will
 
 **Blocked by:** 01 (points reported by reason) and 03 (streak length and best streak).
 
-**Status:** ready-for-agent
+**Status:** needs-review
 
-- [ ] A deposit made with no live streak earns one point per whole euro, exactly as before.
-- [ ] The deposit that carries a week past €50 is itself paid at the multiplier of the streak that now includes that week.
-- [ ] Deposits made earlier in that same week keep the points they were already paid; nothing is topped up retrospectively.
-- [ ] The second consecutive secured week pays 1.10×, the third 1.20×, the sixth 1.50×.
-- [ ] The seventh and every later consecutive secured week still pays 1.50× and no more.
-- [ ] After a lapse, the first week of the new streak pays 1.00× again.
-- [ ] A deposit below €50 earns points at the current multiplier and does not secure the week on its own.
-- [ ] Points are whole: €7.60 at 1.30× earns 7 base and 2 bonus, and €3 at 1.50× earns 3 base and 1 bonus.
-- [ ] A deposit of less than one euro earns nothing at any multiplier, bonus included.
-- [ ] The points balance rises by the base points plus the bonus points, and the two always sum to the total the deposit reported.
-- [ ] The bonus is credited as its own batch under its own reason; no batch is credited when the uplift is zero.
-- [ ] Spending points still draws from the oldest batch first and treats a bonus batch no differently from a base one.
-- [ ] The deposit response reports base points, streak bonus points, the multiplier applied and the total, and its existing points-earned figure is the total.
-- [ ] The savings account resource and the savings account page report the current multiplier, alongside the streak figures already there.
-- [ ] Withdrawing money takes back neither the base points nor the bonus.
-- [ ] No table is added and no column is dropped or retyped; the new reason is another value in the column that already records why points were earned.
-- [ ] One INFO line per deposit carries the week, the new savings in it, whether this deposit secured it, the streak length, the multiplier, the base points and the bonus points.
+- [x] A deposit made with no live streak earns one point per whole euro, exactly as before.
+- [x] The deposit that carries a week past €50 is itself paid at the multiplier of the streak that now includes that week.
+- [x] Deposits made earlier in that same week keep the points they were already paid; nothing is topped up retrospectively.
+- [x] The second consecutive secured week pays 1.10×, the third 1.20×, the sixth 1.50×.
+- [x] The seventh and every later consecutive secured week still pays 1.50× and no more.
+- [x] After a lapse, the first week of the new streak pays 1.00× again.
+- [x] A deposit below €50 earns points at the current multiplier and does not secure the week on its own.
+- [x] Points are whole: €7.60 at 1.30× earns 7 base and 2 bonus, and €3 at 1.50× earns 3 base and 1 bonus.
+- [x] A deposit of less than one euro earns nothing at any multiplier, bonus included.
+- [x] The points balance rises by the base points plus the bonus points, and the two always sum to the total the deposit reported.
+- [x] The bonus is credited as its own batch under its own reason; no batch is credited when the uplift is zero.
+- [x] Spending points still draws from the oldest batch first and treats a bonus batch no differently from a base one.
+- [x] The deposit response reports base points, streak bonus points, the multiplier applied and the total, and its existing points-earned figure is the total.
+- [x] The savings account resource and the savings account page report the current multiplier, alongside the streak figures already there.
+- [x] Withdrawing money takes back neither the base points nor the bonus.
+- [x] No table is added and no column is dropped or retyped; the new reason is another value in the column that already records why points were earned.
+- [x] One INFO line per deposit carries the week, the new savings in it, whether this deposit secured it, the streak length, the multiplier, the base points and the bonus points.
