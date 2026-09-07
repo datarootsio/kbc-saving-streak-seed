@@ -70,9 +70,9 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
         long currentAccount = seeded.currentAccountOf(ANKE);
         BalancesView before = balancesOf(savingsAccount);
 
-        deposit(savingsAccount, currentAccount, "20.00");
-        deposit(savingsAccount, currentAccount, "0.99");
-        deposit(savingsAccount, currentAccount, "9.01");
+        depositAccepted(savingsAccount, currentAccount, "20.00");
+        depositAccepted(savingsAccount, currentAccount, "0.99");
+        depositAccepted(savingsAccount, currentAccount, "9.01");
 
         assertThat(balancesOf(savingsAccount).newSavingsThisWeek())
                 .isEqualByComparingTo(before.newSavingsThisWeek().add(new BigDecimal("30.00")));
@@ -87,7 +87,7 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     void a_withdrawal_leaves_this_weeks_new_savings_where_it_was() {
         long savingsAccount = seeded.otherSavingsAccountOf(ANKE);
         long currentAccount = seeded.currentAccountOf(ANKE);
-        deposit(savingsAccount, currentAccount, "60.00");
+        depositAccepted(savingsAccount, currentAccount, "60.00");
         BalancesView before = balancesOf(savingsAccount);
 
         ResponseEntity<?> withdrawn = withdraw(savingsAccount, currentAccount, "60.00");
@@ -114,7 +114,7 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
         BalancesView otherBefore = balancesOf(theSameCustomersOther);
         BalancesView elsesBefore = balancesOf(somebodyElses);
 
-        deposit(paidInto, seeded.currentAccountOf(ANKE), "55.00");
+        depositAccepted(paidInto, seeded.currentAccountOf(ANKE), "55.00");
 
         assertThat(balancesOf(theSameCustomersOther).newSavingsThisWeek())
                 .isEqualByComparingTo(otherBefore.newSavingsThisWeek());
@@ -131,11 +131,18 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     void a_week_that_has_taken_in_more_than_it_asks_for_needs_nothing_further() {
         long savingsAccount = seeded.savingsAccountOf(BRAM);
         long currentAccount = seeded.currentAccountOf(BRAM);
+        BalancesView before = balancesOf(savingsAccount);
 
-        deposit(savingsAccount, currentAccount, "80.00");
+        // Through the helper that insists the deposit landed, because Bram's current account is the
+        // deliberately shallow one: a refused deposit has to fail this test rather than leave it
+        // asserting that a week nothing landed in needs nothing.
+        depositAccepted(savingsAccount, currentAccount, "80.00");
 
         BalancesView after = balancesOf(savingsAccount);
-        assertThat(after.newSavingsThisWeek()).isGreaterThanOrEqualTo(new BigDecimal("80.00"));
+        assertThat(after.newSavingsThisWeek())
+                .isEqualByComparingTo(before.newSavingsThisWeek().add(new BigDecimal("80.00")));
+        // The one absolute figure this class asserts, and it is safe as one: 80.00 is past the whole
+        // minimum on its own, so nothing else that landed in the week can change the answer.
         assertThat(after.stillNeededThisWeek()).isEqualByComparingTo("0.00");
     }
 
@@ -148,7 +155,7 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
         BalancesView before = balancesOf(savingsAccount);
 
-        DepositView made = deposit(savingsAccount, seeded.currentAccountOf(ANKE), "7.60").getBody();
+        DepositView made = depositAccepted(savingsAccount, seeded.currentAccountOf(ANKE), "7.60");
 
         assertThat(made.pointsEarned()).isEqualTo(7);
         BalancesView after = balancesOf(savingsAccount);
@@ -161,6 +168,17 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     private static BigDecimal stillNeededGiven(BalancesView account) {
         BigDecimal outstanding = account.weeklyMinimum().subtract(account.newSavingsThisWeek());
         return outstanding.signum() > 0 ? outstanding : BigDecimal.ZERO;
+    }
+
+    /**
+     * A deposit this test needed to land, with the refusal ruled out rather than assumed: the seeded
+     * current accounts are shallow on purpose and a refused deposit would otherwise leave a test
+     * asserting that nothing changed — and passing.
+     */
+    private DepositView depositAccepted(long savingsAccountId, long currentAccountId, String amount) {
+        ResponseEntity<DepositView> response = deposit(savingsAccountId, currentAccountId, amount);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return response.getBody();
     }
 
     private ResponseEntity<DepositView> deposit(long savingsAccountId, long currentAccountId, String amount) {
