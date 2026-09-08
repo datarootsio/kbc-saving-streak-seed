@@ -3,12 +3,15 @@ package io.dataroots.savingstreak.points;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,9 +32,14 @@ import org.springframework.transaction.annotation.Transactional;
  * and never learns that savings accounts exist.
  *
  * <p>What it will answer is deliberately this narrow: what something earned and under which
- * reasons, how many points a customer has, and whether a number of them could be spent. A caller
- * cannot learn that points are kept as dated batches, when a batch was earned, or how much of one
- * is left — which is why spending arrived as an addition to this module and changed no caller.
+ * reasons, how many points a customer has, whether a number of them could be spent, and what they
+ * stand to lose next. A caller cannot learn that points are kept as dated batches, when a batch was
+ * earned, or how much of one is left — which is why spending arrived as an addition to this module
+ * and changed no caller, and why expiry arrived the same way.
+ *
+ * <p>Twelve months is this module's rule and lives in {@link PointsExpiry}. Nothing outside can
+ * expire a particular batch, or ask when one was earned in order to work the rule out for itself:
+ * the ledger sweeps itself when it is told what time it is, and says what that cost.
  *
  * <p>Earnings come back as a breakdown by {@link PointsReason} rather than as a single figure. The
  * reasons are the ledger's vocabulary and are the one thing about its storage it does say out loud:
@@ -160,6 +168,134 @@ public class PointsService {
     }
 
     /**
+     * Ends every batch in the ledger whose twelve months were up by the given moment, oldest first.
+     *
+     * <p>Answers nothing. What the sweep took is reported in the INFO line below and nowhere else:
+     * its one caller runs on a schedule with nobody waiting on it, and a figure returned to a
+     * scheduled method is a figure nothing can read. Handing back a count of batches would also be
+     * this module saying out loud that it keeps batches, which is the one thing it does not say.
+     *
+     * <p>Public, unlike everything else here that only the nightly job uses, and not because
+     * anything outside wants it: {@code @Transactional} is applied by a proxy, and a proxy cannot
+     * advise a method that is not public — the annotation would be silently ignored and a
+     * half-finished sweep would commit. The power this leaks is the power to run the nightly job
+     * early, which is idempotent and is exactly what the development jobs endpoint offers anyway.
+     *
+     * <p>The caller says what time it is, exactly as {@link #creditPointsFor} is told when the money
+     * moved. This module has no clock of its own and reads none: a sweep run against a wound-forward
+     * clock has to judge anniversaries against the moment the application thinks it is, and a service
+     * that read the machine's clock instead would quietly refuse to be demonstrated.
+     *
+     * <p>Every customer's batches at once, because a sweep is one pass over the ledger. Which
+     * customers were affected is not said — a caller that wanted to tell one of them would be a
+     * notification, which this is not.
+     *
+     * <p>A batch already spent down to nothing has nothing left to expire and is left as the fully
+     * spent batch it is, rather than marked expired as well: two endings written on one batch would
+     * make "what expired" a figure nobody could add up.
+     *
+     * <p>Idempotent by construction. A batch that has gone carries the moment it went, and the query
+     * behind this asks only for batches that have not, so a second sweep over the same rows takes
+     * nothing.
+     */
+    @Transactional
+    public void expireOldPoints(Instant now) {
+        Instant earnedBefore = PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(now);
+        List<PointsCredit> oldestFirst = credits.unspentBatchesEarnedBefore(earnedBefore);
+        // The window the database was asked for, before anything is judged, so that a sweep that
+        // took nothing can be told from a sweep that was handed nothing to look at.
+        log.debug("points batches considered for expiry asAt={} earnedBefore={} batches={}",
+                now, earnedBefore, oldestFirst.size());
+        List<PointsCredit> expired = new ArrayList<>();
+        long points = 0;
+        for (PointsCredit batch : oldestFirst) {
+            Instant anniversary = PointsExpiry.anniversaryOf(batch.getEarnedAt());
+            if (anniversary.isAfter(now)) {
+                // Inside the cut-off's slack rather than inside its twelve months. Said out loud
+                // because it is the one place the query and the rule disagree on purpose, and a
+                // reader counting batches would otherwise be short.
+                log.debug("points batch still inside its twelve months batchId={} customerId={} "
+                                + "earnedAt={} anniversary={} pointsLeft={}",
+                        batch.getId(), batch.getCustomerId(), batch.getEarnedAt(), anniversary,
+                        batch.getRemainingPoints());
+                continue;
+            }
+            long taken = batch.expire(anniversary);
+            points += taken;
+            expired.add(batch);
+            // One line per batch, and deliberately not guarded by isDebugEnabled the way the
+            // streak walk's are: there is nothing to render here, only getters, and this is the
+            // only record of which batch went and what it was worth when it did. A sweep runs once
+            // a night rather than on every page load, so the volume is a night's worth of batches
+            // and it is the half of the answer the INFO line's totals cannot give.
+            log.debug("points batch expired batchId={} customerId={} reason={} earnedAt={} "
+                            + "anniversary={} pointsExpired={}",
+                    batch.getId(), batch.getCustomerId(), batch.getReason(), batch.getEarnedAt(),
+                    anniversary, taken);
+        }
+        // The batches are managed and would be written out at the end of the transaction anyway;
+        // saying so leaves nothing for a reader to infer from Hibernate's behaviour, as the spend
+        // above does.
+        credits.saveAll(expired);
+        // One line per sweep with everything that decided it: the moment it judged anniversaries
+        // against, the cut-off the query used, and what it took. A balance that dropped overnight is
+        // explainable from this line alone, and a sweep that ended forty batches holding nothing
+        // between them can be told from a sweep that found nothing at all.
+        log.info("points expired asAt={} earnedBefore={} batchesConsidered={} batches={} points={}",
+                now, earnedBefore, oldestFirst.size(), expired.size(), points);
+    }
+
+    /**
+     * The next points this customer stands to lose, and nothing when there are none: how many, and
+     * the moment their twelve months are up.
+     *
+     * <p>Read from the same batches a spend draws from, which is what makes the two answers
+     * consistent by construction: the points that would pay for the next reward are the points that
+     * would otherwise be the next to go.
+     *
+     * <p>The earliest day is found rather than taken off the front of the list. The batches come back
+     * in the order they were earned, and earned order is <em>almost</em> anniversary order but not
+     * quite: twelve calendar months clamp 29 February back onto the 28th, so a batch earned just
+     * before midnight on the 28th outlives one earned just after it. Two passes cost nothing on a
+     * handful of rows and mean this answer does not rest on an ordering that is nearly true.
+     *
+     * <p>Empty rather than zero for a customer with nothing left. "No points expire next" and "zero
+     * points expire on some date" are different statements, and only the first of them is true of
+     * somebody who has never earned anything — whoever is showing this to them should be able to
+     * say nothing rather than nothing-on-a-date.
+     *
+     * <p>A query per read of an account, which the two busiest endpoints in the application both
+     * make. It reads one customer's unspent batches and nothing else, which is the same handful of
+     * rows a spend already reads, and it is the price of the figure being derived rather than stored.
+     */
+    @Transactional(readOnly = true)
+    public Optional<PointsExpiringNext> whatExpiresNextFor(long customerId) {
+        List<PointsCredit> surviving = credits.unspentOldestFirst(customerId);
+        if (surviving.isEmpty()) {
+            log.debug("nothing left to expire customerId={}", customerId);
+            return Optional.empty();
+        }
+        LocalDate soonest = surviving.stream()
+                .map(PointsService::theDayItExpires)
+                .min(LocalDate::compareTo)
+                .orElseThrow();
+        long points = surviving.stream()
+                .filter(batch -> soonest.equals(theDayItExpires(batch)))
+                .mapToLong(PointsCredit::getRemainingPoints)
+                .sum();
+        // How many of their surviving batches are in the figure, so that a customer's "42 points go
+        // on Tuesday" can be checked against the batches behind it rather than taken on trust.
+        log.debug("points due to expire next customerId={} on={} points={} batchesSurviving={}",
+                customerId, soonest, points, surviving.size());
+        return Optional.of(new PointsExpiringNext(points, soonest));
+    }
+
+    /** The day this batch's twelve months are up, in the zone the application reads a calendar in. */
+    private static LocalDate theDayItExpires(PointsCredit batch) {
+        return PointsExpiry.dayOf(PointsExpiry.anniversaryOf(batch.getEarnedAt()));
+    }
+
+    /**
      * Spends points out of the customer's batches, oldest first, and answers whether there were
      * enough. Nothing is taken from any batch unless the whole amount can be found.
      *
@@ -170,10 +306,13 @@ public class PointsService {
      * reason a refusal would give is not this module's to write: what the points were being spent on,
      * and what to call it in front of the person who asked, belongs to whoever is spending them.
      *
-     * <p>Oldest first is the rule this ledger keeps dated batches in order to follow. It has no
-     * consequence yet — a point is a point, and none of them expire — which is exactly why it is
-     * settled now: the slice that expires the oldest points arrives to find them already leaving in
-     * that order, rather than having to reorder spending that has already happened.
+     * <p>Oldest first is the rule this ledger keeps dated batches in order to follow, and expiry is
+     * what it was settled for: the batch a spend draws from first is the one nearest its twelve
+     * months, so claiming anything at all spends exactly the points that were about to go. A batch
+     * only ever expires because it survived twelve months of the customer not spending that far down
+     * their pot.
+     *
+     * <p>An expired batch is not one of the batches this draws from, however much was left in it.
      *
      * @throws IllegalArgumentException if asked for nothing or for a negative number of points,
      *                                  which is a mistake in the caller rather than a refusal to

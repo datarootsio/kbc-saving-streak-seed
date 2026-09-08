@@ -108,9 +108,9 @@ public class ScheduledJobs {
      * Says what scheduling found, once the application is up.
      *
      * <p>The first question a participant whose job did nothing asks is whether it was scheduled at
-     * all, and this line answers it without them having to call anything. An application with no jobs
-     * says so too — that is the seed's normal state, and a reader who sees the line knows the
-     * machinery is there and empty rather than absent.
+     * all, and this line answers it without them having to call anything. The application ships one
+     * of its own — the nightly points sweep — so a run that lists only that one is a run in which the
+     * participant's job was not found, which is exactly what they need to be told.
      */
     @EventListener(ApplicationStartedEvent.class)
     void sayWhichJobsAreScheduled() {
@@ -137,8 +137,11 @@ public class ScheduledJobs {
 
     private String whatThereIsInstead(List<AJob> jobs) {
         if (jobs.isEmpty()) {
-            return "This application has no scheduled jobs in it at all — it ships none of its own,"
-                    + " and a job appears here as soon as a method in it is annotated @Scheduled.";
+            // Not reachable in the application as it ships, which has the nightly points sweep in
+            // it. Kept because an exercise that removes or reworks that job would reach it, and
+            // "there are none" is a more useful answer then than an empty list.
+            return "This application has no scheduled jobs in it at all, and a job appears here as"
+                    + " soon as a method in it is annotated @Scheduled.";
         }
         return "The jobs that can be run are: " + namesOf(jobs.stream().map(AJob::describe).toList()) + ".";
     }

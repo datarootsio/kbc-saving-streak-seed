@@ -84,6 +84,9 @@ class SavingsAccountController {
                 // reported beside this balance because that is the connection the page is about —
                 // but they are the same figure whichever of the customer's accounts is open.
                 points.balanceOf(holder.customerId()),
+                // And what the holder stands to lose next, for the same reason: the twelve months
+                // run against their points rather than against this account's saving.
+                points.whatExpiresNextFor(holder.customerId()),
                 // And their week and their run of weeks, for the same reason: a week counts what
                 // they put away, wherever they put it.
                 streaks.weekAndStreakOf(holder.customerId()));

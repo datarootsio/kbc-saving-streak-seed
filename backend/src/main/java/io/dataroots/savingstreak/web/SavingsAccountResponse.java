@@ -1,7 +1,10 @@
 package io.dataroots.savingstreak.web;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Optional;
 
+import io.dataroots.savingstreak.points.PointsExpiringNext;
 import io.dataroots.savingstreak.streaks.WeekAndStreak;
 
 /**
@@ -29,16 +32,32 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
  * <p>What the week asks for travels with what has landed in it. A screen showing progress towards
  * EUR 50 that had the 50 written into its own markup would be a second place the weekly minimum
  * lives, and the two would be one repricing away from disagreeing.
+ *
+ * <p>And what the holder stands to lose next: how many of their points expire soonest, and the day
+ * they do. Beside the balance rather than anywhere else, because it is the same figure read from the
+ * other end — what they can spend, and how long they have to spend it in. Both are null for a
+ * customer with nothing left to lose rather than zero on no date, because "nothing expires next" and
+ * "nothing expires on some particular day" are different statements and only the first is true of
+ * somebody who has never earned anything.
+ *
+ * <p>The day travels as a plain date rather than as a moment. Which calendar day a moment falls on
+ * depends on the zone it is read in, and the Points module has already read it in the one zone this
+ * application counts calendars in — so a client is handed the answer instead of the means to get it
+ * wrong.
  */
 record SavingsAccountResponse(Long id, String customerName, BigDecimal moneyBalance, long pointsBalance,
+                              Long pointsExpiringNext, LocalDate pointsExpiringNextOn,
                               BigDecimal newSavingsThisWeek, BigDecimal weeklyMinimum,
                               BigDecimal stillNeededThisWeek,
                               int currentStreakWeeks, int bestStreakWeeks,
                               BigDecimal currentMultiplier) {
 
     static SavingsAccountResponse of(long savingsAccountId, String customerName, BigDecimal moneyBalance,
-                                     long pointsBalance, WeekAndStreak saving) {
+                                     long pointsBalance, Optional<PointsExpiringNext> expiringNext,
+                                     WeekAndStreak saving) {
         return new SavingsAccountResponse(savingsAccountId, customerName, moneyBalance, pointsBalance,
+                expiringNext.map(PointsExpiringNext::points).orElse(null),
+                expiringNext.map(PointsExpiringNext::on).orElse(null),
                 saving.week().newSavings(), saving.week().weeklyMinimum(), saving.week().stillNeeded(),
                 saving.streak().currentWeeks(), saving.streak().bestWeeks(),
                 saving.streak().multiplier());

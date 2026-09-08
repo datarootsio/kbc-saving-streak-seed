@@ -1789,6 +1789,231 @@ button.quiet.back svg {
   height: 1.1rem;
 }
 
+/* -------------------------------------------------- what expires next */
+
+/* The deadline on the points above it. Quieter than the balance, because a balance is a fact and a
+   deadline is a warning — and a warning shouted in the same weight as the figure it is about would
+   read as an error rather than as something worth doing before Tuesday.
+
+   Warm, like everything else on these screens that is about points and nothing else. Not the danger
+   red: nothing has gone wrong, and there is still time. */
+.expiring {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--points);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+/* The count is the part somebody is deciding on, so it carries the weight of the two halves. */
+.expiring-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The date travels with the words in front of it: a date alone at the start of a wrapped line reads
+   as a heading rather than as the end of this sentence. */
+.expiring-when {
+  white-space: nowrap;
+}
+
+/* The points balance on the overview is a flex row of a mark, a figure and a unit; the deadline is a
+   sentence about that figure and takes the whole of the line under it rather than becoming a fourth
+   thing on the same baseline. */
+.points-to-spend .expiring {
+  flex-basis: 100%;
+}
+
+/* -------------------------------------------------- money history */
+
+/* The way from the overview into the history: a full-width row under the account cards, dashed like
+   the current-account card so it reads as part of the panel rather than as another account. */
+.way-through {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed rgb(var(--line) / 0.24);
+  border-radius: var(--radius);
+  color: inherit;
+  background: var(--inset);
+  box-shadow: none;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  transition:
+    border-color 0.35s var(--ease),
+    transform 0.35s var(--ease),
+    box-shadow 0.35s var(--ease);
+}
+
+.way-through::after {
+  content: none;
+}
+
+@media (hover: hover) {
+  .way-through:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: var(--brand);
+    background: var(--inset);
+    box-shadow: var(--shadow-rest);
+  }
+
+  .way-through:hover .card-go {
+    transform: translateX(0.2rem);
+    color: var(--brand);
+  }
+}
+
+.way-through:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.way-through-words {
+  min-width: 0;
+}
+
+.way-through-name {
+  display: block;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.way-through-note {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+/* The ledger is the deposits table read at a wider scope, so it borrows the whole of that table's
+   dress and adds only what a fourth column and a direction need.
+
+   Its own scrolling frame rather than a table that pushes the page sideways: four columns, one of
+   them two IBANs long, will not fit a phone however the type is set, and a page that scrolls
+   sideways loses the top bar with it. */
+.movements-frame {
+  overflow-x: auto;
+}
+
+.movements {
+  min-width: 34rem;
+}
+
+/* Below the width its four columns can be read at, the ledger stops being a table and becomes a
+   list of rows: the date and the amount on the first line, what the movement was and what it earned
+   on the second. Four columns will not fit a phone however the type is set, and a table that scrolls
+   sideways inside its frame opens on the two least useful of them — a customer looking at their
+   money would see a date and half an IBAN, with nothing on screen to say the amounts were off to the
+   right.
+
+   Just above the width at which .movements would start to overflow its frame, so the two layouts
+   hand over to each other rather than leaving a band where neither is right. */
+@media (max-width: 36rem) {
+  .movements-frame {
+    overflow-x: visible;
+  }
+
+  .movements {
+    min-width: 0;
+  }
+
+  /* The headings named columns that no longer exist. Every cell says what it is by how it is
+     dressed — a date, a chip, an amount, a badge — which is what let the columns go. */
+  .movements thead {
+    display: none;
+  }
+
+  .movements tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'when amount'
+      'moved gained';
+    align-items: start;
+    gap: 0.3rem 0.75rem;
+    padding: 0.7rem 0;
+  }
+
+  .movements tbody td {
+    display: block;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .movements .when {
+    grid-area: when;
+  }
+
+  /* Left, under the date it belongs to. The table's columns are right-aligned, which is right for
+     figures and wrong for the one cell here that is words: ragged-left prose under a left-aligned
+     date reads as two unrelated things. */
+  .movements .moved {
+    grid-area: moved;
+    text-align: left;
+  }
+
+  .movements .amount {
+    grid-area: amount;
+    text-align: right;
+  }
+
+  .movements .gained {
+    grid-area: gained;
+    text-align: right;
+  }
+
+  /* The two accounts are the longest thing in the row and the only thing here allowed to wrap. */
+  .movements .between {
+    white-space: normal;
+  }
+}
+
+/* Which way the money went, as a chip: the one thing in the row that is a kind rather than a
+   figure, and the thing a reader scans the column for. */
+.movement {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Money arriving is the brand's own blue — this application is about saving, and saving is this
+   direction. */
+.movement.in {
+  color: var(--brand-deep);
+  background: rgb(var(--glow) / 0.14);
+}
+
+/* Money leaving is not a failure and is not dressed as one: the same chip at the page's quietest
+   strength, so the column reads as two kinds rather than as good news and bad. */
+.movement.out {
+  color: var(--ink-soft);
+  background: rgb(var(--line) / 0.1);
+}
+
+/* The two accounts in the order the money travelled, under the chip: the row is a sentence, and the
+   arrow is the verb in it. */
+.between {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 30rem) {
@@ -1869,6 +2094,12 @@ button.quiet.back svg {
 
   .price {
     justify-self: start;
+  }
+
+  /* The chevron goes here for the reason it goes from the account cards: at this width the row is
+     plainly the tappable thing without it, and the words need the room. */
+  .way-through {
+    grid-template-columns: 1fr;
   }
 }
 

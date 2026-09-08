@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.support;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
  * A savings account as the API reports it: what it holds, what its holder has to spend, how far into
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
  * same figure is reported beside every account that customer holds.
  */
 public record BalancesView(Long id, String customerName, BigDecimal moneyBalance, long pointsBalance,
+                           Long pointsExpiringNext, LocalDate pointsExpiringNextOn,
                            BigDecimal newSavingsThisWeek, BigDecimal weeklyMinimum,
                            BigDecimal stillNeededThisWeek,
                            int currentStreakWeeks, int bestStreakWeeks,

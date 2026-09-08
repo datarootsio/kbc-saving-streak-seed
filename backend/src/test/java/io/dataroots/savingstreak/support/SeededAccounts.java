@@ -1,12 +1,15 @@
 package io.dataroots.savingstreak.support;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestClientException;
 
 /**
  * Finds the seeded customers' accounts over the API, so that a test about depositing can start from
@@ -65,6 +68,20 @@ public class SeededAccounts {
     }
 
     /**
+     * How many of the customer's points are the next to expire, and null when they have none left to
+     * lose. Read off the overview, which is where the figure belongs: the twelve months run against
+     * the customer's points rather than against any one account's saving.
+     */
+    public Long pointsExpiringNextOf(String customerName) {
+        return accountsOf(customerName).pointsExpiringNext();
+    }
+
+    /** The day those points go, and null when there are none. */
+    public LocalDate pointsExpiringNextOnOf(String customerName) {
+        return accountsOf(customerName).pointsExpiringNextOn();
+    }
+
+    /**
      * What is in that current account right now. Read fresh on every call, because the run shares
      * one database and a deposit made by any test has taken money out of it.
      */
@@ -99,7 +116,7 @@ public class SeededAccounts {
      * the customer something was asked for is not one this application has heard of.
      */
     public long anIdNoCustomerHas() {
-        return Arrays.stream(http.getForObject("/api/customers", CustomerView[].class))
+        return Arrays.stream(read("/api/customers", CustomerView[].class))
                 .mapToLong(CustomerView::id)
                 .max()
                 .orElse(0L) + 1;
@@ -114,21 +131,50 @@ public class SeededAccounts {
     }
 
     private AccountsView accountsOf(String customerName) {
-        return http.getForObject(
-                "/api/customers/{id}/accounts", AccountsView.class, customerNamed(customerName).id());
+        return read("/api/customers/{id}/accounts", AccountsView.class, customerNamed(customerName).id());
     }
 
     private CustomerView customerNamed(String name) {
-        return Arrays.stream(http.getForObject("/api/customers", CustomerView[].class))
+        return Arrays.stream(read("/api/customers", CustomerView[].class))
                 .filter(customer -> name.equals(customer.name()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("no seeded customer named " + name));
     }
 
+    /**
+     * A read that says what actually came back when it could not be read as what was asked for.
+     *
+     * <p>{@link TestRestTemplate} deliberately does not throw on an error status, so an application
+     * that answered one of these lookups with an error hands the body to Jackson instead, and the
+     * test fails with "error while extracting response for type CustomerView[]" — which names the
+     * type it was trying to read and nothing at all about what went wrong. Every lookup in this class
+     * comes through here, so this is the one place worth explaining.
+     *
+     * <p>The second request is made only to explain the first, so the ordinary path is still one
+     * request. If that second read succeeds, the message says so, which is the most useful thing it
+     * could say: the first failure was then transient, and a reader is looking for a race rather than
+     * for a broken endpoint.
+     *
+     * <p>Nothing is retried into a pass. A read that fails mid-test is something the application did,
+     * and a test that quietly had another go would be hiding it.
+     */
+    private <T> T read(String path, Class<T> shape, Object... variables) {
+        try {
+            return http.getForObject(path, shape, variables);
+        } catch (RestClientException couldNotBeReadAsThat) {
+            ResponseEntity<String> raw = http.getForEntity(path, String.class, variables);
+            throw new AssertionError("GET " + path + " " + Arrays.toString(variables)
+                    + " could not be read as " + shape.getSimpleName() + ". Asked again straight "
+                    + "away, it answered " + raw.getStatusCode() + " and this body: " + raw.getBody(),
+                    couldNotBeReadAsThat);
+        }
+    }
+
     record CustomerView(Long id, String name, String contactDetails) {
     }
 
-    record AccountsView(long pointsBalance, List<CurrentAccountView> currentAccounts,
+    record AccountsView(long pointsBalance, Long pointsExpiringNext, LocalDate pointsExpiringNextOn,
+                        List<CurrentAccountView> currentAccounts,
                         List<SavingsAccountView> savingsAccounts) {
     }
 

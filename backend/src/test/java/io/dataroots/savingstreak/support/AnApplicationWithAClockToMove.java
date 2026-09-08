@@ -3,9 +3,11 @@ package io.dataroots.savingstreak.support;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 
 import io.dataroots.savingstreak.SavingStreakApplication;
+import io.dataroots.savingstreak.streaks.SavingsWeek;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -87,14 +89,20 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return made.getBody();
     }
 
-    /** A withdrawal, insisted on the same way: money that did not leave proves nothing about a streak. */
-    public void withdraw(long savingsAccountId, String customerName, String amount) {
+    /**
+     * A withdrawal, insisted on the same way: money that did not leave proves nothing about a streak.
+     *
+     * <p>Answers with what was recorded, because a test asserting on the order of a ledger needs the
+     * moment this happened rather than only the fact that it did.
+     */
+    public WithdrawalView withdraw(long savingsAccountId, String customerName, String amount) {
         ResponseEntity<WithdrawalView> taken = http.postForEntity(
                 "/api/savings-accounts/{id}/withdrawals",
                 Map.of("amount", amount, "toCurrentAccountId", seeded.currentAccountOf(customerName)),
                 WithdrawalView.class,
                 savingsAccountId);
         assertThat(taken.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return taken.getBody();
     }
 
     /**
@@ -105,6 +113,70 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         ResponseEntity<ClockView> moved = http.postForEntity(
                 "/api/dev/clock/advance", Map.of("days", DAYS_IN_A_WEEK), ClockView.class);
         assertThat(moved.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /**
+     * A stretch of time passes, through the endpoint a trainer would use, and the move is insisted
+     * on for the reason {@link #aWeekPasses} gives.
+     *
+     * <p>Counted in days, because that is what the clock endpoint takes and because a rule measured
+     * in months is demonstrated by winding a number of days on and seeing which side of an
+     * anniversary the clock lands. A test that wants a year says so in days and says why.
+     */
+    public void daysPass(long days) {
+        ResponseEntity<ClockView> moved = http.postForEntity(
+                "/api/dev/clock/advance", Map.of("days", days), ClockView.class);
+        assertThat(moved.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /** What the application's clock reads now, which is the moment its own rules are judged against. */
+    public Instant theClockReads() {
+        return http.getForObject("/api/dev/clock", ClockView.class).now();
+    }
+
+    /**
+     * What day the application's clock reads, in the zone it counts calendars in — which is the zone
+     * every day-shaped answer it gives is a day in.
+     */
+    public LocalDate theDateTheClockReads() {
+        return theClockReads().atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate();
+    }
+
+    /**
+     * Runs a named job now and insists that it ran: a job refused for want of a name, or one that
+     * threw, would leave a test asserting that nothing had happened — and passing.
+     */
+    public JobRunView runJob(String name) {
+        ResponseEntity<JobRunView> ran = http.postForEntity(
+                "/api/dev/jobs/{name}/run", null, JobRunView.class, name);
+        assertThat(ran.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return ran.getBody();
+    }
+
+    /** The jobs this application says can be run, so that a test can ask whether one is there at all. */
+    public ScheduledJobView[] whatCanBeRun() {
+        return http.getForObject("/api/dev/jobs", ScheduledJobView[].class);
+    }
+
+    /** What the customer has to spend, read off the overview where the figure belongs. */
+    public long pointsBalanceOf(String customerName) {
+        return seeded.pointsBalanceOf(customerName);
+    }
+
+    /** How many of the customer's points go next, and null when they have none left to lose. */
+    public Long pointsExpiringNextOf(String customerName) {
+        return seeded.pointsExpiringNextOf(customerName);
+    }
+
+    /** The day those points go, and null when there are none. */
+    public LocalDate pointsExpiringNextOnOf(String customerName) {
+        return seeded.pointsExpiringNextOnOf(customerName);
+    }
+
+    /** Every movement of money in or out of the customer's savings, newest first. */
+    public MoneyMovementView[] moneyMovementsOf(String customerName) {
+        return http.getForObject("/api/customers/{id}/money-movements", MoneyMovementView[].class,
+                seeded.customerIdOf(customerName));
     }
 
     /**
@@ -156,8 +228,13 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         application.close();
     }
 
-    /** As much of a withdrawal as these tests read back: that it happened, and for how much. */
-    private record WithdrawalView(Long id, BigDecimal amount, Instant withdrawnAt) {
+    /**
+     * As much of a withdrawal as these tests read back: that it happened, for how much, and when.
+     *
+     * <p>The moment is here because a ledger asserted to be newest-first has to be checked against
+     * the moments the API itself reported, rather than against the order the requests were sent in.
+     */
+    public record WithdrawalView(Long id, BigDecimal amount, Instant withdrawnAt) {
     }
 
     /**

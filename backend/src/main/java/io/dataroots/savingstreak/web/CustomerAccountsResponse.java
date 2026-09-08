@@ -1,9 +1,12 @@
 package io.dataroots.savingstreak.web;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import io.dataroots.savingstreak.accounts.CurrentAccount;
+import io.dataroots.savingstreak.points.PointsExpiringNext;
 import io.dataroots.savingstreak.streaks.WeekAndStreak;
 
 /**
@@ -21,12 +24,20 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
  * would say they were that account's, and the customer would appear to hold as many copies of their
  * points and as many streaks as they hold accounts.
  *
- * <p>The seven that describe the saving are the same seven, under the same names, that a savings
+ * <p>The nine that describe the saving are the same nine, under the same names, that a savings
  * account's own endpoint reports — because they are the same figures, read for the same customer.
  * What the week asks for travels with what has landed in it, so a page showing progress towards
  * EUR 50 never writes the 50 into its own markup.
+ *
+ * <p>Two of the nine are what the customer stands to lose next: how many points expire soonest and
+ * the day they do. Both are null where there is nothing left to lose, rather than zero on no date.
+ * The day is a plain date rather than a moment, for the reason a savings account's own resource
+ * gives: which day a moment falls on depends on the zone it is read in, and that zone is the
+ * backend's to know.
  */
 record CustomerAccountsResponse(long pointsBalance,
+                                Long pointsExpiringNext,
+                                LocalDate pointsExpiringNextOn,
                                 BigDecimal newSavingsThisWeek,
                                 BigDecimal weeklyMinimum,
                                 BigDecimal stillNeededThisWeek,
@@ -38,14 +49,18 @@ record CustomerAccountsResponse(long pointsBalance,
 
     /**
      * The customer's figures put together with their accounts. A factory rather than a constructor
-     * call at the call site, because the seven figures come from three modules and unpacking one
+     * call at the call site, because the nine figures come from three modules and unpacking one
      * module's answer into six arguments is the sort of thing that gets done differently the second
      * time.
      */
-    static CustomerAccountsResponse of(long pointsBalance, WeekAndStreak saving,
+    static CustomerAccountsResponse of(long pointsBalance,
+                                       Optional<PointsExpiringNext> expiringNext,
+                                       WeekAndStreak saving,
                                        List<CurrentAccountResponse> currentAccounts,
                                        List<SavingsAccountResponse> savingsAccounts) {
         return new CustomerAccountsResponse(pointsBalance,
+                expiringNext.map(PointsExpiringNext::points).orElse(null),
+                expiringNext.map(PointsExpiringNext::on).orElse(null),
                 saving.week().newSavings(), saving.week().weeklyMinimum(), saving.week().stillNeeded(),
                 saving.streak().currentWeeks(), saving.streak().bestWeeks(),
                 saving.streak().multiplier(),

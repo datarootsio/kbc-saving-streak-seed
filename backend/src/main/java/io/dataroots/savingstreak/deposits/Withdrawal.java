@@ -33,6 +33,9 @@ class Withdrawal {
     }
 
     Long getId() { return id; }
+
+    /** Which savings account the money left, which is what a ledger of one is assembled by. */
+    long getSavingsAccountId() { return savingsAccountId; }
     BigDecimal getAmount() { return amount; }
     long getDestinationCurrentAccountId() { return destinationCurrentAccountId; }
     Instant getWithdrawnAt() { return withdrawnAt; }

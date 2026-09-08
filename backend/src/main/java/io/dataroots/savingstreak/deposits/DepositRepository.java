@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.deposits;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +23,22 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
 
     /** Oldest first, with the identifier settling ties at the millisecond the application records. */
     List<Deposit> findBySavingsAccountIdOrderByDepositedAtAscIdAsc(long savingsAccountId);
+
+    /**
+     * Every deposit into any of a set of savings accounts, newest first.
+     *
+     * <p>Several accounts at once because the ledger it feeds is a customer's rather than an
+     * account's: somebody saving towards two goals moved their money once, and reading it back as
+     * two histories to interleave by eye is not an answer.
+     *
+     * <p>Ordered here rather than in Java, and by the identifier as well as the moment, the way this
+     * module's other listings are: a moment is only kept to the millisecond and two deposits can
+     * land inside one.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.savingsAccountId in :savingsAccountIds "
+            + "order by deposit.depositedAt desc, deposit.id desc")
+    List<Deposit> intoAnyOfNewestFirst(@Param("savingsAccountIds") Collection<Long> savingsAccountIds);
 
     /**
      * The deposits that landed in a stretch of time, oldest first, with the identifier settling ties

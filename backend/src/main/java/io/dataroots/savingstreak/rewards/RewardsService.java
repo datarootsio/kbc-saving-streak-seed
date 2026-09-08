@@ -66,14 +66,15 @@ public class RewardsService {
     @Transactional
     public ClaimedReward claim(long customerId, Reward reward) {
         if (!accounts.customerExists(customerId)) {
-            throw new RewardRefused(NO_SUCH_CUSTOMER, AccountsService.noSuchCustomer(customerId));
+            throw refusing(customerId, reward, NO_SUCH_CUSTOMER,
+                    AccountsService.noSuchCustomer(customerId));
         }
         long cost = reward.costInPoints();
         if (!points.spend(customerId, cost)) {
             // Read after the refusal rather than before the attempt: nothing was taken, so this is
             // still what they have, and it is the figure the person needs in order to know how much
             // more saving stands between them and this reward.
-            throw new RewardRefused(NOT_ENOUGH_POINTS, reward.title() + " costs " + cost
+            throw refusing(customerId, reward, NOT_ENOUGH_POINTS, reward.title() + " costs " + cost
                     + " points, and you have " + points.balanceOf(customerId) + ".");
         }
         // One moment for the spend and the voucher, read from the application's clock and truncated
@@ -96,6 +97,19 @@ public class RewardsService {
      * hold, this is the whole account of a points balance: the deposits say what came in, these say
      * what went out, and the balance is what the two leave behind.
      */
+    /**
+     * Every refusal says why in the log as well as to whoever asked, because only one of the two is
+     * kept. Worth having now that points expire: a claim turned down for want of points used to mean
+     * somebody had not saved enough yet, and can now mean a batch went stale overnight — and the log
+     * is where those two are told apart.
+     */
+    private RewardRefused refusing(long customerId, Reward reward, RewardRefused.Kind kind,
+                                   String reason) {
+        log.warn("claim rejected customerId={} reward={} kind={} reason={}",
+                customerId, reward.name(), kind, reason);
+        return new RewardRefused(kind, reason);
+    }
+
     @Transactional(readOnly = true)
     public List<ClaimedReward> claimedBy(long customerId) {
         return redemptions.findByCustomerIdOrderByClaimedAtDescIdDesc(customerId).stream()

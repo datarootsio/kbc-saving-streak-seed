@@ -107,6 +107,16 @@ class Deposit {
         return id;
     }
 
+    /** Which savings account the money landed in, which is what a ledger of one is assembled by. */
+    long getSavingsAccountId() {
+        return savingsAccountId;
+    }
+
+    /** The everyday account it came out of, which is the other end of the movement. */
+    long getSourceCurrentAccountId() {
+        return sourceCurrentAccountId;
+    }
+
     BigDecimal getAmount() {
         return amount;
     }

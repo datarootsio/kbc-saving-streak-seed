@@ -6,12 +6,15 @@ import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.accounts.CustomerAccounts;
 import io.dataroots.savingstreak.accounts.SavingsAccount;
 import io.dataroots.savingstreak.deposits.DepositsService;
+import io.dataroots.savingstreak.deposits.MoneyMovementsService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
 import io.dataroots.savingstreak.streaks.StreaksService;
 import io.dataroots.savingstreak.web.CustomerAccountsResponse.CurrentAccountResponse;
 import io.dataroots.savingstreak.web.CustomerAccountsResponse.SavingsAccountResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,16 +30,21 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/customers")
 class CustomerController {
 
+    private static final Logger log = LoggerFactory.getLogger(CustomerController.class);
+
     private final AccountsService accounts;
     private final DepositsService deposits;
+    private final MoneyMovementsService movements;
     private final PointsService points;
     private final RewardsService rewards;
     private final StreaksService streaks;
 
-    CustomerController(AccountsService accounts, DepositsService deposits, PointsService points,
+    CustomerController(AccountsService accounts, DepositsService deposits,
+                       MoneyMovementsService movements, PointsService points,
                        RewardsService rewards, StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
+        this.movements = movements;
         this.points = points;
         this.rewards = rewards;
         this.streaks = streaks;
@@ -110,6 +118,9 @@ class CustomerController {
                 .orElseThrow(() -> noSuchCustomer(customerId));
         return CustomerAccountsResponse.of(
                 points.balanceOf(customerId),
+                // And what they stand to lose next, beside the balance because it is the same
+                // figure read from the other end: what they can spend, and how long they have.
+                points.whatExpiresNextFor(customerId),
                 streaks.weekAndStreakOf(customerId),
                 held.currentAccounts().stream().map(CurrentAccountResponse::of).toList(),
                 held.savingsAccounts().stream().map(this::worthOf).toList());
@@ -117,6 +128,28 @@ class CustomerController {
 
     private SavingsAccountResponse worthOf(SavingsAccount account) {
         return new SavingsAccountResponse(account.getId(), deposits.moneyBalanceOf(account.getId()));
+    }
+
+    /**
+     * Every euro this customer has moved into or out of savings, newest first, across every savings
+     * account they hold.
+     *
+     * <p>Which accounts those are is asked of Accounts and handed to the ledger, rather than the
+     * ledger being told a customer and left to work out whose accounts are whose. A withdrawal does
+     * not record whose it was, and who holds what is Accounts' answer wherever it is needed.
+     *
+     * <p>Asked before the movements are, so that a customer nobody has heard of is refused rather
+     * than answered with the empty ledger of somebody who has simply never moved anything.
+     */
+    @Transactional(readOnly = true)
+    @GetMapping("/{customerId}/money-movements")
+    List<MoneyMovementResponse> moneyMovementsOf(@PathVariable long customerId) {
+        CustomerAccounts held = accounts.accountsOf(customerId)
+                .orElseThrow(() -> noSuchCustomer(customerId));
+        List<Long> savingsAccounts = held.savingsAccounts().stream().map(SavingsAccount::getId).toList();
+        return movements.movementsAcross(savingsAccounts).stream()
+                .map(MoneyMovementResponse::of)
+                .toList();
     }
 
     /**
@@ -167,8 +200,18 @@ class CustomerController {
     }
 
     /** Worded for whoever reads it: a refusal reaches the screen with its reason unchanged. */
+    /**
+     * The refusal every endpoint here gives for somebody who does not bank at this application, said
+     * out loud as well as answered.
+     *
+     * <p>Logged here rather than at each of the four call sites, which is the reason this factory
+     * existed already: one place decides the words, so one place is where the WARN the house rule
+     * asks for belongs. A reason only reaches whoever asked, and the log is the only copy anybody
+     * reviewing the application afterwards can read.
+     */
     private ResponseStatusException noSuchCustomer(long customerId) {
-        return new ResponseStatusException(
-                HttpStatus.NOT_FOUND, AccountsService.noSuchCustomer(customerId));
+        String reason = AccountsService.noSuchCustomer(customerId);
+        log.warn("request rejected customerId={} reason={}", customerId, reason);
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, reason);
     }
 }

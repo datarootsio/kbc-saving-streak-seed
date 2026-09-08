@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.points;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 
@@ -12,9 +13,15 @@ import org.springframework.transaction.annotation.Transactional;
 /** Package-private: the rest of the application goes through {@link PointsService}. */
 interface PointsCreditRepository extends JpaRepository<PointsCredit, Long> {
 
-    /** Zero for a customer who has earned nothing, which is an answer rather than an absence. */
+    /**
+     * Zero for a customer who has earned nothing, which is an answer rather than an absence.
+     *
+     * <p>Expired batches are left out explicitly. What is left in one is still recorded — that is
+     * where the figure a sweep took survives — and a balance that summed it would report points the
+     * customer cannot spend.
+     */
     @Query("select coalesce(sum(credit.remainingPoints), 0) from PointsCredit credit "
-            + "where credit.customerId = :customerId")
+            + "where credit.customerId = :customerId and credit.expiredAt is null")
     long remainingPointsOf(@Param("customerId") long customerId);
 
     /**
@@ -24,11 +31,45 @@ interface PointsCreditRepository extends JpaRepository<PointsCredit, Long> {
      * spent earliest, so the ones nearest expiring leave first. The identifier settles it when two
      * batches share a moment, the same way the deposit list does — a moment is only kept to the
      * millisecond, and two deposits can land inside one.
+     *
+     * <p>An expired batch is not one of them. Its points are gone whether or not anything was left
+     * in it, and a spend that drew from one would be paying for a reward with points the balance
+     * beside it has already stopped counting.
+     *
+     * <p>Which is also the set "what expires next" is answered from — the same rows a spend would
+     * draw on, so the two answers cannot disagree about what the customer still has. The order is
+     * not what decides that answer, though: {@link PointsService#whatExpiresNextFor} finds the
+     * earliest day rather than trusting the front of this list, because twelve calendar months clamp
+     * 29 February back onto the 28th and earned order is then a hair short of anniversary order.
      */
     @Query("select credit from PointsCredit credit "
             + "where credit.customerId = :customerId and credit.remainingPoints > 0 "
+            + "and credit.expiredAt is null "
             + "order by credit.earnedAt asc, credit.id asc")
     List<PointsCredit> unspentOldestFirst(@Param("customerId") long customerId);
+
+    /**
+     * Every customer's batches that a sweep might have to end, oldest first: still holding
+     * something, not already expired, and earned long enough ago to be worth judging.
+     *
+     * <p>Everybody's at once, because the sweep is one pass over the ledger rather than a pass per
+     * customer. A batch nobody owns — one earned in an account whose holder had gone by the time
+     * {@link PointsOnStartUp} looked, and so left without a customer — is swept up with the rest:
+     * nobody can spend it, so nothing is taken from anybody by letting its twelve months run out.
+     *
+     * <p>Earned before a cut-off rather than exactly twelve months ago. The cut-off carries a
+     * little slack and {@link PointsExpiry} says why; the rule itself is applied to each batch that
+     * comes back, so this query only has to be generous rather than exact.
+     *
+     * <p>Oldest first because that is the order points leave in, spent or expired, and because it
+     * makes the sweep's DEBUG lines read as a chronology rather than as whatever order the database
+     * felt like.
+     */
+    @Query("select credit from PointsCredit credit "
+            + "where credit.remainingPoints > 0 and credit.expiredAt is null "
+            + "and credit.earnedAt < :earnedBefore "
+            + "order by credit.earnedAt asc, credit.id asc")
+    List<PointsCredit> unspentBatchesEarnedBefore(@Param("earnedBefore") Instant earnedBefore);
 
     /**
      * What each of the given deposits earned when it was made, one row per reason it earned under —

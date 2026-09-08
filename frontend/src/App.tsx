@@ -13,6 +13,7 @@ import {
   fetchClaimed,
   fetchCustomers,
   fetchDeposits,
+  fetchMoneyMovements,
   fetchWithdrawals,
   fetchRewards,
   fetchSavingsAccount,
@@ -24,6 +25,7 @@ import {
   type CurrentAccount,
   type Customer,
   type CustomerAccounts,
+  type MoneyMovement,
   type RecordedDeposit,
   type RecordedWithdrawal,
   type Reward,
@@ -34,6 +36,30 @@ import {
 const euros = new Intl.NumberFormat('nl-BE', { style: 'currency', currency: 'EUR' })
 const points = new Intl.NumberFormat('nl-BE')
 const dateAndTime = new Intl.DateTimeFormat('nl-BE', { dateStyle: 'short', timeStyle: 'short' })
+
+/**
+ * A date with no time on it, for a deadline that is a day rather than a moment. Points reach their
+ * twelve-month anniversary at whatever time of day they were earned, and telling somebody their
+ * points go at 14:32 would be precision they cannot act on — the sweep that acts on it runs
+ * overnight, so the day is the promise.
+ */
+const dateOnly = new Intl.DateTimeFormat('nl-BE', { dateStyle: 'long' })
+
+/**
+ * A `YYYY-MM-DD` from the backend, written out as a date somebody reads.
+ *
+ * <p>The time is appended, and that is the whole point of this function rather than passing the
+ * string straight to `new Date`. A date on its own is parsed as midnight **UTC**, so anybody west of
+ * Greenwich would be shown the day before the one the backend sent; the same string with a time and
+ * no offset is parsed in the browser's own zone, which leaves the three numbers exactly as they
+ * arrived. Nothing here converts between zones, because the backend has already decided which day
+ * this is — in {@link https://en.wikipedia.org/wiki/Time_in_Belgium Europe/Brussels}, named once
+ * there — and a page that converted it would be picking the zone of the machine it happened to be
+ * drawing on.
+ */
+function asADay(day: string): string {
+  return dateOnly.format(new Date(`${day}T00:00:00`))
+}
 
 /**
  * A multiplier, always to two places. 1,5 and 1,50 are the same number and only one of them reads as
@@ -250,8 +276,24 @@ function SignIn({
 }
 
 /**
- * Everything behind the sign-in screen: what this customer holds, and whichever savings account they
- * have opened.
+ * Which screen the signed-in application is showing.
+ *
+ * <p>A union rather than a couple of nullable fields, so that the states this component can be in
+ * are exactly the states it has a screen for: an open savings account and an open history at the
+ * same time is not one of them and cannot be arrived at.
+ *
+ * <p>Held in state rather than in the URL, which is the same bargain the rest of this application
+ * strikes: there is no router, no history entry and no shareable link to a screen. A reload comes
+ * back to the overview.
+ */
+type Screen =
+  | { at: 'home' }
+  | { at: 'history' }
+  | { at: 'savings-account'; savingsAccountId: number }
+
+/**
+ * Everything behind the sign-in screen: what this customer holds, whichever savings account they
+ * have opened, and the history of everything they have moved.
  *
  * <p>The accounts are read here rather than on the page that shows them, because the page that
  * changes them is the other one. A deposit or a claim tells this component to read them again, so
@@ -270,7 +312,9 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
   // account.
   const [claimed, setClaimed] = useState<ClaimedReward[] | null>(null)
   const [claimedError, setClaimedError] = useState<string | null>(null)
-  const [opened, setOpened] = useState<number | null>(null)
+  // Which of the three screens is showing. A union rather than a pair of nullable fields, so that
+  // "an account is open and so is the history" is not a state this component can get into.
+  const [screen, setScreen] = useState<Screen>({ at: 'home' })
 
   const loadAccounts = useCallback((signal?: AbortSignal) => {
     fetchAccounts(customer.id, signal)
@@ -320,18 +364,23 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
       .catch((problem: Error) => setRewardsError(problem.message))
   }, [])
 
-  const openedAccount = accounts?.savingsAccounts.find((account) => account.id === opened) ?? null
+  const openedAccount =
+    screen.at === 'savings-account'
+      ? accounts?.savingsAccounts.find((account) => account.id === screen.savingsAccountId) ?? null
+      : null
 
   return (
     <>
       <TopBar
         customer={customer}
         onSignOut={onSignOut}
-        onBack={opened === null ? null : () => setOpened(null)}
+        // One level deep is as deep as this application goes, so the way back is always the
+        // overview — from an open account and from the history alike.
+        onBack={screen.at === 'home' ? null : () => setScreen({ at: 'home' })}
       />
 
       <div className="shell">
-        {opened === null ? (
+        {screen.at === 'home' && (
           <Home
             customerId={customer.id}
             accounts={accounts}
@@ -346,15 +395,18 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               loadAccounts()
               loadClaimed()
             }}
-            onOpen={setOpened}
+            onOpen={(savingsAccountId) => setScreen({ at: 'savings-account', savingsAccountId })}
+            onOpenHistory={() => setScreen({ at: 'history' })}
           />
-        ) : (
+        )}
+
+        {screen.at === 'savings-account' && (
           <main>
             <SavingsAccountPage
               // Remounting on a change of account is what keeps a half-typed amount, an error and a
               // stale balance from following the customer to a different account.
-              key={opened}
-              savingsAccountId={opened}
+              key={screen.savingsAccountId}
+              savingsAccountId={screen.savingsAccountId}
               currentAccounts={accounts?.currentAccounts ?? []}
               // Every figure on the overview is behind whatever just happened here: the money in
               // both accounts, and the points the deposit earned.
@@ -363,8 +415,17 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
           </main>
         )}
 
+        {screen.at === 'history' && (
+          <main>
+            <MoneyHistory
+              customerId={customer.id}
+              currentAccounts={accounts?.currentAccounts ?? []}
+            />
+          </main>
+        )}
+
         {/* Held by the account it belongs to, so it is still on screen while one is open. */}
-        {opened !== null && openedAccount === null && accountsError !== null && (
+        {screen.at === 'savings-account' && openedAccount === null && accountsError !== null && (
           <Refusal reason={accountsError} />
         )}
       </div>
@@ -429,6 +490,7 @@ function Home({
   claimedError,
   onClaimed,
   onOpen,
+  onOpenHistory,
 }: {
   customerId: number
   accounts: CustomerAccounts | null
@@ -439,6 +501,7 @@ function Home({
   claimedError: string | null
   onClaimed: () => void
   onOpen: (savingsAccountId: number) => void
+  onOpenHistory: () => void
 }) {
   return (
     <main>
@@ -480,6 +543,20 @@ function Home({
                 ))}
               </ul>
             )}
+            {/* In this panel rather than a panel of its own, because the history is a history of
+                these accounts: every row in it moved money into or out of one of the cards above.
+                Shown even with no accounts, so that an empty overview still has a way onwards. */}
+            <button type="button" className="way-through" onClick={onOpenHistory}>
+              <span className="way-through-words">
+                <span className="way-through-name">Money history</span>
+                <span className="way-through-note">
+                  Every euro in and out, across all your savings, newest first
+                </span>
+              </span>
+              <span className="card-go" aria-hidden="true">
+                <ForwardIcon />
+              </span>
+            </button>
           </section>
 
           <SavingStreak
@@ -493,6 +570,8 @@ function Home({
           <Rewards
             customerId={customerId}
             pointsToSpend={accounts.pointsBalance}
+            expiringNext={accounts.pointsExpiringNext}
+            expiringNextOn={accounts.pointsExpiringNextOn}
             rewards={rewards}
             rewardsError={rewardsError}
             claimed={claimed}
@@ -628,6 +707,8 @@ function SavingStreak({
 function Rewards({
   customerId,
   pointsToSpend,
+  expiringNext,
+  expiringNextOn,
   rewards,
   rewardsError,
   claimed,
@@ -636,6 +717,8 @@ function Rewards({
 }: {
   customerId: number
   pointsToSpend: number
+  expiringNext: number | null
+  expiringNextOn: string | null
   rewards: Reward[] | null
   rewardsError: string | null
   claimed: ClaimedReward[] | null
@@ -675,10 +758,29 @@ function Rewards({
       <h2>Rewards</h2>
       <p className="explanation">Claims are final — the voucher is issued straight away.</p>
 
+      {/* The figure, its unit and the deadline under it are drawn from whatever the rise is
+          showing at this moment rather than from the settled figure, the way the week's cell is:
+          no frame of it can say more points are about to go than the balance above them.
+
+          The deadline is under the balance rather than anywhere else because it is the same figure
+          read from the other end — what they can spend, and how long they have to spend it in.
+          Points that vanish with no warning are indistinguishable from points gone missing. */}
       <p className="points-to-spend">
         <SparkIcon />
-        <Rising value={pointsToSpend} format={(shown) => points.format(Math.round(shown))} />
-        <span className="unit">points to spend</span>
+        <Rising
+          value={pointsToSpend}
+          format={(shown) => (
+            <>
+              {points.format(Math.round(shown))}
+              <span className="unit">points to spend</span>
+              <ExpiringNext
+                expiring={expiringNext}
+                on={expiringNextOn}
+                outOf={Math.round(shown)}
+              />
+            </>
+          )}
+        />
       </p>
 
       {rewardsError !== null && <Refusal reason={rewardsError} />}
@@ -851,11 +953,25 @@ function SavingsAccountPage({
                 below, against the deposit that earned it. */}
             <dt>Your points</dt>
             <dd>
+              {/* The holder's deadline, beside the holder's balance — the same two figures as on
+                  the overview, because the twelve months run against their points rather than
+                  against this account's saving. Inside the rise, as the week's cell is: while the
+                  balance is still climbing, a deadline taken from the settled figure would say more
+                  points were going than the customer appears to have. */}
               <Rising
                 value={account.balances.pointsBalance}
-                format={(shown) => points.format(Math.round(shown))}
+                format={(shown) => (
+                  <>
+                    {points.format(Math.round(shown))}
+                    <span className="unit">points</span>
+                    <ExpiringNext
+                      expiring={account.balances.pointsExpiringNext}
+                      on={account.balances.pointsExpiringNextOn}
+                      outOf={Math.round(shown)}
+                    />
+                  </>
+                )}
               />
-              <span className="unit">points</span>
             </dd>
           </div>
           {/* The week, beside the two totals rather than under them: "saved altogether" is history
@@ -1154,6 +1270,216 @@ function Deposits({
         </table>
       )}
     </div>
+  )
+}
+
+/**
+ * The deadline on the points a customer is holding: how many go next, and the day they go.
+ *
+ * <p>Nothing at all where there is nothing to lose, which is why both figures arrive as nullable and
+ * are checked together. "No points expire next" is true of somebody who has never earned anything;
+ * "zero points expire on the 14th" is not true of anybody, and a cell showing a 0 beside a date would
+ * be inventing a deadline out of an absence of one.
+ *
+ * <p>A day rather than a moment. Points reach their anniversary at whatever time of day they were
+ * earned and the sweep that acts on it runs overnight, so an exact time would be precision the
+ * customer cannot act on — and a figure they could catch the application out on.
+ *
+ * <p>The figures are the backend's and this works out none of them: not the anniversary, not which
+ * batch is next, not how many days are left. Counting the days here would be a second place the
+ * twelve months lived.
+ *
+ * <p>The one arithmetic it does is the clamp below, and it is the same bargain {@link ThisWeek}
+ * strikes: the figure is held against the balance being shown beside it rather than against the
+ * settled one, so that no frame of the balance's nine-hundred-millisecond climb says more points are
+ * about to go than the customer appears to have. It lands on the backend's number the moment the
+ * climb does, and the only figure it can ever show that the backend did not send is one on its way
+ * there.
+ */
+function ExpiringNext({
+  expiring,
+  on,
+  outOf,
+}: {
+  expiring: number | null
+  on: string | null
+  outOf: number
+}) {
+  if (expiring === null || on === null) {
+    return null
+  }
+  // Never more than the balance being shown beside it. The balance climbs to its figure over
+  // nine hundred milliseconds, and for as long as that lasts a deadline taken from the settled
+  // figure would say more points were about to go than the customer appears to have — which reads
+  // as a fault rather than as an animation. Held against the figure on the screen, exactly as the
+  // week's progress bar is, and it lands on the backend's number the moment the climb does.
+  const going = Math.min(expiring, outOf)
+  return (
+    <span className="expiring">
+      <span className="expiring-count">
+        {points.format(going)} {going === 1 ? 'point' : 'points'}
+      </span>{' '}
+      {/* The date travels with the word in front of it: a date alone at the start of a line reads
+          as a heading rather than as the end of this sentence. */}
+      <span className="expiring-when">expire on {asADay(on)}</span>
+    </span>
+  )
+}
+
+/**
+ * Every euro this customer has moved into or out of savings, newest first, as one list.
+ *
+ * <p>The question a person asks before they ask anything else about their money, and until this page
+ * the application could only answer it one account and one direction at a time. Somebody saving
+ * towards two goals moved their money once; reading it back as four lists to interleave by eye is not
+ * an answer.
+ *
+ * <p>Read here rather than handed down, because this is the only screen that wants it and it is read
+ * fresh every time the screen is opened — which is what makes going back to it after a deposit show
+ * the deposit.
+ *
+ * <p>Nothing is added up. No running total and no balance column: the same euro moving out of one pot
+ * and into another would be counted twice by anybody following a column down, and a running balance
+ * across several accounts is not a figure that means anything. What each account is worth is on the
+ * account.
+ *
+ * <p>Each row names the everyday account at the other end by its IBAN rather than by the identifier
+ * the backend files it under, the way a withdrawal already does on the account page: a customer
+ * picked that IBAN out of a form and it is the only form of it that can be checked against a bank
+ * statement. An identifier this page cannot put a name to is still shown as one, so a movement is
+ * never hidden by not knowing where it went.
+ */
+function MoneyHistory({
+  customerId,
+  currentAccounts,
+}: {
+  customerId: number
+  currentAccounts: CurrentAccount[]
+}) {
+  const [movements, setMovements] = useState<MoneyMovement[] | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  useEffect(() => {
+    const request = new AbortController()
+    fetchMoneyMovements(customerId, request.signal)
+      .then((theirs) => {
+        if (!request.signal.aborted) {
+          setMovements(theirs)
+          setProblem(null)
+        }
+      })
+      .catch((refused: Error) => {
+        if (!request.signal.aborted) {
+          setProblem(refused.message)
+        }
+      })
+    return () => request.abort()
+  }, [customerId])
+
+  const ibans = new Map(currentAccounts.map((account) => [account.id, account.iban]))
+
+  return (
+    <section className="panel">
+      <h2>Money history</h2>
+      <p className="explanation">
+        Every movement in and out of your savings, newest first. Each row is one movement — nothing
+        here is a total.
+      </p>
+
+      {problem !== null && <Refusal reason={problem} />}
+      {movements === null && problem === null && (
+        <Waiting label="Loading your money history…" bars={['100%', '100%', '70%']} />
+      )}
+
+      {movements !== null &&
+        (movements.length === 0 ? (
+          <p className="nothing">No money has moved in or out of your savings yet.</p>
+        ) : (
+          <div className="history">
+            {/* The same table the account page's histories use, because it is the same kind of
+                thing read at a different scope. Scrolls inside its own frame at a phone's width
+                rather than pushing the page sideways. */}
+            <div className="movements-frame">
+              <table className="deposits movements">
+                <thead>
+                  <tr>
+                    <th scope="col">When</th>
+                    <th scope="col">Movement</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">Points earned</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((moved, place) => (
+                    <tr
+                      // Deposits and withdrawals are numbered separately, so the identifier only
+                      // means anything alongside the direction and the key is the pair.
+                      key={`${moved.direction}-${moved.id}`}
+                      // Rows arrive one after another rather than all at once, as they do in the
+                      // account page's histories. Only the first handful; past that it is a wait.
+                      style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+                    >
+                      <td className="when">{dateAndTime.format(new Date(moved.movedAt))}</td>
+                      {/* Both cells are named so the stylesheet can lay the row out as a block at
+                          a phone's width without counting columns. */}
+                      <td className="moved">
+                        <Movement moved={moved} ibans={ibans} />
+                      </td>
+                      <td className="amount">{euros.format(moved.amount)}</td>
+                      <td className="gained">
+                        {moved.direction === 'INTO_SAVINGS' ? (
+                          <span className={moved.pointsEarned > 0 ? 'earnings' : 'earnings none'}>
+                            {moved.pointsEarned > 0 && <SparkIcon />}
+                            {points.format(moved.pointsEarned)}
+                          </span>
+                        ) : (
+                          // Not a zero. A withdrawal has never earned a point here, and a 0 in the
+                          // column would read as a deposit that happened to earn nothing.
+                          <span className="earnings none" title="Withdrawals earn no points">
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+    </section>
+  )
+}
+
+/**
+ * Which way one movement went, and between which two accounts.
+ *
+ * <p>Named from the savings account's point of view, because that is the account this ledger is about
+ * and the one whose balance the movement changed. The two accounts are written in the order the money
+ * travelled, so the row reads as the sentence it is rather than as two labels a reader has to work out
+ * the direction of for themselves.
+ */
+function Movement({
+  moved,
+  ibans,
+}: {
+  moved: MoneyMovement
+  ibans: Map<number, string>
+}) {
+  const everyday = ibans.get(moved.currentAccountId) ?? `Current account ${moved.currentAccountId}`
+  const savings = `Savings account ${moved.savingsAccountId}`
+  const into = moved.direction === 'INTO_SAVINGS'
+  return (
+    <>
+      <span className={into ? 'movement in' : 'movement out'}>
+        {into ? 'Into savings' : 'Out of savings'}
+      </span>
+      <span className="between">
+        {into ? everyday : savings}
+        {' \u2192 '}
+        {into ? savings : everyday}
+      </span>
+    </>
   )
 }
 

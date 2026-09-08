@@ -24,6 +24,10 @@ import jakarta.persistence.Id;
  * which batch paid for what is a question about individual batches that a total could not answer.
  * What was earned is never written down again — a deposit's reward cannot change after the fact.
  *
+ * <p>The age is what finishes a batch off. Twelve months after it was earned, whatever is left in it
+ * expires, and the batch is the only thing that could have been asked: a total has no age to have
+ * run out.
+ *
  * <p>Package-private, and that is the point of the module: no caller can learn that points are
  * stored this way, so no caller can come to depend on it.
  */
@@ -49,6 +53,19 @@ class PointsCredit {
     private long remainingPoints;
 
     private Instant earnedAt;
+
+    /**
+     * When this batch's twelve months ran out, and null for every batch that still has them.
+     *
+     * <p>The anniversary rather than the moment the sweep noticed. The batch expired when its twelve
+     * months were up whether or not anything was running at three that morning, and dating it by the
+     * run would make the same batch report a different moment depending on when the job next ran.
+     *
+     * <p>Written instead of emptying {@link #remainingPoints}, which is deliberately left alone:
+     * that figure is then what was still in the batch when it went, and it is the only place the
+     * number survives. Zeroed, an expired batch would be indistinguishable from a fully spent one.
+     */
+    private Instant expiredAt;
 
     @Enumerated(EnumType.STRING)
     private PointsReason reason;
@@ -86,7 +103,45 @@ class PointsCredit {
         return new PointsCredit(customerId, points, PointsReason.STREAK_BONUS, depositId, earnedAt);
     }
 
+    /**
+     * How much of this batch has neither been spent nor expired — or, once {@link #expiredAt} is
+     * set, how much of it was left when its twelve months ran out.
+     */
     long getRemainingPoints() {
+        return remainingPoints;
+    }
+
+    /** When it was earned, which is what its twelve months are counted from. */
+    Instant getEarnedAt() {
+        return earnedAt;
+    }
+
+    /** Why it was earned, which a sweep says out loud so a lost bonus is not read as lost euros. */
+    PointsReason getReason() {
+        return reason;
+    }
+
+    Long getId() {
+        return id;
+    }
+
+    Long getCustomerId() {
+        return customerId;
+    }
+
+    /**
+     * Ends this batch as at the moment its twelve months ran out, and answers how many points that
+     * cost the customer.
+     *
+     * <p>The batch decides, so that nothing outside can expire one twice: a batch that has already
+     * gone answers zero and keeps the moment it originally went, which is what makes a second sweep
+     * over the same rows a sweep that takes nothing.
+     */
+    long expire(Instant anniversary) {
+        if (expiredAt != null) {
+            return 0;
+        }
+        expiredAt = anniversary;
         return remainingPoints;
     }
 

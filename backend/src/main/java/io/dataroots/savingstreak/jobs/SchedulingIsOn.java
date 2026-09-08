@@ -9,10 +9,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * runs.
  *
  * <p>Spring does not schedule anything unless something asks it to, and the failure is silent: a
- * participant who writes a correct expiry job against an application without this class watches
- * nothing happen and has no error to read. This application ships no jobs of its own — points
- * expiry and the loyalty bonus are exercises — so this class exists for jobs that do not exist yet,
- * which is the point: the machinery is the seed's job and the job is the participant's.
+ * participant who writes a correct job against an application without this class watches nothing
+ * happen and has no error to read.
+ *
+ * <p>This class was written before there was anything to schedule, for jobs that did not exist yet.
+ * There is one now — the nightly sweep that retires points twelve months after they were earned —
+ * and the rest are still exercises, so the reason to keep this switch on has not changed: the
+ * machinery is the seed's job and the next job is the participant's.
  *
  * <p>In every profile, unlike the controller that runs a job on demand. A job is part of the
  * application wherever it runs; only the ability to run one out of turn is a lab affordance.

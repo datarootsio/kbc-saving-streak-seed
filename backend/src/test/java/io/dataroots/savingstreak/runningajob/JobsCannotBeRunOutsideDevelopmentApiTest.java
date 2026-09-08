@@ -73,6 +73,26 @@ class JobsCannotBeRunOutsideDevelopmentApiTest extends ApiIntegrationTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * And the application's own job is in this deployment too, not only in the lab.
+     *
+     * <p>Asked of the context rather than driven, because it cannot be driven from out here: the
+     * sweep fires at three in the morning, and the endpoint that would run it early is exactly what
+     * this profile does not have. The bean being registered is all there is to observe, and it is
+     * what says the expiry rule is part of the application rather than part of the demonstration.
+     *
+     * <p>Named as a string because the class is package-private to the points module, which is where
+     * it belongs — a test that could name the type would be a module that had let go of its own job.
+     */
+    @Test
+    void the_applications_own_nightly_job_is_in_an_application_without_the_development_profile() {
+        assertThat(application.containsBean("oldPointsExpireNightly"))
+                .as("the nightly points sweep ships in every profile; only running it out of turn "
+                        + "is a lab affordance, and the beans here are " + String.join(", ",
+                        application.getBeanNamesForType(Object.class, false, false)))
+                .isTrue();
+    }
+
     /** The jobs themselves are untouched by the profile: they still run when their schedule says. */
     @Test
     void a_scheduled_job_still_runs_on_its_own_schedule() throws InterruptedException {
@@ -98,13 +118,14 @@ class JobsCannotBeRunOutsideDevelopmentApiTest extends ApiIntegrationTest {
      */
     @Test
     void the_same_paths_are_there_when_the_development_profile_is() {
-        // Empty, because the application ships no scheduled jobs of its own: expiry and the loyalty
-        // bonus are exercises. The list being there and empty is the answer, not a missing feature.
+        // Not empty any more. The application ships one job of its own — the nightly sweep that
+        // retires points twelve months after they were earned — and the endpoint that lists it
+        // exists so that a trainer can run it without waiting until three tomorrow morning.
         assertThat(http.getForEntity("/api/dev/jobs", JsonNode.class).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
-        assertThat(http.getForEntity("/api/dev/jobs", JsonNode.class).getBody()).isEmpty();
-        // Refused rather than honoured, because nothing in the shipped application answers to that
-        // name — but refused by something that had to be there to refuse it.
+        assertThat(http.getForEntity("/api/dev/jobs", JsonNode.class).getBody()).isNotEmpty();
+        // Refused rather than honoured, because nothing answers to *that* name — a plausible
+        // misspelling of the sweep's — but refused by something that had to be there to refuse it.
         assertThat(http.postForEntity("/api/dev/jobs/{name}/run", null, JsonNode.class, "expirePoints")
                 .getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);

@@ -37,6 +37,24 @@ export type SavingsAccount = {
  */
 export type CustomerAccounts = {
   pointsBalance: number
+  /**
+   * How many of those points are the next to expire, and `null` when there are none left to lose.
+   *
+   * <p>Null rather than zero, and the two are different statements: "nothing expires next" is true of
+   * somebody who has never earned anything, and "zero points expire on the 14th" is not true of
+   * anybody. A page that showed a 0 would be inventing a deadline.
+   */
+  pointsExpiringNext: number | null
+  /**
+   * The day those points go — their twelve-month anniversary — as `YYYY-MM-DD`, and `null` when
+   * there are none.
+   *
+   * <p>A plain calendar day rather than a moment, decided by the backend in the one timezone this
+   * application counts calendars in. A moment would have had to be turned into a day here, in the
+   * zone of whatever machine is drawing the screen, and a customer in London would have been shown
+   * a deadline a day early.
+   */
+  pointsExpiringNextOn: string | null
   /** Gross new saving that has landed since Monday, across every account they hold. */
   newSavingsThisWeek: number
   weeklyMinimum: number
@@ -151,6 +169,16 @@ export type SavingsAccountBalances = {
    * beside this balance — what paying in *here* earned is on each deposit in the history.
    */
   pointsBalance: number
+  /**
+   * How many of the holder's points go next, and `null` when there are none. Theirs rather than this
+   * account's, like the balance above it: the twelve months run against their points.
+   */
+  pointsExpiringNext: number | null
+  /**
+   * The day those points reach their anniversary, as `YYYY-MM-DD`, and `null` when there are none.
+   * The backend's day, for the reason {@link CustomerAccounts} gives.
+   */
+  pointsExpiringNextOn: string | null
   /** Gross new saving that has landed since Monday, counted in the backend's own timezone. */
   newSavingsThisWeek: number
   weeklyMinimum: number
@@ -353,6 +381,54 @@ export async function makeWithdrawal(
   })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'The withdrawal was not accepted'))
+  }
+  return response.json()
+}
+
+/**
+ * One movement of money across the boundary between an everyday account and savings.
+ *
+ * <p>One shape for both kinds, which is the point of the ledger: a deposit and a withdrawal are the
+ * same event seen from opposite sides, and a customer reading back over what they have done with
+ * their money reads one story rather than two lists they have to interleave by eye. What differs
+ * between the two is in `direction` rather than in the fields, so a row renders the same way
+ * whichever it is.
+ *
+ * <p>`direction` arrives as the backend's own word rather than as a sign on the amount. An amount of
+ * money in this application is always a positive figure, and a ledger that carried the direction in
+ * the sign of the number would be the one place that stopped being true.
+ *
+ * <p>`pointsEarned` is 0 for a withdrawal, which is what a withdrawal earns rather than a gap in the
+ * record — money coming back out has never earned a point here.
+ *
+ * <p>`id` is unique within a direction and not across the ledger: deposits and withdrawals are
+ * numbered separately, so anything keying rows off it has to key off the pair.
+ */
+export type MoneyMovement = {
+  direction: 'INTO_SAVINGS' | 'OUT_OF_SAVINGS'
+  id: number
+  savingsAccountId: number
+  currentAccountId: number
+  amount: number
+  pointsEarned: number
+  movedAt: string
+}
+
+/**
+ * Every euro this customer has moved into or out of savings, newest first, across every savings
+ * account they hold.
+ *
+ * <p>The customer's rather than one account's, because that is the question: somebody saving towards
+ * two goals moved their money once. Nothing is added up here or by the page that shows it — a running
+ * balance across several accounts is not a figure that means anything.
+ */
+export async function fetchMoneyMovements(
+  customerId: number,
+  signal?: AbortSignal,
+): Promise<MoneyMovement[]> {
+  const response = await fetch(`/api/customers/${customerId}/money-movements`, { signal })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not load your money history'))
   }
   return response.json()
 }
