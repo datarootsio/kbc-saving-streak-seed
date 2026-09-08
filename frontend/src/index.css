@@ -1009,6 +1009,30 @@ button::after {
   color: var(--ink-faint);
 }
 
+/* Where the badge's figure came from, under it: the euros, the uplift, and the rate the two were
+   worked out at. Its own line rather than beside the badge — the arithmetic is longer than the
+   total it explains, and sharing a line would push the figure a customer is looking for off the
+   edge of a cell that already holds the narrowest third of the row.
+
+   Quieter and smaller than the badge, because it is the working rather than the answer. Wrapping is
+   allowed and the rate is kept whole by .breakdown-rate: at a phone's width "7 base + 2 bonus" and
+   "at 1,30×" on two lines is a sentence, whereas a rate cut in half is a figure with something
+   snapped off it. */
+.breakdown {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+/* The rate travels with its multiplication sign, the way the rate beside the week does. */
+.breakdown-rate {
+  white-space: nowrap;
+}
+
 /* The deposit just made is marked for a moment, so it can be found in a long list. */
 .deposits tr.landed {
   animation: landed 2.4s var(--ease) both;
