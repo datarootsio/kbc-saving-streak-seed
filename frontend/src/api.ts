@@ -150,10 +150,26 @@ export type SavingsAccountBalances = {
   currentMultiplier: number
 }
 
+/**
+ * A deposit that was made, and what it earned when it was made.
+ *
+ * <p>`pointsEarned` is everything it earned however it earned it, which is what it has always meant:
+ * `basePoints` and `streakBonusPoints` are the two parts of that figure and always add up to it, so
+ * nine points against a seven-euro deposit is an arithmetic a customer can check rather than a number
+ * they have to take on trust.
+ *
+ * <p>`multiplierApplied` is the rate this deposit was in fact paid at, decided when the money moved
+ * and never worked out again. Not the rate on `SavingsAccountBalances`, which is what the *next*
+ * deposit will earn at: a run that has since lapsed leaves the two disagreeing, and both are right.
+ * A deposit made before the scheme existed reports the ordinary 1.00, which is what it was paid.
+ */
 export type RecordedDeposit = {
   id: number
   amount: number
   pointsEarned: number
+  basePoints: number
+  streakBonusPoints: number
+  multiplierApplied: number
   depositedAt: string
 }
 

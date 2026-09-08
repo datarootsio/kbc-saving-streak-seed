@@ -1011,6 +1011,7 @@ function Deposits({
                     {made.pointsEarned > 0 && <SparkIcon />}
                     {points.format(made.pointsEarned)}
                   </span>
+                  <WhatItEarned deposit={made} />
                 </td>
               </tr>
             ))}
@@ -1018,6 +1019,35 @@ function Deposits({
         </table>
       )}
     </div>
+  )
+}
+
+/**
+ * How a past deposit's points were arrived at: the euros, the uplift the run of weeks added, and the
+ * rate it was paid at — under the total they add up to.
+ *
+ * <p>Under the figure rather than in columns of their own, because they are one statement about one
+ * number and the third of a row this cell gets is not three cells wide. Read as a sentence it is the
+ * arithmetic itself: seven base and two bonus at 1,30× is where the nine above it came from, which is
+ * the whole reason for showing it — a customer who cannot check a total has to trust it.
+ *
+ * <p>All three, always, including a bonus of nothing and a rate of 1,00×. Dropping them when they are
+ * unremarkable would make "this deposit earned no uplift" and "this deposit does not say" the same
+ * row, and would leave the rows a customer most wants to compare — the one before the run started and
+ * the one after — laid out differently from each other.
+ *
+ * <p>Every figure is the backend's, and the rate especially: it is what this deposit was paid when it
+ * was made, not what the account earns today. A run that has since lapsed leaves the two disagreeing,
+ * and a page that worked one out from the other would be rewriting history to match the present.
+ */
+function WhatItEarned({ deposit }: { deposit: RecordedDeposit }) {
+  return (
+    <span className="breakdown">
+      {points.format(deposit.basePoints)} base + {points.format(deposit.streakBonusPoints)} bonus{' '}
+      {/* The rate and its × stay on one line: a × alone at the start of a line reads as a figure
+          with something snapped off it, the way the rate beside the week does. */}
+      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>
+    </span>
   )
 }
 

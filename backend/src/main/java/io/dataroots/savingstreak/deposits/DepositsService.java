@@ -231,11 +231,24 @@ public class DepositsService {
         List<Deposit> made = deposits.findBySavingsAccountIdOrderByDepositedAtDescIdDesc(savingsAccountId);
         Map<Long, PointsByReason> pointsEarned =
                 points.pointsEarnedBy(made.stream().map(Deposit::getId).toList());
-        return made.stream()
+        List<RecordedDeposit> history = made.stream()
                 .map(deposit -> asRecorded(
                         deposit,
                         pointsEarned.getOrDefault(deposit.getId(), PointsByReason.nothing())))
                 .toList();
+        // The one decision this listing takes, counted rather than assumed: a rate read off the
+        // deposit, or the ordinary rate reported for a deposit recorded before there was a rate to
+        // record. A history that suddenly quotes 1.00 against every entry is either a lapsed run or
+        // a column that stopped being written, and those two are told apart here and nowhere else.
+        // Counts rather than a line per deposit: this runs on every read of an account's history.
+        long withoutARateOfTheirOwn = made.stream()
+                .filter(deposit -> deposit.getMultiplierApplied() == null)
+                .count();
+        log.debug("deposit history reported with what each deposit earned savingsAccountId={} "
+                        + "deposits={} atTheRateTheyWerePaidAt={} atTheOrdinaryRateForLackOfOne={}",
+                savingsAccountId, history.size(), history.size() - withoutARateOfTheirOwn,
+                withoutARateOfTheirOwn);
+        return history;
     }
 
     /** One deposit and what the ledger says it earned, put together for whoever is listing them. */
