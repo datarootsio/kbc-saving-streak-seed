@@ -1082,6 +1082,10 @@ button::after {
    the points are the customer's and this is the one place they are shown and spent. */
 .points-to-spend {
   display: flex;
+  /* Wrapping, so that the deadline underneath can take a line of its own. Without it the whole row
+     is one line whatever a child asks for, and the deadline sits beside the figure and squeezes
+     "points to spend" onto two lines instead. */
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0.4rem;
   margin: 0 0 1rem;
@@ -1821,9 +1825,12 @@ button.quiet.back svg {
 
 /* The points balance on the overview is a flex row of a mark, a figure and a unit; the deadline is a
    sentence about that figure and takes the whole of the line under it rather than becoming a fourth
-   thing on the same baseline. */
+   thing on the same baseline. Needs the row to wrap, which is why it does. */
 .points-to-spend .expiring {
   flex-basis: 100%;
+  /* The row's baseline alignment would otherwise pull this up onto the figure's baseline, and the
+     row's gap already puts the space between the two lines. */
+  margin-top: 0;
 }
 
 /* -------------------------------------------------- money history */
