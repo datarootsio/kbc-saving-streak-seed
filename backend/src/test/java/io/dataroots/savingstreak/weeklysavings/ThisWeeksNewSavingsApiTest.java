@@ -18,8 +18,9 @@ import static io.dataroots.savingstreak.support.SeededAccounts.BRAM;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * A savings account says how much new saving has landed in the week it is part-way through, and how
- * much more that week asks for.
+ * A customer says how much new saving they have put away in the week they are part-way through, and
+ * how much more that week asks for — reported beside every account they hold, because the week is
+ * theirs and not any one account's.
  *
  * <p>Every test asserts on the change it caused rather than on an absolute figure: the run shares
  * one database and one week, so whatever else has been paid into a seeded account today is already
@@ -103,11 +104,15 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * Each account counts its own week. A customer saving towards two goals has two weeks in
-     * progress, and a deposit into one is not quietly funding the other.
+     * One week per customer, counting every account they pay into. A customer saving towards two
+     * goals is saving: money into either one is a week's saving, and the figure reads the same
+     * whichever of their accounts it is read beside.
+     *
+     * <p>And somebody else's week is untouched by it, which is the line this does not cross: the
+     * week stopped belonging to an account and did not start belonging to the bank.
      */
     @Test
-    void a_deposit_into_one_savings_account_leaves_every_other_ones_week_alone() {
+    void a_deposit_into_any_of_a_customers_accounts_counts_towards_their_one_week() {
         long paidInto = seeded.savingsAccountOf(ANKE);
         long theSameCustomersOther = seeded.otherSavingsAccountOf(ANKE);
         long somebodyElses = seeded.savingsAccountOf(BRAM);
@@ -116,8 +121,10 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
 
         depositAccepted(paidInto, seeded.currentAccountOf(ANKE), "55.00");
 
+        // Read beside the account that was not paid into: the week has the EUR 55 in it, because the
+        // week is the customer's.
         assertThat(balancesOf(theSameCustomersOther).newSavingsThisWeek())
-                .isEqualByComparingTo(otherBefore.newSavingsThisWeek());
+                .isEqualByComparingTo(otherBefore.newSavingsThisWeek().add(new BigDecimal("55.00")));
         assertThat(balancesOf(somebodyElses).newSavingsThisWeek())
                 .isEqualByComparingTo(elsesBefore.newSavingsThisWeek());
     }

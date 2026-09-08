@@ -28,9 +28,10 @@ import static org.assertj.core.groups.Tuple.tuple;
  * spends, it earns first: leaning on somebody else's leftovers is how a test ends up depending on
  * another test class it never names.
  *
- * <p>Anke's accounts are the ones spent from. Bram's savings account is the run's untouched one —
- * two other tests assert it has never been paid into — and claiming a reward out of it is only used
- * where the point is that it cannot afford one.
+ * <p>Anke is the customer spent from, and the points come out of her one pot however many of her
+ * accounts earned them. Bram's savings account is the run's untouched one — two other tests assert it
+ * has never been paid into — and a claim in his name is only used where the point is that he cannot
+ * afford one.
  */
 class ClaimingRewardsApiTest extends ApiIntegrationTest {
 
@@ -78,7 +79,7 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         earnEnoughFor(savingsAccount, 100);
         BalancesView before = balancesOf(savingsAccount);
 
-        ResponseEntity<ClaimedRewardView> response = claim(savingsAccount, "CINEMA_TICKET");
+        ResponseEntity<ClaimedRewardView> response = claim(ANKE, "CINEMA_TICKET");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         BalancesView after = balancesOf(savingsAccount);
@@ -95,7 +96,7 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
         earnEnoughFor(savingsAccount, 40);
 
-        ClaimedRewardView claimed = claim(savingsAccount, "SNACK_VOUCHER").getBody();
+        ClaimedRewardView claimed = claim(ANKE, "SNACK_VOUCHER").getBody();
 
         assertThat(claimed.code()).isEqualTo("SNACK_VOUCHER");
         assertThat(claimed.title()).isNotBlank();
@@ -110,8 +111,8 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
         earnEnoughFor(savingsAccount, 20);
 
-        ClaimedRewardView first = claim(savingsAccount, "CHARITY_DONATION").getBody();
-        ClaimedRewardView second = claim(savingsAccount, "CHARITY_DONATION").getBody();
+        ClaimedRewardView first = claim(ANKE, "CHARITY_DONATION").getBody();
+        ClaimedRewardView second = claim(ANKE, "CHARITY_DONATION").getBody();
 
         assertThat(second.voucherCode()).isNotEqualTo(first.voucherCode());
         assertThat(second.id()).isNotEqualTo(first.id());
@@ -133,7 +134,7 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         earnEnoughFor(savingsAccount, cost);
         BalancesView before = balancesOf(savingsAccount);
 
-        ClaimedRewardView claimed = claim(savingsAccount, code).getBody();
+        ClaimedRewardView claimed = claim(ANKE, code).getBody();
 
         assertThat(claimed.pointsSpent()).isEqualTo(cost);
         assertThat(claimed.voucherCode()).startsWith(voucherPrefix + "-");
@@ -149,10 +150,10 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
         earnEnoughFor(savingsAccount, 50);
 
-        ClaimedRewardView first = claim(savingsAccount, "CHARITY_DONATION").getBody();
-        ClaimedRewardView second = claim(savingsAccount, "SNACK_VOUCHER").getBody();
+        ClaimedRewardView first = claim(ANKE, "CHARITY_DONATION").getBody();
+        ClaimedRewardView second = claim(ANKE, "SNACK_VOUCHER").getBody();
 
-        ResponseEntity<ClaimedRewardView[]> response = claimsAgainst(savingsAccount);
+        ResponseEntity<ClaimedRewardView[]> response = claimsBy(ANKE);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody())
@@ -180,7 +181,7 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         BalancesView before = balancesOf(savingsAccount);
         deposit(savingsAccount, "40.00");
 
-        claim(savingsAccount, "SNACK_VOUCHER");
+        claim(ANKE, "SNACK_VOUCHER");
 
         assertThat(balancesOf(savingsAccount).pointsBalance()).isEqualTo(before.pointsBalance());
     }
@@ -204,26 +205,28 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         deposit(savingsAccount, "4.00");
         deposit(savingsAccount, "5.00");
 
-        claim(savingsAccount, "CHARITY_DONATION");
+        claim(ANKE, "CHARITY_DONATION");
 
         assertThat(balancesOf(savingsAccount).pointsBalance()).isEqualTo(before.pointsBalance() + 2);
     }
 
     /**
-     * Points spent in one savings account come out of that account. Each one saves towards its own
-     * goal, and a reward claimed against one goal must not quietly be paid for by another.
+     * A claim spends the customer's points and none of their money, in any account. The points are
+     * one pot and come out of it wherever they were earned; the euros stay where they were paid in,
+     * because saving is not spending.
      */
     @Test
-    void a_claim_against_one_savings_account_leaves_the_others_alone() {
-        long untouched = seeded.otherSavingsAccountOf(ANKE);
-        long spendingFrom = seeded.savingsAccountOf(ANKE);
-        earnEnoughFor(spendingFrom, 100);
-        BalancesView before = balancesOf(untouched);
+    void a_claim_spends_the_customers_points_and_leaves_every_accounts_money_alone() {
+        long earnedIn = seeded.savingsAccountOf(ANKE);
+        long theOtherOne = seeded.otherSavingsAccountOf(ANKE);
+        earnEnoughFor(earnedIn, 100);
+        BalancesView before = balancesOf(theOtherOne);
 
-        claim(spendingFrom, "CINEMA_TICKET");
+        claim(ANKE, "CINEMA_TICKET");
 
-        BalancesView after = balancesOf(untouched);
-        assertThat(after.pointsBalance()).isEqualTo(before.pointsBalance());
+        BalancesView after = balancesOf(theOtherOne);
+        // The same pot read from the other account: what was spent left it, and no euros moved.
+        assertThat(after.pointsBalance()).isEqualTo(before.pointsBalance() - 100);
         assertThat(after.moneyBalance()).isEqualByComparingTo(before.moneyBalance());
     }
 
@@ -231,17 +234,18 @@ class ClaimingRewardsApiTest extends ApiIntegrationTest {
         return http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
     }
 
-    private ResponseEntity<ClaimedRewardView[]> claimsAgainst(long savingsAccountId) {
-        return http.getForEntity(
-                "/api/savings-accounts/{id}/redemptions", ClaimedRewardView[].class, savingsAccountId);
+    private ResponseEntity<ClaimedRewardView[]> claimsBy(String customerName) {
+        return http.getForEntity("/api/customers/{id}/redemptions", ClaimedRewardView[].class,
+                seeded.customerIdOf(customerName));
     }
 
-    private ResponseEntity<ClaimedRewardView> claim(long savingsAccountId, String reward) {
+    /** Claimed by the customer, out of the one pot of points every account of theirs earns into. */
+    private ResponseEntity<ClaimedRewardView> claim(String customerName, String reward) {
         return http.postForEntity(
-                "/api/savings-accounts/{id}/redemptions",
+                "/api/customers/{id}/redemptions",
                 Map.of("reward", reward),
                 ClaimedRewardView.class,
-                savingsAccountId);
+                seeded.customerIdOf(customerName));
     }
 
     /**

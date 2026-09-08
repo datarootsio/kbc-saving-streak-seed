@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
+import io.dataroots.savingstreak.accounts.AccountHolder;
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.points.PointsByReason;
 import io.dataroots.savingstreak.points.PointsReason;
@@ -73,8 +74,9 @@ public class DepositsService {
     @Transactional
     public RecordedDeposit deposit(long savingsAccountId, long fromCurrentAccountId, BigDecimal amount) {
         // The accounts before the amount. A deposit is a movement between two of them, and if there
-        // is no such movement to make, the amount is beside the point.
-        refuseUnlessOneCustomersOwnAccounts(savingsAccountId, fromCurrentAccountId);
+        // is no such movement to make, the amount is beside the point. Who holds them comes back
+        // from the same check, because the points this deposit earns are that customer's.
+        long customerId = theCustomerWhoHoldsBothOrRefuse(savingsAccountId, fromCurrentAccountId);
         refuseUnlessAnAmountOfMoney(amount);
         takeTheMoneyOrRefuse(fromCurrentAccountId, amount);
 
@@ -96,7 +98,8 @@ public class DepositsService {
         log.debug("deposit takes its moment from the application clock savingsAccountId={} "
                 + "clockReads={} recordedMoment={}", savingsAccountId, clockReads, now);
 
-        Deposit deposit = deposits.save(new Deposit(savingsAccountId, fromCurrentAccountId, amount, now));
+        Deposit deposit = deposits.save(
+                new Deposit(savingsAccountId, customerId, fromCurrentAccountId, amount, now));
         // What the deposit starts out with still in it, which is all of it. The account's money
         // balance is summed from this figure rather than from the amount, so a reader adding the
         // balance up by hand needs to see it recorded rather than assume it.
@@ -112,24 +115,27 @@ public class DepositsService {
         // inside this transaction, and a query against the deposits flushes it first. That is what
         // "once that deposit has been counted" means, and the test that a deposit crossing the
         // weekly minimum is itself paid at the new rate is the one that would fail if it were not so.
-        WeekAndStreak saving = WeekAndStreakDerivation.asAt(this, savingsAccountId, now);
+        WeekAndStreak saving = WeekAndStreakDerivation.asAt(this, customerId, now);
         BigDecimal multiplier = saving.streak().multiplier();
         // Written on the deposit before the points are credited, so that what the ledger was paid and
         // what the deposit says it was paid are one decision rather than two.
         deposit.paidAt(multiplier);
+        // Credited to the customer, not to the account the euros went into: their points are one
+        // pot, and this deposit adds to it whichever of their accounts it landed in.
         PointsByReason credited =
-                points.creditPointsFor(savingsAccountId, deposit.getId(), amount, multiplier, now);
+                points.creditPointsFor(customerId, deposit.getId(), amount, multiplier, now);
         // Everything that decided the outcome, on one line: the week the deposit landed in, what has
         // now landed in it, whether this deposit is the one that carried the week over the line, how
         // long the run is with the week counted, the rate that run pays, and the two figures the
         // points are made of. A reviewer can redo the whole pricing from this line — floor the
         // amount, multiply by the rate, floor again — and the DEBUG lines underneath it say which
         // weeks the walk went through to arrive at the run.
-        log.info("deposit accepted depositId={} savingsAccountId={} fromCurrentAccountId={} "
+        log.info("deposit accepted depositId={} savingsAccountId={} customerId={} "
+                        + "fromCurrentAccountId={} "
                         + "amount={} week={} newSavingsThisWeek={} securedByThisDeposit={} "
                         + "streakWeeks={} multiplier={} basePoints={} streakBonusPoints={} "
                         + "pointsEarned={} pointsByReason={} depositedAt={}",
-                deposit.getId(), savingsAccountId, fromCurrentAccountId, asMoney(amount),
+                deposit.getId(), savingsAccountId, customerId, fromCurrentAccountId, asMoney(amount),
                 saving.week().week(), asMoney(saving.week().newSavings()),
                 saving.week().wasCarriedOverBy(amount), saving.streak().currentWeeks(), multiplier,
                 credited.earnedAs(PointsReason.BASE_ACCRUAL),
@@ -171,7 +177,12 @@ public class DepositsService {
     }
 
     /**
-     * Refuses a deposit whose two ends are not one customer's own accounts.
+     * Refuses a deposit whose two ends are not one customer's own accounts, and answers which
+     * customer that is.
+     *
+     * <p>Answered rather than merely checked, because the deposit needs it: the points it earns
+     * belong to the customer, and the customer whose points they are is exactly the one this check
+     * has just established holds both ends of the transfer.
      *
      * <p>Asked of Accounts rather than enforced by the database: a deposit names both accounts by
      * identifier and has no foreign key to either, so nothing underneath would object. Which module
@@ -182,7 +193,7 @@ public class DepositsService {
      * identifier they sent; saying who it belongs to would be telling them something new about a
      * customer who is not them.
      */
-    private void refuseUnlessOneCustomersOwnAccounts(long savingsAccountId, long fromCurrentAccountId) {
+    private long theCustomerWhoHoldsBothOrRefuse(long savingsAccountId, long fromCurrentAccountId) {
         switch (accounts.pairingFor(savingsAccountId, fromCurrentAccountId)) {
             // The one pairing money can move across, so the only one that goes no further.
             case HELD_BY_ONE_CUSTOMER -> { }
@@ -194,6 +205,13 @@ public class DepositsService {
                     "A savings account can only be paid into from a current account held by the "
                             + "same customer.");
         }
+        return accounts.holderOfSavingsAccount(savingsAccountId)
+                .map(AccountHolder::customerId)
+                // One customer held both a moment ago, when the pairing was checked. An account that
+                // has gone in between is reported as the absence it is rather than allowed to credit
+                // points to nobody.
+                .orElseThrow(() -> new DepositRefused(NO_SUCH_ACCOUNT,
+                        AccountsService.noSuchSavingsAccount(savingsAccountId)));
     }
 
     /**
@@ -280,7 +298,13 @@ public class DepositsService {
     }
 
     /**
-     * The deposits that landed in this savings account inside a stretch of time, oldest first.
+     * The deposits this customer made inside a stretch of time, oldest first — everything they paid
+     * in, whichever of their savings accounts it went into.
+     *
+     * <p>The customer's rather than one account's, because that is what a week of saving is: a week
+     * counts what somebody put away, and which goal they were putting it towards decides where the
+     * euros sit and nothing about the week. Whoever wants one account's payments in wants
+     * {@link #depositsInto}.
      *
      * <p>The stretch is half-open — the first moment counts, the last does not — so that whoever
      * splits time into adjacent stretches gets each deposit in exactly one of them. A caller
@@ -299,17 +323,17 @@ public class DepositsService {
      * @throws IllegalArgumentException if the stretch ends before it begins
      */
     @Transactional(readOnly = true)
-    public List<DepositLanded> depositsLandedBetween(long savingsAccountId, Instant from, Instant until) {
+    public List<DepositLanded> depositsLandedBetween(long customerId, Instant from, Instant until) {
         // A stretch that ends before it begins is a caller that worked its boundaries out wrongly,
         // and the query would answer it with an empty list — which reads as "nothing landed in that
         // week" and would have a week silently reporting nothing rather than reporting a fault. Said
         // out loud instead: nobody types these two moments, so the only way to get here is a bug.
         if (from.isAfter(until)) {
             String reason = "a stretch of time runs forwards, and " + from + " is after " + until;
-            log.warn("deposits not counted savingsAccountId={} reason={}", savingsAccountId, reason);
+            log.warn("deposits not counted customerId={} reason={}", customerId, reason);
             throw new IllegalArgumentException(reason);
         }
-        List<DepositLanded> landed = deposits.landedBetween(savingsAccountId, from, until).stream()
+        List<DepositLanded> landed = deposits.landedBetween(customerId, from, until).stream()
                 // Quoted to the cent here, once, because this is where the amount leaves the module:
                 // SQLite has no decimal type and hands EUR 12.50 back as 12.5, and a caller adding
                 // those up or writing them into a log line would either restate the rounding or
@@ -321,29 +345,32 @@ public class DepositsService {
         // figure can be checked against the deposits this module handed it. The deposits themselves
         // are left to whoever asked to log: it knows what it was counting them for, and this runs on
         // every read of an account.
-        log.debug("deposits that landed in a stretch of time savingsAccountId={} from={} until={} "
-                + "deposits={}", savingsAccountId, from, until, landed.size());
+        log.debug("deposits that landed in a stretch of time customerId={} from={} until={} "
+                + "deposits={}", customerId, from, until, landed.size());
         return landed;
     }
 
     /**
-     * Everything that landed in this savings account before a moment, oldest first — the whole of its
-     * history up to that point.
+     * Everything this customer paid in before a moment, oldest first — the whole of their saving up
+     * to that point, across every account they hold.
      *
      * <p>Exclusive of the moment, so that this and {@link #depositsLandedBetween} split time at it
      * the same way and a caller asking for both sides of a boundary counts nothing twice.
      *
      * <p>Up to a moment rather than all of it, because the application's clock moves: a trainer who
      * winds it forward, pays money in and winds it back has left a deposit dated in the future, and a
-     * caller counting an account's history is entitled to ask for the part of it that has actually
-     * happened. Whoever asks names the moment; this module does not read the clock.
+     * caller walking somebody's saving back through the weeks is entitled to ask for the part of it
+     * that has actually happened. Whoever asks names the moment; this module does not read the clock.
      *
      * <p>What landed rather than what is left, for the reason {@link DepositLanded} gives: a
      * withdrawal since then draws a deposit down without un-happening it.
+     *
+     * <p>The customer's, not one account's: a week of somebody's saving counts what they paid in
+     * wherever they paid it, so the run of weeks behind it is walked over the same ledger.
      */
     @Transactional(readOnly = true)
-    public List<DepositLanded> depositsLandedBefore(long savingsAccountId, Instant until) {
-        List<DepositLanded> landed = deposits.landedBefore(savingsAccountId, until).stream()
+    public List<DepositLanded> depositsLandedBefore(long customerId, Instant until) {
+        List<DepositLanded> landed = deposits.landedBefore(customerId, until).stream()
                 // Quoted to the cent here, once, for the reason the stretch-of-time query gives:
                 // SQLite hands EUR 12.50 back as 12.5, and a caller adding those up or writing one
                 // into a log line would either restate the rounding or print a figure that does not
@@ -355,8 +382,8 @@ public class DepositsService {
         // own figure can be checked against what this module handed it. The deposits themselves are
         // left to whoever asked to log: it knows what it was counting them for, and this runs on
         // every read of an account.
-        log.debug("deposits that landed before a moment savingsAccountId={} until={} deposits={}",
-                savingsAccountId, until, landed.size());
+        log.debug("deposits that landed before a moment customerId={} until={} deposits={}",
+                customerId, until, landed.size());
         return landed;
     }
 

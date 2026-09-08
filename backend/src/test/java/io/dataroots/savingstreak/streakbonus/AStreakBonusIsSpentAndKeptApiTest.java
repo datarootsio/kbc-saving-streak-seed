@@ -85,14 +85,14 @@ class AStreakBonusIsSpentAndKeptApiTest extends ApiIntegrationTest {
 
         // 60 + 110 of the 180 come out of the two batches of euros, oldest first, and the last ten
         // come out of the bonus — which the ledger treats as a batch like any other.
-        ClaimedRewardView claimed = app.claim(savingsAccount, "FAMILY_CINEMA_PACK");
+        ClaimedRewardView claimed = app.claim(ANKE, "FAMILY_CINEMA_PACK");
         assertThat(claimed.pointsSpent()).isEqualTo(FAMILY_CINEMA_PACK_COSTS);
         assertThat(app.balancesOf(savingsAccount).pointsBalance()).isEqualTo(60 + 121 - 180);
 
         // And the one point left is genuinely there and genuinely only one: the refusal reads the
         // same balance back out.
-        assertThat(app.whyTheClaimWasRefused(savingsAccount, "CHARITY_DONATION"))
-                .isEqualTo("Charity donation costs 10 points, and this account has 1.");
+        assertThat(app.whyTheClaimWasRefused(ANKE, "CHARITY_DONATION"))
+                .isEqualTo("Charity donation costs 10 points, and you have 1.");
     }
 
     /** Everything the history says this account's deposits earned, however they earned it. */

@@ -1,8 +1,8 @@
 package io.dataroots.savingstreak.streaks;
 
 /**
- * How the saving is going on one savings account: the week it is part-way through, and the run of
- * consecutive secured weeks behind that week.
+ * How one customer's saving is going: the week they are part-way through, and the run of consecutive
+ * secured weeks behind that week.
  *
  * <p>The two together rather than one at a time, because they are two readings of the same
  * derivation and are only true of the same moment. Asked separately they would each read the clock

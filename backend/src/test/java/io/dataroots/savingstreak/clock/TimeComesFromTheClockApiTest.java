@@ -107,7 +107,7 @@ class TimeComesFromTheClockApiTest extends ApiIntegrationTest {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
         deposit(savingsAccount, "10.00");
 
-        ResponseEntity<ClaimedRewardView> response = claim(savingsAccount, "CHARITY_DONATION");
+        ResponseEntity<ClaimedRewardView> response = claim(ANKE, "CHARITY_DONATION");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().claimedAt()).isEqualTo(TO_THE_MILLISECOND);
@@ -164,12 +164,13 @@ class TimeComesFromTheClockApiTest extends ApiIntegrationTest {
                 savingsAccountId);
     }
 
-    private ResponseEntity<ClaimedRewardView> claim(long savingsAccountId, String reward) {
+    /** Claimed by the customer, because the points that pay for it are theirs and not an account's. */
+    private ResponseEntity<ClaimedRewardView> claim(String customerName, String reward) {
         return clockedHttp.postForEntity(
-                "/api/savings-accounts/{id}/redemptions",
+                "/api/customers/{id}/redemptions",
                 Map.of("reward", reward),
                 ClaimedRewardView.class,
-                savingsAccountId);
+                seeded.customerIdOf(customerName));
     }
 
     /**

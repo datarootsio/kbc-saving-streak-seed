@@ -131,19 +131,21 @@ class DepositEarnsPointsApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * Separate accounts run separate streaks. A customer saving towards two goals sees each balance
-     * mean what it says, rather than the two pooling.
+     * Separate accounts hold separate money and run separate streaks. A customer saving towards two
+     * goals sees each money balance mean what it says, rather than the two pooling.
+     *
+     * <p>The points are the exception, and deliberately not asserted here: they are the customer's
+     * one pot and this deposit has just added to it, which is
+     * {@code io.dataroots.savingstreak.customerpoints}'s subject.
      */
     @Test
-    void a_deposit_into_one_savings_account_leaves_the_customers_other_ones_untouched() {
+    void a_deposit_into_one_savings_account_leaves_the_money_in_the_others_untouched() {
         long untouched = seeded.otherSavingsAccountOf(ANKE);
         BalancesView before = balancesOf(untouched);
 
         deposit(seeded.savingsAccountOf(ANKE), seeded.currentAccountOf(ANKE), "40.00");
 
-        BalancesView after = balancesOf(untouched);
-        assertThat(after.moneyBalance()).isEqualByComparingTo(before.moneyBalance());
-        assertThat(after.pointsBalance()).isEqualTo(before.pointsBalance());
+        assertThat(balancesOf(untouched).moneyBalance()).isEqualByComparingTo(before.moneyBalance());
     }
 
     private ResponseEntity<DepositView> deposit(long savingsAccountId, long currentAccountId, String amount) {

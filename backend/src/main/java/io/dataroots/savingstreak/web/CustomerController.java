@@ -7,14 +7,19 @@ import io.dataroots.savingstreak.accounts.CustomerAccounts;
 import io.dataroots.savingstreak.accounts.SavingsAccount;
 import io.dataroots.savingstreak.deposits.DepositsService;
 import io.dataroots.savingstreak.points.PointsService;
+import io.dataroots.savingstreak.rewards.Reward;
+import io.dataroots.savingstreak.rewards.RewardsService;
+import io.dataroots.savingstreak.streaks.StreaksService;
 import io.dataroots.savingstreak.web.CustomerAccountsResponse.CurrentAccountResponse;
 import io.dataroots.savingstreak.web.CustomerAccountsResponse.SavingsAccountResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,11 +30,16 @@ class CustomerController {
     private final AccountsService accounts;
     private final DepositsService deposits;
     private final PointsService points;
+    private final RewardsService rewards;
+    private final StreaksService streaks;
 
-    CustomerController(AccountsService accounts, DepositsService deposits, PointsService points) {
+    CustomerController(AccountsService accounts, DepositsService deposits, PointsService points,
+                       RewardsService rewards, StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.points = points;
+        this.rewards = rewards;
+        this.streaks = streaks;
     }
 
     /**
@@ -74,28 +84,91 @@ class CustomerController {
     }
 
     /**
-     * Everything the customer holds and what is in it: the accounts money comes from, and the
-     * accounts it goes to, with both of the figures a savings account is worth.
+     * Everything the customer holds and what is in it: the accounts money comes from, the accounts it
+     * goes to, the points all of that saving has earned them, and how the saving itself is going —
+     * the week they are part-way through and the run of weeks behind it.
      *
-     * <p>Those figures come from three modules that do not know about each other — who holds the
-     * account, what has been paid into it, and what that earned — and are assembled here, the same
-     * way the savings account's own endpoint assembles them. Assembling an answer is not a rule: no
-     * decision about money or points is taken in this class.
+     * <p>Those figures come from four modules that do not know about each other — who holds what,
+     * what has been paid into each account, what the customer has earned, and how their week and
+     * their run of weeks are going — and are assembled here. Assembling an answer is not a rule: no
+     * decision about money, points, weeks or rates is taken in this class.
+     *
+     * <p>One read transaction, so that the figures describe the same instant of the ledger. Each
+     * module opens a read of its own otherwise, and a deposit committing between two of them would
+     * have the page show a savings balance without the points that deposit earned, or a week that has
+     * taken EUR 60 in beside a balance of EUR 0,00 — answers that contradict themselves and that no
+     * module is wrong about.
+     *
+     * <p>The week and the run come back together from one call for the reason the savings account's
+     * own endpoint gives: they are one derivation off one reading of the clock, and asking for them
+     * separately is what would have them describe two different weeks.
      */
+    @Transactional(readOnly = true)
     @GetMapping("/{customerId}/accounts")
     CustomerAccountsResponse accountsOf(@PathVariable long customerId) {
         CustomerAccounts held = accounts.accountsOf(customerId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "no customer with id " + customerId));
-        return new CustomerAccountsResponse(
+                .orElseThrow(() -> noSuchCustomer(customerId));
+        return CustomerAccountsResponse.of(
+                points.balanceOf(customerId),
+                streaks.weekAndStreakOf(customerId),
                 held.currentAccounts().stream().map(CurrentAccountResponse::of).toList(),
                 held.savingsAccounts().stream().map(this::worthOf).toList());
     }
 
     private SavingsAccountResponse worthOf(SavingsAccount account) {
-        return new SavingsAccountResponse(
-                account.getId(),
-                deposits.moneyBalanceOf(account.getId()),
-                points.balanceOf(account.getId()));
+        return new SavingsAccountResponse(account.getId(), deposits.moneyBalanceOf(account.getId()));
+    }
+
+    /**
+     * What the customer has claimed, newest first. The other half of their points balance: the
+     * deposits into every account they hold say what came in, these say what went out.
+     */
+    @GetMapping("/{customerId}/redemptions")
+    List<ClaimedRewardResponse> claimedBy(@PathVariable long customerId) {
+        // Asked before the claims are, so that a customer nobody has heard of is refused rather than
+        // answered with the empty history of somebody who has simply never claimed anything.
+        if (!accounts.customerExists(customerId)) {
+            throw noSuchCustomer(customerId);
+        }
+        return rewards.claimedBy(customerId).stream().map(ClaimedRewardResponse::of).toList();
+    }
+
+    /**
+     * Claims a reward out of the customer's points, wherever they earned them.
+     *
+     * <p>Against the customer rather than against one of their savings accounts, because that is
+     * whose points these are: somebody saving towards two goals has one pot to spend and does not
+     * have to pick which account pays.
+     */
+    @PostMapping("/{customerId}/redemptions")
+    @ResponseStatus(HttpStatus.CREATED)
+    ClaimedRewardResponse claim(@PathVariable long customerId, @RequestBody ClaimRequest request) {
+        // Reading the request, not judging it. Whether the customer can afford the reward is a rule,
+        // and it belongs to Rewards, which refuses on its own.
+        if (request == null || request.reward() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A claim needs to name the reward being claimed.");
+        }
+        return ClaimedRewardResponse.of(rewards.claim(customerId, rewardIn(request)));
+    }
+
+    /**
+     * The reward the claim named, or a refusal naming what is not in the catalogue. Named back to
+     * whoever sent it, so a page that sent an old code can see which one it was.
+     */
+    private Reward rewardIn(ClaimRequest request) {
+        String code = request.reward().trim();
+        try {
+            return Reward.valueOf(code);
+        } catch (IllegalArgumentException notInTheCatalogue) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "There is nothing called \"" + code + "\" in the rewards catalogue.");
+        }
+    }
+
+    /** Worded for whoever reads it: a refusal reaches the screen with its reason unchanged. */
+    private ResponseStatusException noSuchCustomer(long customerId) {
+        return new ResponseStatusException(
+                HttpStatus.NOT_FOUND, AccountsService.noSuchCustomer(customerId));
     }
 }

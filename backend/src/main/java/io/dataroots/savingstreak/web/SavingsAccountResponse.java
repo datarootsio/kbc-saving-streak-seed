@@ -6,8 +6,13 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
 
 /**
  * A savings account and what it is worth, in the two currencies the customer cares about: the money
- * they have saved and the points that saving earned them, side by side because the point of the
- * application is the connection between the two.
+ * they have saved here and the points their saving has earned them, side by side because the point
+ * of the application is the connection between the two.
+ *
+ * <p>The money is this account's; the points, the week and the run of weeks are the holder's. All
+ * three belong to the customer rather than to any one account they save into, so they read the same
+ * on every account they hold — what paying in <em>here</em> earned is on the deposit, in the history
+ * underneath.
  *
  * <p>And the week they are part-way through, the run of weeks behind it, and what that run pays. The
  * two balances say where the account has got to altogether; the three weekly figures say where it has

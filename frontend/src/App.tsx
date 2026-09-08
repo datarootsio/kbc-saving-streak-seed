@@ -221,10 +221,7 @@ function SignIn({
 
         {demonstrating !== null && demonstrating.length > 0 && (
           <div className="demo">
-            <p className="explanation">
-              No password: this is a training application, and signing in only says whose accounts to
-              show. Fill in one of these to try it.
-            </p>
+            <p className="explanation">No password — pick one of these to try it.</p>
             <ul>
               {demonstrating.map((who) => (
                 <li key={who.id}>
@@ -264,10 +261,15 @@ function SignIn({
 function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () => void }) {
   const [accounts, setAccounts] = useState<CustomerAccounts | null>(null)
   const [accountsError, setAccountsError] = useState<string | null>(null)
-  // The catalogue belongs to no account and no customer, so it is read once here and handed to both
-  // the page that browses it and the page that spends against it.
+  // The catalogue belongs to no account and no customer, so it is read once here and handed to the
+  // page that browses and spends against it.
   const [rewards, setRewards] = useState<Reward[] | null>(null)
   const [rewardsError, setRewardsError] = useState<string | null>(null)
+  // What this customer has claimed, read here beside their accounts because it belongs to the same
+  // person: their points are one pot, so what has come out of it is one list rather than one per
+  // account.
+  const [claimed, setClaimed] = useState<ClaimedReward[] | null>(null)
+  const [claimedError, setClaimedError] = useState<string | null>(null)
   const [opened, setOpened] = useState<number | null>(null)
 
   const loadAccounts = useCallback((signal?: AbortSignal) => {
@@ -285,11 +287,32 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
       })
   }, [customer.id])
 
+  const loadClaimed = useCallback((signal?: AbortSignal) => {
+    fetchClaimed(customer.id, signal)
+      .then((theirs) => {
+        if (signal?.aborted !== true) {
+          setClaimed(theirs)
+          setClaimedError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (signal?.aborted !== true) {
+          setClaimedError(problem.message)
+        }
+      })
+  }, [customer.id])
+
   useEffect(() => {
     const request = new AbortController()
     loadAccounts(request.signal)
     return () => request.abort()
   }, [loadAccounts])
+
+  useEffect(() => {
+    const request = new AbortController()
+    loadClaimed(request.signal)
+    return () => request.abort()
+  }, [loadClaimed])
 
   useEffect(() => {
     fetchRewards()
@@ -310,10 +333,19 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
       <div className="shell">
         {opened === null ? (
           <Home
+            customerId={customer.id}
             accounts={accounts}
             accountsError={accountsError}
             rewards={rewards}
             rewardsError={rewardsError}
+            claimed={claimed}
+            claimedError={claimedError}
+            onClaimed={() => {
+              // The points that paid for it are on the overview and the voucher belongs in the
+              // list beside them, so both are read again.
+              loadAccounts()
+              loadClaimed()
+            }}
             onOpen={setOpened}
           />
         ) : (
@@ -324,9 +356,8 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               key={opened}
               savingsAccountId={opened}
               currentAccounts={accounts?.currentAccounts ?? []}
-              rewards={rewards}
-              rewardsError={rewardsError}
-              // Both balances on the overview are behind whatever just happened here.
+              // Every figure on the overview is behind whatever just happened here: the money in
+              // both accounts, and the points the deposit earned.
               onChanged={loadAccounts}
             />
           </main>
@@ -380,24 +411,33 @@ function TopBar({
 }
 
 /**
- * What the customer holds and what they could spend it on: every account with what is in it, and the
- * catalogue underneath.
+ * What the customer holds and what they can spend it on: every account with what is in it, and
+ * underneath, the points all of that saving has earned them and the rewards those points buy.
  *
  * <p>Nothing here is added up. Two savings balances are two balances, and a total across them would
  * be a figure this page worked out for itself — which is the one thing no figure on any of these
- * screens is.
+ * screens is. The points are one figure because the backend sends one: they belong to the customer,
+ * and summing what each account earned is its arithmetic and not this page's.
  */
 function Home({
+  customerId,
   accounts,
   accountsError,
   rewards,
   rewardsError,
+  claimed,
+  claimedError,
+  onClaimed,
   onOpen,
 }: {
+  customerId: number
   accounts: CustomerAccounts | null
   accountsError: string | null
   rewards: Reward[] | null
   rewardsError: string | null
+  claimed: ClaimedReward[] | null
+  claimedError: string | null
+  onClaimed: () => void
   onOpen: (savingsAccountId: number) => void
 }) {
   return (
@@ -418,12 +458,8 @@ function Home({
         <>
           <section className="panel">
             <h2>Current account</h2>
-            <p className="explanation">
-              Everyday money. A deposit takes what it moves out of one of these, and is refused if it
-              is not there.
-            </p>
             {accounts.currentAccounts.length === 0 ? (
-              <p className="nothing">You hold no current account.</p>
+              <p className="nothing">No current account.</p>
             ) : (
               <ul className="cards">
                 {accounts.currentAccounts.map((account) => (
@@ -435,12 +471,8 @@ function Home({
 
           <section className="panel">
             <h2>Savings accounts</h2>
-            <p className="explanation">
-              What you have put away, and the points it earned. Open one to pay into it or to spend
-              what it has earned.
-            </p>
             {accounts.savingsAccounts.length === 0 ? (
-              <p className="nothing">You hold no savings account.</p>
+              <p className="nothing">No savings account.</p>
             ) : (
               <ul className="cards">
                 {accounts.savingsAccounts.map((account) => (
@@ -450,7 +482,23 @@ function Home({
             )}
           </section>
 
-          <Catalogue rewards={rewards} rewardsError={rewardsError} />
+          <SavingStreak
+            newSavingsThisWeek={accounts.newSavingsThisWeek}
+            weeklyMinimum={accounts.weeklyMinimum}
+            currentStreakWeeks={accounts.currentStreakWeeks}
+            bestStreakWeeks={accounts.bestStreakWeeks}
+            currentMultiplier={accounts.currentMultiplier}
+          />
+
+          <Rewards
+            customerId={customerId}
+            pointsToSpend={accounts.pointsBalance}
+            rewards={rewards}
+            rewardsError={rewardsError}
+            claimed={claimed}
+            claimedError={claimedError}
+            onClaimed={onClaimed}
+          />
         </>
       )}
     </main>
@@ -474,10 +522,12 @@ function CurrentAccountCard({ account }: { account: CurrentAccount }) {
 }
 
 /**
- * A savings account: what it holds, what that has earned, and the way into it.
+ * A savings account: what it holds, and the way into it.
  *
- * <p>Both figures are shown, because they are the two things this application is about and a
- * customer choosing which account to open is choosing between them.
+ * <p>The money and nothing else. The points a customer has are theirs rather than any one account's,
+ * so a figure repeated on every card would say that each account had its own — and somebody holding
+ * two would appear to have twice the points they can actually spend. They are shown once, under
+ * Rewards, where they are spent.
  */
 function SavingsAccountCard({
   account,
@@ -494,10 +544,6 @@ function SavingsAccountCard({
         </span>
         <div className="card-words">
           <span className="card-name">Savings account {account.id}</span>
-          <span className="card-points">
-            <SparkIcon />
-            {points.format(account.pointsBalance)} points to spend
-          </span>
         </div>
         <p className="card-figure">{euros.format(account.moneyBalance)}</p>
         <span className="card-go" aria-hidden="true">
@@ -509,94 +555,202 @@ function SavingsAccountCard({
 }
 
 /**
- * The catalogue, to look at.
+ * How the saving is going: what has landed in the week the customer is part-way through, how much
+ * more that week asks for, the run of consecutive weeks behind it, and what that run pays per euro.
  *
- * <p>Nothing is claimed from here, and the reason is on the page: points belong to one savings
- * account at a time, so there is no such thing as what this customer can afford — only what each of
- * their accounts can. A button here would have to pick one of them on their behalf.
+ * <p>One run for the person rather than one per account, which is what makes it belong on this page:
+ * a week counts what they put away wherever they put it, so the figure would be the same on every
+ * savings account card and is shown once instead.
+ *
+ * <p>Every figure is the backend's, including what a week asks for. The cell underneath draws the
+ * amount, the bar and the sentence from one number so that no frame of it can say the week is done
+ * while the figure on the screen is still short — which is why {@link ThisWeek} takes the figure
+ * being shown rather than the one it is climbing towards.
  */
-function Catalogue({
-  rewards,
-  rewardsError,
+function SavingStreak({
+  newSavingsThisWeek,
+  weeklyMinimum,
+  currentStreakWeeks,
+  bestStreakWeeks,
+  currentMultiplier,
 }: {
-  rewards: Reward[] | null
-  rewardsError: string | null
+  newSavingsThisWeek: number
+  weeklyMinimum: number
+  currentStreakWeeks: number
+  bestStreakWeeks: number
+  currentMultiplier: number
 }) {
   return (
     <section className="panel">
-      <h2>Rewards</h2>
+      <h2>Your saving streak</h2>
       <p className="explanation">
-        What points buy, at the same price for everybody. Points are earned and spent by one savings
-        account at a time — open the account that saved for it to claim one.
+        Save enough in a week and it counts. Longer runs pay more per euro.
+      </p>
+      <dl className="balances saving">
+        <div className="week">
+          <dt>This week</dt>
+          <dd>
+            <Rising
+              value={newSavingsThisWeek}
+              format={(shown) => <ThisWeek shown={shown} weeklyMinimum={weeklyMinimum} />}
+            />
+            {/* Outside the rise on purpose, as on the account page: neither figure is climbing
+                anywhere, and both are about weeks already settled rather than about the amount
+                still moving above. */}
+            <Streak
+              currentWeeks={currentStreakWeeks}
+              bestWeeks={bestStreakWeeks}
+              multiplier={currentMultiplier}
+            />
+          </dd>
+        </div>
+      </dl>
+    </section>
+  )
+}
+
+/**
+ * The points the customer has, what they buy, and what has already been bought with them.
+ *
+ * <p>All three in one panel, and that is the point of the panel: the balance is the pot every one of
+ * their savings accounts earns into, the catalogue is what the pot buys, and the list underneath is
+ * what has come out of it. A customer can add the vouchers up against the figure above them.
+ *
+ * <p>Claimed from here rather than from an account, because the points are the person's. There used
+ * to be nothing to press on this screen — points belonged to one savings account at a time, so there
+ * was no such thing as what this customer could afford — and one pot is exactly what makes the button
+ * possible.
+ *
+ * <p>What each reward is, what it costs and what to call it all come from the backend, so a reward
+ * added or repriced there appears here with no change: the only thing this page decides is which
+ * picture to put beside a code it recognises, and there is one for a code it does not.
+ */
+function Rewards({
+  customerId,
+  pointsToSpend,
+  rewards,
+  rewardsError,
+  claimed,
+  claimedError,
+  onClaimed,
+}: {
+  customerId: number
+  pointsToSpend: number
+  rewards: Reward[] | null
+  rewardsError: string | null
+  claimed: ClaimedReward[] | null
+  claimedError: string | null
+  onClaimed: () => void
+}) {
+  // Which reward is being claimed rather than whether one is, so that the button that was pressed is
+  // the one that shows it is working and the others simply stop being pressable.
+  const [claiming, setClaiming] = useState<string | null>(null)
+  const [claimError, setClaimError] = useState<string | null>(null)
+  // The voucher just issued, kept only long enough to say so. It is the backend's own answer to the
+  // request, so the celebration cannot congratulate someone for a voucher they were not issued.
+  const [celebrated, setCelebrated] = useState<ClaimedReward | null>(null)
+
+  useEffect(() => {
+    if (celebrated === null) {
+      return
+    }
+    const over = setTimeout(() => setCelebrated(null), 2600)
+    return () => clearTimeout(over)
+  }, [celebrated])
+
+  function claim(reward: Reward) {
+    setClaiming(reward.code)
+    setClaimError(null)
+    claimReward(customerId, reward.code)
+      .then((issued) => {
+        setCelebrated(issued)
+        onClaimed()
+      })
+      .catch((problem: Error) => setClaimError(problem.message))
+      .finally(() => setClaiming(null))
+  }
+
+  return (
+    <section className="panel">
+      <h2>Rewards</h2>
+      <p className="explanation">Claims are final — the voucher is issued straight away.</p>
+
+      <p className="points-to-spend">
+        <SparkIcon />
+        <Rising value={pointsToSpend} format={(shown) => points.format(Math.round(shown))} />
+        <span className="unit">points to spend</span>
       </p>
 
       {rewardsError !== null && <Refusal reason={rewardsError} />}
       {rewards === null && rewardsError === null && (
-        <Waiting label="Loading the rewards catalogue…" bars={['100%', '100%']} />
+        <Waiting label="Loading rewards…" bars={['100%', '100%']} />
       )}
 
       {rewards !== null && (
-        <ul className="catalogue browsing">
-          {rewards.map((reward) => (
-            <li className="offer" key={reward.code}>
-              <span className="offer-icon" aria-hidden="true">
-                <RewardIcon code={reward.code} />
-              </span>
-              <div className="offer-words">
-                <h4>{reward.title}</h4>
-                <p>{reward.description}</p>
-              </div>
-              <p className="price">
-                <SparkIcon />
-                {points.format(reward.costInPoints)}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <div className="spend-area">
+          {celebrated !== null && <Issued claim={celebrated} />}
+          <ul className="catalogue">
+            {rewards.map((reward) => (
+              <Offer
+                key={reward.code}
+                reward={reward}
+                pointsToSpend={pointsToSpend}
+                claiming={claiming === reward.code}
+                anyClaiming={claiming !== null}
+                onClaim={() => claim(reward)}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {claimError !== null && <Refusal reason={claimError} />}
+      {claimedError !== null && <Refusal reason={claimedError} />}
+      {claimed !== null && (
+        <Claimed claimed={claimed} landedId={celebrated === null ? null : celebrated.id} />
       )}
     </section>
   )
 }
 
 /**
- * A savings account as this page reads it: what it is worth, every deposit that put points in, and
- * every reward that took some out. All three arrive together, because the balance only makes sense
- * beside both lists.
+ * A savings account as this page reads it: what it is worth, and every movement of money in and out
+ * of it. All three arrive together, because the money balance only makes sense beside both lists.
  */
 type SavingsAccountView = {
   balances: SavingsAccountBalances
   deposits: RecordedDeposit[]
   withdrawals: RecordedWithdrawal[]
-  claimed: ClaimedReward[]
 }
 
 /**
- * The thing that just happened and is worth saying out loud for a moment. One at a time, because a
- * person did one thing: they made a deposit, or they claimed a reward.
+ * The thing that just happened on this account and is worth saying out loud for a moment. One at a
+ * time, because a person did one thing: they paid money in, or they took some back out.
+ *
+ * <p>Claiming a reward is not one of them any more. Points belong to the customer, so a claim is
+ * made on the overview and celebrated there.
  */
 type Celebration =
   | { kind: 'deposit'; deposit: RecordedDeposit }
   | { kind: 'withdrawal'; withdrawal: RecordedWithdrawal }
-  | { kind: 'claim'; claim: ClaimedReward }
 
 /**
- * One savings account: what it holds, what that has earned, the deposits behind both, and the form
- * that adds to them.
+ * One savings account: what it holds, what its holder has to spend, the deposits and withdrawals
+ * behind the money, and the forms that move it.
  *
  * Nothing on this page is computed here. Every figure is read back from the backend after a deposit,
  * so what is on screen is the derived answer rather than a guess this page kept in step by itself.
+ *
+ * <p>Rewards are not claimed from here. The points beside this balance are the customer's rather
+ * than this account's, so there is one place to spend them and it is the overview.
  */
 function SavingsAccountPage({
   savingsAccountId,
   currentAccounts,
-  rewards,
-  rewardsError,
   onChanged,
 }: {
   savingsAccountId: number
   currentAccounts: CurrentAccount[]
-  rewards: Reward[] | null
-  rewardsError: string | null
   onChanged: () => void
 }) {
   const [account, setAccount] = useState<SavingsAccountView | null>(null)
@@ -609,20 +763,19 @@ function SavingsAccountPage({
   /**
    * The balances and both lists behind them, read back as one thing. Loading them separately would
    * let one of the three fail and leave a balance on screen beside lists that do not account for it
-   * — which is the one thing showing the lists is meant to let someone check. It takes both of them
-   * now: the deposits say what was earned, the claims say what was spent, and the points balance is
-   * what the two leave behind.
+   * — which is the one thing showing the lists is meant to let someone check: the deposits say what
+   * came in, the withdrawals say what went back out, and the money balance is what the two leave
+   * behind.
    */
   const loadAccount = useCallback((signal?: AbortSignal) => {
     Promise.all([
       fetchSavingsAccount(savingsAccountId, signal),
       fetchDeposits(savingsAccountId, signal),
       fetchWithdrawals(savingsAccountId, signal),
-      fetchClaimed(savingsAccountId, signal),
     ])
-      .then(([balances, deposits, withdrawals, claimed]) => {
+      .then(([balances, deposits, withdrawals]) => {
         if (signal?.aborted !== true) {
-          setAccount({ balances, deposits, withdrawals, claimed })
+          setAccount({ balances, deposits, withdrawals })
           setAccountError(null)
         }
       })
@@ -692,8 +845,11 @@ function SavingsAccountPage({
             </dd>
           </div>
           <div className={pointsMoved(celebrated) ? 'earned bumped' : 'earned'}>
-            {/* Not "earned" any more: points can leave, so what this says is what is left to spend. */}
-            <dt>To spend</dt>
+            {/* The customer's points rather than this account's, which is why it is not "earned
+                here": paying in here adds to it, claiming a reward takes from it, and it reads the
+                same beside every account they hold. What paying in here earned is in the history
+                below, against the deposit that earned it. */}
+            <dt>Your points</dt>
             <dd>
               <Rising
                 value={account.balances.pointsBalance}
@@ -755,21 +911,6 @@ function SavingsAccountPage({
         />
       </div>
 
-      <Spend
-        savingsAccountId={savingsAccountId}
-        rewards={rewards}
-        rewardsError={rewardsError}
-        // What the account can afford is the backend's figure, read back after every claim. While it
-        // is still loading, nothing is offered as affordable rather than everything.
-        pointsToSpend={account?.balances.pointsBalance ?? 0}
-        claimed={celebrated?.kind === 'claim' ? celebrated.claim : null}
-        onClaimed={(claim) => {
-          setCelebrated({ kind: 'claim', claim })
-          loadAccount()
-          onChanged()
-        }}
-      />
-
       {account !== null && (
         <div className="ledger">
           <Deposits
@@ -780,10 +921,6 @@ function SavingsAccountPage({
             withdrawals={account.withdrawals}
             currentAccounts={currentAccounts}
             landedId={celebrated?.kind === 'withdrawal' ? celebrated.withdrawal.id : null}
-          />
-          <Claimed
-            claimed={account.claimed}
-            landedId={celebrated?.kind === 'claim' ? celebrated.claim.id : null}
           />
         </div>
       )}
@@ -905,14 +1042,12 @@ function inWeeks(weeks: number): string {
 }
 
 /**
- * Whether the points figure changed. A deposit under a euro earns none, so it did not — and
- * flashing a figure that stayed put would say something happened to it that did not.
+ * Whether the points figure changed. A deposit under a euro earns none, so it did not — and flashing
+ * a figure that stayed put would say something happened to it that did not. A withdrawal never
+ * touches the points: what was earned stays earned.
  */
 function pointsMoved(celebrated: Celebration | null): boolean {
-  if (celebrated === null) {
-    return false
-  }
-  return celebrated.kind === 'claim' || (celebrated.kind === 'deposit' && celebrated.deposit.pointsEarned > 0)
+  return celebrated?.kind === 'deposit' && celebrated.deposit.pointsEarned > 0
 }
 
 /**
@@ -939,7 +1074,7 @@ function Withdrawals({
     <div className="history">
       <h3>Withdrawals</h3>
       {withdrawals.length === 0 ? (
-        <p className="nothing">Nothing has been withdrawn from this account yet.</p>
+        <p className="nothing">No withdrawals yet.</p>
       ) : (
         <table className="deposits">
           <thead>
@@ -985,7 +1120,7 @@ function Deposits({
     <div className="history">
       <h3>Deposits</h3>
       {deposits.length === 0 ? (
-        <p className="nothing">Nothing has been paid into this account yet.</p>
+        <p className="nothing">No deposits yet.</p>
       ) : (
         <table className="deposits">
           <thead>
@@ -1052,82 +1187,10 @@ function WhatItEarned({ deposit }: { deposit: RecordedDeposit }) {
 }
 
 /**
- * The catalogue, and the claiming of something out of it.
+ * One reward, and whether the customer can have it yet.
  *
- * <p>What each reward is, what it costs and what to call it all come from the backend, so a reward
- * added or repriced there appears here with no change: the only thing this page decides is which
- * picture to put beside a code it recognises, and there is one for a code it does not.
- */
-function Spend({
-  savingsAccountId,
-  rewards,
-  rewardsError,
-  pointsToSpend,
-  claimed,
-  onClaimed,
-}: {
-  savingsAccountId: number
-  rewards: Reward[] | null
-  rewardsError: string | null
-  pointsToSpend: number
-  claimed: ClaimedReward | null
-  onClaimed: (claim: ClaimedReward) => void
-}) {
-  // Which reward is being claimed rather than whether one is, so that the button that was pressed is
-  // the one that shows it is working and the others simply stop being pressable.
-  const [claiming, setClaiming] = useState<string | null>(null)
-  const [claimError, setClaimError] = useState<string | null>(null)
-
-  function claim(reward: Reward) {
-    setClaiming(reward.code)
-    setClaimError(null)
-    claimReward(savingsAccountId, reward.code)
-      .then(onClaimed)
-      .catch((problem: Error) => setClaimError(problem.message))
-      .finally(() => setClaiming(null))
-  }
-
-  return (
-    <div className="spend">
-      <h3>Spend your points</h3>
-      <p className="explanation">
-        Every reward costs the same for everybody. There is no way back from a claim — the voucher is
-        issued the moment you make it.
-      </p>
-
-      {rewardsError !== null && <Refusal reason={rewardsError} />}
-      {rewards === null && rewardsError === null && (
-        <Waiting label="Loading the rewards catalogue…" bars={['100%', '100%']} />
-      )}
-
-      {rewards !== null && (
-        <div className="spend-area">
-          {claimed !== null && <Issued claim={claimed} />}
-          <ul className="catalogue">
-            {rewards.map((reward) => (
-              <Offer
-                key={reward.code}
-                reward={reward}
-                pointsToSpend={pointsToSpend}
-                claiming={claiming === reward.code}
-                anyClaiming={claiming !== null}
-                onClaim={() => claim(reward)}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {claimError !== null && <Refusal reason={claimError} />}
-    </div>
-  )
-}
-
-/**
- * One reward, and whether this account can have it yet.
- *
- * Whether it can afford it is worked out here from two figures already on screen, and that is all it
- * decides: the button goes grey and says how many points are still missing. The rule itself is the
+ * Whether they can afford it is worked out here from two figures already on screen, and that is all
+ * it decides: the button goes grey and says how many points are still missing. The rule itself is the
  * backend's — it refuses a claim it cannot honour whatever this page allowed to be pressed — which is
  * why a page that gets the sum wrong is a page that looks wrong rather than one that spends points
  * nobody had.
@@ -1191,16 +1254,19 @@ function Issued({ claim }: { claim: ClaimedReward }) {
 }
 
 /**
- * What this account has spent its points on, newest first, each with the voucher it produced. Drawn
+ * What the customer has spent their points on, newest first, each with the voucher it produced. Drawn
  * as stubs rather than as rows because that is what they are: the voucher is the thing the customer
  * got, and it is the part they will be reading back off the screen.
+ *
+ * <p>One list for the person, not one per account: the points came out of a single pot, so which
+ * account had earned them is not a question a claim can answer.
  */
 function Claimed({ claimed, landedId }: { claimed: ClaimedReward[]; landedId: number | null }) {
   return (
     <div className="history">
       <h3>Claimed</h3>
       {claimed.length === 0 ? (
-        <p className="nothing">Nothing has been claimed out of this account yet.</p>
+        <p className="nothing">Nothing claimed yet.</p>
       ) : (
         <ul className="vouchers">
           {claimed.map((one, place) => (
@@ -1264,11 +1330,7 @@ function DepositForm({
   const [depositError, setDepositError] = useState<string | null>(null)
 
   if (fromCurrentAccountId === null) {
-    return (
-      <p className="nothing">
-        A deposit needs a current account to come from, and this customer holds none.
-      </p>
-    )
+    return <p className="nothing">A deposit needs a current account to come from.</p>
   }
 
   function deposit(event: FormEvent) {
@@ -1352,7 +1414,7 @@ function WithdrawalForm({
   const [withdrawalError, setWithdrawalError] = useState<string | null>(null)
 
   if (toCurrentAccountId === null) {
-    return <p className="nothing">A withdrawal needs a current account to return money to.</p>
+    return <p className="nothing">A withdrawal needs a current account to return to.</p>
   }
 
   function withdraw(event: FormEvent) {

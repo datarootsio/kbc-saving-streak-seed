@@ -7,10 +7,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * The Streaks module's face to the rest of the application. It answers what a savings account's
- * saving looks like: how much new saving has landed in the week the account is part-way through, how
- * much more that week asks for, how many consecutive weeks it has secured, the longest run it has
- * ever had, and what a euro paid in earns at that run's rate.
+ * The Streaks module's face to the rest of the application. It answers what a customer's saving
+ * looks like: how much they have put away in the week they are part-way through, how much more that
+ * week asks for, how many consecutive weeks they have secured, the longest run they have ever had,
+ * and what a euro paid in earns at that run's rate.
+ *
+ * <p>The customer's, not one savings account's. Somebody saving towards two goals is saving: a week
+ * counts what they put away wherever they put it, and the run of weeks and the rate it pays are
+ * theirs. Which account the euros went into decides where the money sits and nothing else.
  *
  * <p>Nothing is stored. Every answer is derived from the deposit records at the moment it is asked
  * for, which is the deciding property of the whole feature: the application's clock is movable, in
@@ -42,14 +46,14 @@ public class StreaksService {
     }
 
     /**
-     * How the saving is going on this savings account right now: the week it is part-way through, and
-     * the run of consecutive secured weeks behind that week.
+     * How this customer's saving is going right now: the week they are part-way through, and the run
+     * of consecutive secured weeks behind that week.
      *
      * <p>One reading of the clock behind both. Two reads either side of midnight on a Monday would
      * answer about two different weeks — see {@link WeekAndStreak}.
      */
     @Transactional(readOnly = true)
-    public WeekAndStreak weekAndStreakOf(long savingsAccountId) {
-        return WeekAndStreakDerivation.asAt(deposits, savingsAccountId, clock.instant());
+    public WeekAndStreak weekAndStreakOf(long customerId) {
+        return WeekAndStreakDerivation.asAt(deposits, customerId, clock.instant());
     }
 }

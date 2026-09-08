@@ -3,8 +3,11 @@ package io.dataroots.savingstreak.streaks;
 import java.math.BigDecimal;
 
 /**
- * A run of consecutive weeks of real saving: the one the account is on now, and the longest one it
- * has ever been on.
+ * A run of consecutive weeks of real saving: the one the customer is on now, and the longest one they
+ * have ever been on.
+ *
+ * <p>The customer's, so a week is secured by what they put away across every account they hold — two
+ * goals are not two runs. See {@link StreaksService}.
  *
  * <p>Both counted in weeks, because a week is the unit the whole scheme is stated in. A week joins
  * a run once {@link NewSavingsThisWeek#WEEKLY_MINIMUM} of new saving has landed in it, and the run

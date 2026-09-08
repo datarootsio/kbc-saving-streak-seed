@@ -24,6 +24,11 @@ public class SeededAccounts {
         this.http = http;
     }
 
+    /** Which customer this is, for anything the application keeps per customer — their points. */
+    public long customerIdOf(String customerName) {
+        return customerNamed(customerName).id();
+    }
+
     /** The first savings account the customer holds, for tests that just need somewhere to save. */
     public long savingsAccountOf(String customerName) {
         return savingsAccountsOf(customerName).get(0);
@@ -42,8 +47,17 @@ public class SeededAccounts {
         return savingsAccounts.get(1);
     }
 
-    private List<Long> savingsAccountsOf(String customerName) {
+    /** Every savings account the customer holds, for tests about what the whole of their saving did. */
+    public List<Long> savingsAccountsOf(String customerName) {
         return accountsOf(customerName).savingsAccounts().stream().map(SavingsAccountView::id).toList();
+    }
+
+    /**
+     * What the customer has to spend. Read off the overview, which is where the figure belongs: the
+     * points are the customer's, not any one savings account's.
+     */
+    public long pointsBalanceOf(String customerName) {
+        return accountsOf(customerName).pointsBalance();
     }
 
     public long currentAccountOf(String customerName) {
@@ -80,6 +94,17 @@ public class SeededAccounts {
         return oneMoreThanTheHighestOf(this::currentAccountsOf);
     }
 
+    /**
+     * An identifier no customer has: one past the highest that does. For tests about being told that
+     * the customer something was asked for is not one this application has heard of.
+     */
+    public long anIdNoCustomerHas() {
+        return Arrays.stream(http.getForObject("/api/customers", CustomerView[].class))
+                .mapToLong(CustomerView::id)
+                .max()
+                .orElse(0L) + 1;
+    }
+
     private long oneMoreThanTheHighestOf(Function<String, List<Long>> accountsOfCustomer) {
         return Stream.of(ANKE, BRAM)
                 .flatMap(customer -> accountsOfCustomer.apply(customer).stream())
@@ -103,12 +128,13 @@ public class SeededAccounts {
     record CustomerView(Long id, String name, String contactDetails) {
     }
 
-    record AccountsView(List<CurrentAccountView> currentAccounts, List<SavingsAccountView> savingsAccounts) {
+    record AccountsView(long pointsBalance, List<CurrentAccountView> currentAccounts,
+                        List<SavingsAccountView> savingsAccounts) {
     }
 
     record CurrentAccountView(Long id, String iban, BigDecimal balance) {
     }
 
-    record SavingsAccountView(Long id, BigDecimal moneyBalance, long pointsBalance) {
+    record SavingsAccountView(Long id, BigDecimal moneyBalance) {
     }
 }

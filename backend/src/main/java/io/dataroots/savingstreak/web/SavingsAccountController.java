@@ -3,12 +3,11 @@ package io.dataroots.savingstreak.web;
 import java.math.BigDecimal;
 import java.util.List;
 
+import io.dataroots.savingstreak.accounts.AccountHolder;
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.deposits.DepositsService;
 import io.dataroots.savingstreak.deposits.WithdrawalsService;
 import io.dataroots.savingstreak.points.PointsService;
-import io.dataroots.savingstreak.rewards.Reward;
-import io.dataroots.savingstreak.rewards.RewardsService;
 import io.dataroots.savingstreak.streaks.StreaksService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,12 +23,21 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * A savings account, its two balances, the deposits made into it and the rewards claimed out of it.
+ * A savings account, what is in it, what its holder has to spend, and the money that has moved in
+ * and out of it.
  *
- * <p>The figures come from four modules that do not know about each other — who owns the account,
- * what has been paid into it, what that earned, and how the run of weeks behind it is going and what
- * it pays — and are assembled here. Assembling an answer is not a rule: no decision about money,
- * points, rewards, weeks or rates is taken in this class.
+ * <p>The figures come from four modules that do not know about each other — who holds the account,
+ * what has been paid into it, what its holder has earned, and how their week and their run of weeks
+ * are going and what that run pays — and are assembled here. Assembling an answer is not a rule: no
+ * decision about money, points, weeks or rates is taken in this class.
+ *
+ * <p>Only the money is the account's. The points, the week and the run of weeks all belong to the
+ * customer who holds it and read the same beside every account they hold; what paying in <em>here</em>
+ * earned is on each deposit in the history.
+ *
+ * <p>Rewards are claimed against the customer and not here. The points that pay for one are the
+ * holder's rather than this account's, so there is no account for a claim to come out of and no
+ * account-shaped list of what has been claimed.
  */
 @RestController
 @RequestMapping("/api/savings-accounts")
@@ -41,18 +49,15 @@ class SavingsAccountController {
     private final DepositsService deposits;
     private final WithdrawalsService withdrawals;
     private final PointsService points;
-    private final RewardsService rewards;
     private final StreaksService streaks;
 
     SavingsAccountController(AccountsService accounts, DepositsService deposits, WithdrawalsService withdrawals,
                              PointsService points,
-                             RewardsService rewards,
                              StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.withdrawals = withdrawals;
         this.points = points;
-        this.rewards = rewards;
         this.streaks = streaks;
     }
 
@@ -69,14 +74,19 @@ class SavingsAccountController {
     @Transactional(readOnly = true)
     @GetMapping("/{savingsAccountId}")
     SavingsAccountResponse savingsAccount(@PathVariable long savingsAccountId) {
-        String owner = accounts.ownerNameOfSavingsAccount(savingsAccountId)
+        AccountHolder holder = accounts.holderOfSavingsAccount(savingsAccountId)
                 .orElseThrow(() -> noSuchSavingsAccount(savingsAccountId));
         return SavingsAccountResponse.of(
                 savingsAccountId,
-                owner,
+                holder.name(),
                 deposits.moneyBalanceOf(savingsAccountId),
-                points.balanceOf(savingsAccountId),
-                streaks.weekAndStreakOf(savingsAccountId));
+                // The holder's points, not the account's. Paying in here earns them and they are
+                // reported beside this balance because that is the connection the page is about —
+                // but they are the same figure whichever of the customer's accounts is open.
+                points.balanceOf(holder.customerId()),
+                // And their week and their run of weeks, for the same reason: a week counts what
+                // they put away, wherever they put it.
+                streaks.weekAndStreakOf(holder.customerId()));
     }
 
     @GetMapping("/{savingsAccountId}/deposits")
@@ -123,42 +133,6 @@ class SavingsAccountController {
             throw noSuchSavingsAccount(savingsAccountId);
         }
         return withdrawals.withdrawalsFrom(savingsAccountId).stream().map(WithdrawalResponse::of).toList();
-    }
-
-    @GetMapping("/{savingsAccountId}/redemptions")
-    List<ClaimedRewardResponse> claimedOutOf(@PathVariable long savingsAccountId) {
-        // Asked before the claims are, so that an account nobody has heard of is refused rather than
-        // answered with the empty history of an account that has simply never claimed anything.
-        if (!accounts.savingsAccountExists(savingsAccountId)) {
-            throw noSuchSavingsAccount(savingsAccountId);
-        }
-        return rewards.claimedIn(savingsAccountId).stream().map(ClaimedRewardResponse::of).toList();
-    }
-
-    @PostMapping("/{savingsAccountId}/redemptions")
-    @ResponseStatus(HttpStatus.CREATED)
-    ClaimedRewardResponse claim(@PathVariable long savingsAccountId, @RequestBody ClaimRequest request) {
-        // Reading the request, not judging it. Whether the account can afford the reward is a rule,
-        // and it belongs to Rewards, which refuses on its own.
-        if (request == null || request.reward() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A claim needs to name the reward being claimed.");
-        }
-        return ClaimedRewardResponse.of(rewards.claim(savingsAccountId, rewardIn(request)));
-    }
-
-    /**
-     * The reward the claim named, or a refusal naming what is not in the catalogue. Named back to
-     * whoever sent it, so a page that sent an old code can see which one it was.
-     */
-    private Reward rewardIn(ClaimRequest request) {
-        String code = request.reward().trim();
-        try {
-            return Reward.valueOf(code);
-        } catch (IllegalArgumentException notInTheCatalogue) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "There is nothing called \"" + code + "\" in the rewards catalogue.");
-        }
     }
 
     /**

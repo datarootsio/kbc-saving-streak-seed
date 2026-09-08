@@ -32,15 +32,19 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
      * Monday belongs to the week beginning and not to both, and a closed interval on either side
      * would count it twice or not at all depending on which end was asked first.
      *
+     * <p>By customer, because the stretch of time this answers about is a week of somebody's saving:
+     * a week counts what they paid in, whichever of their savings accounts it went into. Which
+     * account holds the money is a different question and {@link #findBySavingsAccountId} answers it.
+     *
      * <p>Written out rather than derived from the method name: the name that says this reads
-     * {@code findBySavingsAccountIdAndDepositedAtGreaterThanEqualAndDepositedAtLessThanOrderBy...},
-     * which is a sentence nobody can check against the query it stands for.
+     * {@code findByCustomerIdAndDepositedAtGreaterThanEqualAndDepositedAtLessThanOrderBy...}, which
+     * is a sentence nobody can check against the query it stands for.
      */
     @Query("select deposit from Deposit deposit "
-            + "where deposit.savingsAccountId = :savingsAccountId "
+            + "where deposit.customerId = :customerId "
             + "and deposit.depositedAt >= :from and deposit.depositedAt < :until "
             + "order by deposit.depositedAt asc, deposit.id asc")
-    List<Deposit> landedBetween(@Param("savingsAccountId") long savingsAccountId,
+    List<Deposit> landedBetween(@Param("customerId") long customerId,
                                 @Param("from") Instant from,
                                 @Param("until") Instant until);
 
@@ -53,14 +57,14 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
      * agree about the boundary, so a caller can ask this for everything before a week and that for
      * the week itself and count nothing twice.
      *
-     * <p>No lower bound, because there is nothing below the first deposit ever made into the
-     * account. A caller wanting the whole of an account's history wants exactly this.
+     * <p>No lower bound, because there is nothing below the first deposit the customer ever made. A
+     * caller walking the whole of somebody's saving back through the weeks wants exactly this.
      */
     @Query("select deposit from Deposit deposit "
-            + "where deposit.savingsAccountId = :savingsAccountId "
+            + "where deposit.customerId = :customerId "
             + "and deposit.depositedAt < :until "
             + "order by deposit.depositedAt asc, deposit.id asc")
-    List<Deposit> landedBefore(@Param("savingsAccountId") long savingsAccountId,
+    List<Deposit> landedBefore(@Param("customerId") long customerId,
                                @Param("until") Instant until);
 
     /**
@@ -85,4 +89,34 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
     @Query("update Deposit deposit set deposit.remainingAmount = deposit.amount "
             + "where deposit.remainingAmount is null")
     int giveEveryDepositWhatRemainsOfIt();
+
+    /**
+     * The savings accounts behind every deposit that does not yet say whose saving it was, each named
+     * once.
+     *
+     * <p>Which customer holds them is not this module's to know: {@link DepositsOnStartUp} asks
+     * Accounts and comes back with the answer. Named accounts rather than deposits, so that a
+     * customer with a hundred deposits into two accounts is two questions and two statements.
+     */
+    @Query("select distinct deposit.savingsAccountId from Deposit deposit "
+            + "where deposit.customerId is null")
+    List<Long> savingsAccountsBehindDepositsWithoutACustomer();
+
+    /**
+     * Says whose saving every deposit into one savings account was, and reports how many that was.
+     *
+     * <p>A deposit recorded before this says nothing about whose saving it was, and a week and a run
+     * of weeks are now counted by exactly that: without this, a customer opening the application on
+     * the morning of the upgrade has saved nothing this week and is on no run, whatever they paid in
+     * yesterday. Only the deposits with nothing recorded, so a start after the first changes nothing.
+     *
+     * <p>It carries its own transaction because its one caller runs before the application has a
+     * transaction, a request, or a web server: a statement that writes has to say so itself here.
+     */
+    @Transactional
+    @Modifying
+    @Query("update Deposit deposit set deposit.customerId = :customerId "
+            + "where deposit.customerId is null and deposit.savingsAccountId = :savingsAccountId")
+    int sayWhoseSavingWentInto(@Param("savingsAccountId") long savingsAccountId,
+                               @Param("customerId") long customerId);
 }

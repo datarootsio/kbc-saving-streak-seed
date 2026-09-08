@@ -10,8 +10,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
 /**
- * One dated batch of points earned by a savings account: how many it was worth, how many of those
- * are still unspent, when it was earned, why, and what produced it.
+ * One dated batch of points earned by a customer: how many it was worth, how many of those are still
+ * unspent, when it was earned, why, and what produced it.
+ *
+ * <p>Earned by the customer rather than by the savings account the money went into. A customer
+ * saving towards two goals earns one pot of points, so which account a deposit was paid into decides
+ * where the euros sit and nothing about who the points belong to. Which savings account produced a
+ * batch is still answerable — {@code sourceReferenceId} names the deposit, and a deposit knows the
+ * account it landed in — and this module has no business keeping a second copy of it.
  *
  * <p>A batch rather than a running total, because points acquire an age. What remains is now less
  * than what was earned for any batch a reward has been taken out of: spending goes oldest-first, and
@@ -29,7 +35,14 @@ class PointsCredit {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private long savingsAccountId;
+    /**
+     * Whose points these are.
+     *
+     * <p>Nullable in the database only because a batch credited before points belonged to a customer
+     * has no value in it. {@link PointsOnStartUp} fills those in before the application serves a
+     * single request, so nothing that reads this ever sees a null.
+     */
+    private Long customerId;
 
     private long points;
 
@@ -47,9 +60,9 @@ class PointsCredit {
         // for JPA
     }
 
-    private PointsCredit(long savingsAccountId, long points, PointsReason reason,
+    private PointsCredit(long customerId, long points, PointsReason reason,
                          long sourceReferenceId, Instant earnedAt) {
-        this.savingsAccountId = savingsAccountId;
+        this.customerId = customerId;
         this.points = points;
         this.remainingPoints = points;
         this.reason = reason;
@@ -58,8 +71,8 @@ class PointsCredit {
     }
 
     /** The points a deposit earns simply by being made, all of them still there to be spent. */
-    static PointsCredit baseAccrualFor(long savingsAccountId, long depositId, long points, Instant earnedAt) {
-        return new PointsCredit(savingsAccountId, points, PointsReason.BASE_ACCRUAL, depositId, earnedAt);
+    static PointsCredit baseAccrualFor(long customerId, long depositId, long points, Instant earnedAt) {
+        return new PointsCredit(customerId, points, PointsReason.BASE_ACCRUAL, depositId, earnedAt);
     }
 
     /**
@@ -69,8 +82,8 @@ class PointsCredit {
      * a batch to everything that reads them: spending draws from the oldest first and neither knows
      * nor cares which reason wrote it, so a bonus is spendable exactly as the euros are.
      */
-    static PointsCredit streakBonusFor(long savingsAccountId, long depositId, long points, Instant earnedAt) {
-        return new PointsCredit(savingsAccountId, points, PointsReason.STREAK_BONUS, depositId, earnedAt);
+    static PointsCredit streakBonusFor(long customerId, long depositId, long points, Instant earnedAt) {
+        return new PointsCredit(customerId, points, PointsReason.STREAK_BONUS, depositId, earnedAt);
     }
 
     long getRemainingPoints() {

@@ -5,7 +5,6 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
-import io.dataroots.savingstreak.support.BalancesView;
 import io.dataroots.savingstreak.support.ClaimedRewardView;
 import io.dataroots.savingstreak.support.SeededAccounts;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,9 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * There is no reversal path for a claim, so a refusal that spent the points anyway or issued the
  * voucher anyway is not something a later correction could tidy up.
  *
- * <p>Bram's savings account is the one claimed against: it has never been paid into, so it has no
+ * <p>Bram is the customer claiming: his one savings account has never been paid into, so he has no
  * points at all, which is exactly the state a refusal for want of points needs. No test here deposits
- * into it, because two other tests assert that nothing ever has.
+ * for him, because two other tests assert that nothing ever has.
  */
 class ClaimIsRefusedApiTest extends ApiIntegrationTest {
 
@@ -38,45 +37,47 @@ class ClaimIsRefusedApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * The refusal the whole feature turns on. An account that has saved nothing cannot claim
-     * anything, and the reason says what the reward costs and what the account has, because the
-     * person reading it is deciding whether to go and save the difference.
+     * The refusal the whole feature turns on. Somebody who has saved nothing cannot claim anything,
+     * and the reason says what the reward costs and what they have, because the person reading it is
+     * deciding whether to go and save the difference.
      */
     @Test
-    void a_claim_an_account_cannot_afford_is_refused_and_spends_nothing() {
-        long savingsAccount = seeded.savingsAccountOf(BRAM);
-        Held before = whatIsHeldIn(savingsAccount);
+    void a_claim_the_customer_cannot_afford_is_refused_and_spends_nothing() {
+        Held before = whatIsHeldBy(BRAM);
 
-        ResponseEntity<JsonNode> response = claim(savingsAccount, "CINEMA_TICKET");
+        ResponseEntity<JsonNode> response = claim(BRAM, "CINEMA_TICKET");
 
         assertRefused(response, HttpStatus.BAD_REQUEST);
         assertThat(reasonGivenBy(response)).contains("100");
-        assertNothingSpent(savingsAccount, before);
+        assertNothingSpent(BRAM, before);
     }
 
     /** The cheapest reward in the catalogue is still more than nothing. */
     @Test
-    void even_the_cheapest_reward_is_refused_to_an_account_with_no_points() {
-        long savingsAccount = seeded.savingsAccountOf(BRAM);
-        Held before = whatIsHeldIn(savingsAccount);
+    void even_the_cheapest_reward_is_refused_to_a_customer_with_no_points() {
+        Held before = whatIsHeldBy(BRAM);
 
-        ResponseEntity<JsonNode> response = claim(savingsAccount, "CHARITY_DONATION");
+        ResponseEntity<JsonNode> response = claim(BRAM, "CHARITY_DONATION");
 
         assertRefused(response, HttpStatus.BAD_REQUEST);
-        assertNothingSpent(savingsAccount, before);
+        assertNothingSpent(BRAM, before);
     }
 
     /**
-     * Claiming against an account that does not exist is a mistake about which account, not about
-     * what it can afford, and it is reported as one.
+     * Claiming as somebody this application has never heard of is a mistake about who, not about what
+     * they can afford, and it is reported as one.
      *
      * <p>The one refusal here that does not go on to assert nothing was spent, because there is
      * nothing to read: both endpoints that would report it answer not-found for this identifier
      * whatever happened, so the refusal itself has to carry the test.
      */
     @Test
-    void a_claim_against_a_savings_account_that_does_not_exist_is_not_found() {
-        ResponseEntity<JsonNode> response = claim(seeded.anIdNoSavingsAccountHas(), "CHARITY_DONATION");
+    void a_claim_by_a_customer_that_does_not_exist_is_not_found() {
+        ResponseEntity<JsonNode> response = http.postForEntity(
+                "/api/customers/{id}/redemptions",
+                Map.of("reward", "CHARITY_DONATION"),
+                JsonNode.class,
+                seeded.anIdNoCustomerHas());
 
         assertRefused(response, HttpStatus.NOT_FOUND);
     }
@@ -87,14 +88,13 @@ class ClaimIsRefusedApiTest extends ApiIntegrationTest {
      */
     @Test
     void a_claim_for_something_not_in_the_catalogue_is_refused_and_spends_nothing() {
-        long savingsAccount = seeded.savingsAccountOf(BRAM);
-        Held before = whatIsHeldIn(savingsAccount);
+        Held before = whatIsHeldBy(BRAM);
 
-        ResponseEntity<JsonNode> response = claim(savingsAccount, "A_PONY");
+        ResponseEntity<JsonNode> response = claim(BRAM, "A_PONY");
 
         assertRefused(response, HttpStatus.BAD_REQUEST);
         assertThat(reasonGivenBy(response)).contains("A_PONY");
-        assertNothingSpent(savingsAccount, before);
+        assertNothingSpent(BRAM, before);
     }
 
     /**
@@ -104,27 +104,26 @@ class ClaimIsRefusedApiTest extends ApiIntegrationTest {
      */
     @Test
     void a_claim_naming_no_reward_is_refused_and_spends_nothing() {
-        long savingsAccount = seeded.savingsAccountOf(BRAM);
-        Held before = whatIsHeldIn(savingsAccount);
+        Held before = whatIsHeldBy(BRAM);
 
         ResponseEntity<JsonNode> response = http.postForEntity(
-                "/api/savings-accounts/{id}/redemptions", Map.of(), JsonNode.class, savingsAccount);
+                "/api/customers/{id}/redemptions", Map.of(), JsonNode.class, seeded.customerIdOf(BRAM));
 
         assertRefused(response, HttpStatus.BAD_REQUEST);
-        assertNothingSpent(savingsAccount, before);
+        assertNothingSpent(BRAM, before);
     }
 
     /**
-     * Asking what an account that does not exist has claimed is a mistake, not an account that has
+     * Asking what a customer who does not exist has claimed is a mistake, not somebody who has
      * claimed nothing. Answering it with an empty list would tell the caller their identifier was
      * fine.
      */
     @Test
-    void the_claims_of_a_savings_account_that_does_not_exist_are_not_found() {
+    void the_claims_of_a_customer_that_does_not_exist_are_not_found() {
         // Read as text: a refusal carries an error body rather than a list, and asking for the
         // response as a list would fail to read it before the status could be looked at.
         ResponseEntity<String> response = http.getForEntity(
-                "/api/savings-accounts/{id}/redemptions", String.class, seeded.anIdNoSavingsAccountHas());
+                "/api/customers/{id}/redemptions", String.class, seeded.anIdNoCustomerHas());
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
@@ -147,16 +146,14 @@ class ClaimIsRefusedApiTest extends ApiIntegrationTest {
     private record Held(long pointsBalance, int claimsMade) {
     }
 
-    private Held whatIsHeldIn(long savingsAccountId) {
-        BalancesView balances =
-                http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
-        ClaimedRewardView[] claimed = http.getForObject(
-                "/api/savings-accounts/{id}/redemptions", ClaimedRewardView[].class, savingsAccountId);
-        return new Held(balances.pointsBalance(), claimed.length);
+    private Held whatIsHeldBy(String customerName) {
+        ClaimedRewardView[] claimed = http.getForObject("/api/customers/{id}/redemptions",
+                ClaimedRewardView[].class, seeded.customerIdOf(customerName));
+        return new Held(seeded.pointsBalanceOf(customerName), claimed.length);
     }
 
-    private void assertNothingSpent(long savingsAccountId, Held before) {
-        Held after = whatIsHeldIn(savingsAccountId);
+    private void assertNothingSpent(String customerName, Held before) {
+        Held after = whatIsHeldBy(customerName);
         assertThat(after.pointsBalance()).isEqualTo(before.pointsBalance());
         assertThat(after.claimsMade()).isEqualTo(before.claimsMade());
     }
@@ -165,11 +162,11 @@ class ClaimIsRefusedApiTest extends ApiIntegrationTest {
      * Read as unshaped JSON, because a refusal answers with the reason rather than with a claim:
      * asking for the response as a claim would fail to read it before the status could be looked at.
      */
-    private ResponseEntity<JsonNode> claim(long savingsAccountId, String reward) {
+    private ResponseEntity<JsonNode> claim(String customerName, String reward) {
         return http.postForEntity(
-                "/api/savings-accounts/{id}/redemptions",
+                "/api/customers/{id}/redemptions",
                 Map.of("reward", reward),
                 JsonNode.class,
-                savingsAccountId);
+                seeded.customerIdOf(customerName));
     }
 }

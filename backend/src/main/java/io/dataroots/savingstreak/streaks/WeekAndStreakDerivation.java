@@ -28,6 +28,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Which moment it is asked about is the caller's: this class never reads a clock. The one it is
  * given decides which week is "this week", and the run is walked back from there.
+ *
+ * <p>And whose saving it is about is the caller's too, which is a customer and not a savings
+ * account. A week counts what somebody put away, wherever they put it: two accounts towards two
+ * goals are one week's saving and one run of weeks, and the rate that run pays is theirs.
  */
 public final class WeekAndStreakDerivation {
 
@@ -37,8 +41,8 @@ public final class WeekAndStreakDerivation {
     }
 
     /**
-     * How the saving is going on this savings account as at the given moment: the week that moment
-     * falls in, and the run of consecutive secured weeks behind that week.
+     * How this customer's saving is going as at the given moment: the week that moment falls in, and
+     * the run of consecutive secured weeks behind that week.
      *
      * <p>One method for both, and one moment behind them. Two entry points would each be asked about
      * a moment of their own, and a pair of readings either side of midnight on a Monday would answer
@@ -46,24 +50,24 @@ public final class WeekAndStreakDerivation {
      * figure the streak needs for the week it starts walking back from, so asking once counts it
      * once.
      */
-    public static WeekAndStreak asAt(DepositsService deposits, long savingsAccountId, Instant now) {
-        NewSavingsThisWeek thisWeek = newSavingsIn(deposits, savingsAccountId, now);
-        return new WeekAndStreak(thisWeek, streakBehind(deposits, savingsAccountId, thisWeek));
+    public static WeekAndStreak asAt(DepositsService deposits, long customerId, Instant now) {
+        NewSavingsThisWeek thisWeek = newSavingsIn(deposits, customerId, now);
+        return new WeekAndStreak(thisWeek, streakBehind(deposits, customerId, thisWeek));
     }
 
     /**
-     * What has landed in this savings account so far in the week the given moment falls in, and what
-     * the week still needs.
+     * What this customer has put away so far in the week the given moment falls in, and what the
+     * week still needs.
      *
      * <p>Gross: every deposit that landed in the week is counted, and money that has since been
      * withdrawn is counted with them. Withdrawals are invisible to a week's progress on purpose —
      * see {@link NewSavingsThisWeek} — so nothing in this method has to know that they exist.
      */
-    private static NewSavingsThisWeek newSavingsIn(DepositsService deposits, long savingsAccountId,
+    private static NewSavingsThisWeek newSavingsIn(DepositsService deposits, long customerId,
                                                    Instant now) {
         SavingsWeek week = SavingsWeek.containing(now);
         List<DepositLanded> landed =
-                deposits.depositsLandedBetween(savingsAccountId, week.startsAt(), week.endsAt());
+                deposits.depositsLandedBetween(customerId, week.startsAt(), week.endsAt());
         BigDecimal newSavings = landed.stream()
                 .map(DepositLanded::amount)
                 // Added back as decimals rather than summed by the database, for the reason the
@@ -78,10 +82,10 @@ public final class WeekAndStreakDerivation {
         // the ones a customer in Brussels would expect. Guarded, because rendering the deposits is
         // work, and this runs on every read of an account and on every deposit made into one.
         if (log.isDebugEnabled()) {
-            log.debug("this week's new savings derived from the ledger savingsAccountId={} zone={} "
+            log.debug("this week's new savings derived from the ledger customerId={} zone={} "
                             + "clockReads={} week={} weekStartsAt={} weekEndsAt={} deposits={} "
                             + "counted=[{}] newSavings={} weeklyMinimum={} stillNeeded={} secured={}",
-                    savingsAccountId, SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN, now, week,
+                    customerId, SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN, now, week,
                     week.startsAt(), week.endsAt(), landed.size(), countedInto(landed),
                     thisWeek.newSavings(), thisWeek.weeklyMinimum(), thisWeek.stillNeeded(),
                     thisWeek.isSecured());
@@ -90,8 +94,9 @@ public final class WeekAndStreakDerivation {
     }
 
     /**
-     * The run of consecutive secured weeks this account is on, and the longest run it has ever been
-     * on, both worked out by walking back through its weeks from the one it is part-way through.
+     * The run of consecutive secured weeks this customer is on, and the longest run they have ever
+     * been on, both worked out by walking back through their weeks from the one they are part-way
+     * through.
      *
      * <p>The rule, whole: a week is secured once the weekly minimum of gross new saving has landed in
      * it, and the current run is the consecutive secured weeks ending at the most recently secured
@@ -104,25 +109,25 @@ public final class WeekAndStreakDerivation {
      * is not secured, and the count never starts.
      *
      * <p>The best-ever run is the longest run anywhere in what the walk's map holds, which is every
-     * week the account has ever taken money in. It is worked out independently of the current one, so
-     * that a lapse costs the run and not the record.
+     * week the customer has ever put money away in. It is worked out independently of the current
+     * one, so that a lapse costs the run and not the record.
      *
      * <p>This week's total is not queried again: it arrives in {@code thisWeek}, off the same moment
      * that chose the week, so the figure the screen shows for the week and the figure the streak
      * judged the week on are the same number.
      */
-    private static StreakOfSecuredWeeks streakBehind(DepositsService deposits, long savingsAccountId,
+    private static StreakOfSecuredWeeks streakBehind(DepositsService deposits, long customerId,
                                                      NewSavingsThisWeek thisWeek) {
         SavingsWeek currentWeek = thisWeek.week();
-        // Everything before this week began, which is the whole of the account's history as far as a
+        // Everything before this week began, which is the whole of the customer's saving as far as a
         // run of weeks is concerned.
         //
         // Bounded at the start of this week rather than left open, so that a deposit dated in the
         // future — a trainer wound the clock forward, paid money in, and wound it back — is not a
-        // secured week in a run nobody has lived through. The best-ever run is the longest in the
-        // account's history, and next month is not history.
+        // secured week in a run nobody has lived through. The best-ever run is the longest in what
+        // the customer has actually saved, and next month is not history.
         List<DepositLanded> earlier =
-                deposits.depositsLandedBefore(savingsAccountId, currentWeek.startsAt());
+                deposits.depositsLandedBefore(customerId, currentWeek.startsAt());
         Map<LocalDate, BigDecimal> grossByWeek = new HashMap<>();
         for (DepositLanded deposit : earlier) {
             // Added as decimals rather than summed by the database, for the reason this week's own
@@ -153,7 +158,7 @@ public final class WeekAndStreakDerivation {
             at = at.previous();
         }
         // Where the run was found to end: the first week walking back that did not take in what a
-        // week asks for. The walk stops here rather than reading the history back to the account's
+        // week asks for. The walk stops here rather than reading the saving back to the customer's
         // first deposit, because nothing older can belong to a run that ends now. It always
         // terminates: past the oldest deposit every week is empty, and an empty week is not secured.
         NewSavingsThisWeek endedAt = weekAsCounted(grossByWeek, at);
@@ -162,7 +167,7 @@ public final class WeekAndStreakDerivation {
         // The whole derivation, so that a reviewer can redo it by hand: the week it started from, the
         // weeks it walked back through with what landed in each and whether that secured it, the week
         // it stopped at and why, and — for the best-ever figure, which the walk does not reach — every
-        // week in the account's history that was secured, in order, so the longest run of adjacent
+        // week of the customer's saving that was secured, in order, so the longest run of adjacent
         // Mondays can be read straight off the line. Guarded, because rendering the weeks is work and
         // this runs on every read of an account and on every deposit made into one.
         //
@@ -172,11 +177,11 @@ public final class WeekAndStreakDerivation {
         // the run came from is the only way to find out why.
         int bestWeeks = longestRunIn(grossByWeek);
         if (log.isDebugEnabled()) {
-            log.debug("streak of secured weeks derived from the ledger savingsAccountId={} zone={} "
+            log.debug("streak of secured weeks derived from the ledger customerId={} zone={} "
                             + "thisWeek={} weeklyMinimum={} earlierDeposits={} weeksWithSavingInThem={} "
                             + "walkedBackThrough=[{}] streakEndedAt={} securedWeeks=[{}] "
                             + "currentStreakWeeks={} bestStreakWeeks={} multiplier={}",
-                    savingsAccountId, SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN, currentWeek,
+                    customerId, SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN, currentWeek,
                     thisWeek.weeklyMinimum(), earlier.size(), grossByWeek.size(),
                     asWalked(walkedBackThrough, thisWeekIsStillRunning), asWalked(endedAt),
                     securedWeeksIn(grossByWeek),
@@ -198,7 +203,7 @@ public final class WeekAndStreakDerivation {
     }
 
     /**
-     * The longest run of consecutive secured weeks anywhere in the account's history.
+     * The longest run of consecutive secured weeks anywhere in the customer's saving.
      *
      * <p>Independent of where the current run is and of whether there is one: a run that ended in
      * March is the record until something beats it. Read off the secured weeks in date order, a run
@@ -216,7 +221,7 @@ public final class WeekAndStreakDerivation {
         return longest;
     }
 
-    /** The Mondays of the weeks that took in what a week asks for, oldest first. */
+    /** The Mondays of the weeks the customer put in what a week asks for, oldest first. */
     private static List<LocalDate> securedWeeksInOrder(Map<LocalDate, BigDecimal> grossByWeek) {
         return grossByWeek.entrySet().stream()
                 .filter(week -> NewSavingsThisWeek.securedBy(week.getValue()))

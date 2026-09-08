@@ -14,9 +14,14 @@ import org.springframework.http.ResponseEntity;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Signing in shows what that customer holds: the current accounts a deposit can draw from, each
- * named by its IBAN and worth what is left in it, and the savings accounts that earn the points,
- * each worth what it holds and what that has earned.
+ * Signing in shows what that customer holds: the current accounts a deposit can draw from, each named
+ * by its IBAN and worth what is left in it, the savings accounts the money goes into, each worth what
+ * it holds, the points all of that saving has earned them, and how the saving is going — the week
+ * they are part-way through and the run of weeks behind it.
+ *
+ * <p>The points, the week and the run sit beside the two lists rather than inside either of them,
+ * because they are the customer's: one set of figures for the person, however many accounts they
+ * save into.
  *
  * <p>The expected IBANs are the seeded ones. A test that only checked the shape of the field would
  * pass just as happily on an account that had lost track of which IBAN was its own.
@@ -28,13 +33,18 @@ class CustomerAccountsApiTest extends ApiIntegrationTest {
     private static final String BRAM = "Bram De Vos";
     private static final String BRAMS_IBAN = "BE87734291658494";
 
-    record AccountsView(List<CurrentAccountView> currentAccounts, List<SavingsAccountView> savingsAccounts) {
+    record AccountsView(long pointsBalance,
+                        BigDecimal newSavingsThisWeek, BigDecimal weeklyMinimum,
+                        BigDecimal stillNeededThisWeek,
+                        int currentStreakWeeks, int bestStreakWeeks, BigDecimal currentMultiplier,
+                        List<CurrentAccountView> currentAccounts,
+                        List<SavingsAccountView> savingsAccounts) {
     }
 
     record CurrentAccountView(Long id, String iban, BigDecimal balance) {
     }
 
-    record SavingsAccountView(Long id, BigDecimal moneyBalance, long pointsBalance) {
+    record SavingsAccountView(Long id, BigDecimal moneyBalance) {
     }
 
     record CustomerView(Long id, String name, String contactDetails) {
@@ -91,16 +101,17 @@ class CustomerAccountsApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * The overview reports the same two figures for a savings account as the account's own endpoint
-     * does. Two places that answer the same question are two places that can disagree, and a
-     * customer comparing the number on the overview with the number on the account is exactly who
-     * would notice. Asserted after a deposit, so both figures have had to move to stay equal.
+     * The overview reports the same figures as the savings account's own endpoint does: the money in
+     * the account, and the points its holder has to spend. Two places that answer the same question
+     * are two places that can disagree, and a customer comparing the number on the overview with the
+     * number on the account is exactly who would notice. Asserted after a deposit, so both figures
+     * have had to move to stay equal.
      *
      * <p>Anke's, not Bram's: no test in this run pays into Bram's savings account successfully, and
      * a test elsewhere reads it as the account with an empty history.
      */
     @Test
-    void a_savings_account_is_worth_the_same_on_the_overview_as_on_its_own_page() {
+    void an_overview_is_worth_the_same_as_the_savings_accounts_own_page() {
         Long customerId = idOfCustomerNamed(ANKE);
         AccountsView before = accountsOf(customerId).getBody();
         long savingsAccountId = before.savingsAccounts().get(0).id();
@@ -110,11 +121,40 @@ class CustomerAccountsApiTest extends ApiIntegrationTest {
                 String.class,
                 savingsAccountId);
 
-        SavingsAccountView onTheOverview = accountsOf(customerId).getBody().savingsAccounts().get(0);
+        AccountsView after = accountsOf(customerId).getBody();
         BalancesView onItsOwnPage = http.getForObject(
                 "/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
-        assertThat(onTheOverview.moneyBalance()).isEqualByComparingTo(onItsOwnPage.moneyBalance());
-        assertThat(onTheOverview.pointsBalance()).isEqualTo(onItsOwnPage.pointsBalance());
+        assertThat(after.savingsAccounts().get(0).moneyBalance())
+                .isEqualByComparingTo(onItsOwnPage.moneyBalance());
+        // The customer's own figures, reported once on the overview and again beside the account
+        // whose deposit just moved them. Every one of them, because every one of them is the
+        // customer's and a page comparing two of them is a page that can catch either drifting.
+        assertThat(after.pointsBalance()).isEqualTo(onItsOwnPage.pointsBalance());
+        assertThat(after.newSavingsThisWeek()).isEqualByComparingTo(onItsOwnPage.newSavingsThisWeek());
+        assertThat(after.weeklyMinimum()).isEqualByComparingTo(onItsOwnPage.weeklyMinimum());
+        assertThat(after.stillNeededThisWeek())
+                .isEqualByComparingTo(onItsOwnPage.stillNeededThisWeek());
+        assertThat(after.currentStreakWeeks()).isEqualTo(onItsOwnPage.currentStreakWeeks());
+        assertThat(after.bestStreakWeeks()).isEqualTo(onItsOwnPage.bestStreakWeeks());
+        assertThat(after.currentMultiplier()).isEqualByComparingTo(onItsOwnPage.currentMultiplier());
+    }
+
+    /**
+     * The overview's weekly figures agree with each other and with what the week asks for: what has
+     * landed, the minimum, and the gap between them — the same three the savings account's own page
+     * reports, and the reason the page never writes the EUR 50 into its own markup.
+     */
+    @Test
+    void the_overview_says_what_the_week_asks_for_and_how_far_along_it_is() {
+        AccountsView accounts = accountsOf(idOfCustomerNamed(ANKE)).getBody();
+
+        assertThat(accounts.weeklyMinimum()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(accounts.newSavingsThisWeek()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        assertThat(accounts.stillNeededThisWeek()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        // A run happening now is a run that has happened, so the record is never the smaller figure.
+        assertThat(accounts.bestStreakWeeks()).isGreaterThanOrEqualTo(accounts.currentStreakWeeks());
+        // The ordinary rate at worst: a run pays more per euro and never less.
+        assertThat(accounts.currentMultiplier()).isGreaterThanOrEqualTo(BigDecimal.ONE);
     }
 
     private ResponseEntity<AccountsView> accountsOf(Long customerId) {

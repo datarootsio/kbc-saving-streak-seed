@@ -125,26 +125,28 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
     }
 
     /**
-     * A reward claimed out of the account, with the refusal ruled out: a claim that was turned down
+     * A reward claimed by the customer, with the refusal ruled out: a claim that was turned down
      * would leave a test asserting that points nobody spent are still there — and passing.
+     *
+     * <p>By the customer rather than out of an account, because that is whose points pay for it.
      */
-    public ClaimedRewardView claim(long savingsAccountId, String reward) {
+    public ClaimedRewardView claim(String customerName, String reward) {
         ResponseEntity<ClaimedRewardView> claimed = http.postForEntity(
-                "/api/savings-accounts/{id}/redemptions",
+                "/api/customers/{id}/redemptions",
                 Map.of("reward", reward),
                 ClaimedRewardView.class,
-                savingsAccountId);
+                seeded.customerIdOf(customerName));
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return claimed.getBody();
     }
 
-    /** Why a claim this account could not afford was refused, in the words the customer is given. */
-    public String whyTheClaimWasRefused(long savingsAccountId, String reward) {
+    /** Why a claim the customer could not afford was refused, in the words they are given. */
+    public String whyTheClaimWasRefused(String customerName, String reward) {
         ResponseEntity<ProblemView> refused = http.postForEntity(
-                "/api/savings-accounts/{id}/redemptions",
+                "/api/customers/{id}/redemptions",
                 Map.of("reward", reward),
                 ProblemView.class,
-                savingsAccountId);
+                seeded.customerIdOf(customerName));
         assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         return refused.getBody().detail();
     }

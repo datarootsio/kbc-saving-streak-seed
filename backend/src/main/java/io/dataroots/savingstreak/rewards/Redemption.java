@@ -12,8 +12,12 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
 /**
- * One reward claimed by a savings account: what was taken, what it cost, the voucher that was issued
- * for it, and when.
+ * One reward claimed by a customer: what was taken, what it cost, the voucher that was issued for it,
+ * and when.
+ *
+ * <p>Claimed by the customer rather than by one of their savings accounts, because the points that
+ * paid for it are theirs rather than any one account's. A claim is a person spending what their
+ * saving earned, and there is no account for it to have come out of.
  *
  * <p>The cost is written down rather than read back off the catalogue. What the reward costs today
  * and what this customer paid for theirs are two different facts, and the day a price changes is the
@@ -38,7 +42,14 @@ class Redemption {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private long savingsAccountId;
+    /**
+     * Whose claim this is.
+     *
+     * <p>Nullable in the database only because a claim recorded before points belonged to a customer
+     * has no value in it. {@link RewardsOnStartUp} fills those in before the application serves a
+     * single request, so nothing that reads this ever sees a null.
+     */
+    private Long customerId;
 
     @Enumerated(EnumType.STRING)
     private Reward reward;
@@ -59,9 +70,9 @@ class Redemption {
         // for JPA
     }
 
-    private Redemption(long savingsAccountId, Reward reward, long pointsSpent, String voucherCode,
+    private Redemption(long customerId, Reward reward, long pointsSpent, String voucherCode,
                        Instant claimedAt) {
-        this.savingsAccountId = savingsAccountId;
+        this.customerId = customerId;
         this.reward = reward;
         this.pointsSpent = pointsSpent;
         this.voucherCode = voucherCode;
@@ -73,8 +84,8 @@ class Redemption {
      * redemption is instant and final, so a record of a claim without one would be a moment in which
      * the points were gone and the customer had nothing.
      */
-    static Redemption issue(long savingsAccountId, Reward reward, long pointsSpent, Instant claimedAt) {
-        return new Redemption(savingsAccountId, reward, pointsSpent, aVoucherFor(reward), claimedAt);
+    static Redemption issue(long customerId, Reward reward, long pointsSpent, Instant claimedAt) {
+        return new Redemption(customerId, reward, pointsSpent, aVoucherFor(reward), claimedAt);
     }
 
     /** Something like SS-CIN-7F3K2Q: the scheme, what it is for, and what makes it this one. */

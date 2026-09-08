@@ -17,18 +17,19 @@ import static io.dataroots.savingstreak.support.SeededAccounts.BRAM;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * A savings account reports the run of consecutive weeks it has secured and the longest run it has
- * ever had, beside the week it is part-way through.
+ * A customer reports the run of consecutive weeks they have secured and the longest run they have
+ * ever had, beside the week they are part-way through — read beside any account they hold, because
+ * the run is theirs.
  *
  * <p>What the resource says, on the shared application — the shape of the answer, the two figures
- * agreeing with each other, and one account's run being its own. How a run grows and how it is lost
- * take weeks to demonstrate and are the clock-moving classes beside this one.
+ * agreeing with each other, and one customer's run being their own. How a run grows and how it is
+ * lost take weeks to demonstrate and are the clock-moving classes beside this one.
  *
  * <p>Every test asserts on the change it caused rather than on an absolute figure: the run shares one
  * database and one week, so whatever else has been paid into a seeded account today is already
  * counted, and what a test can honestly claim is what its own deposit did to the figures.
  */
-class TheStreakOnASavingsAccountApiTest extends ApiIntegrationTest {
+class TheStreakACustomerIsOnApiTest extends ApiIntegrationTest {
 
     private SeededAccounts seeded;
 
@@ -43,7 +44,7 @@ class TheStreakOnASavingsAccountApiTest extends ApiIntegrationTest {
      * two.
      */
     @Test
-    void a_savings_account_reports_the_current_run_of_weeks_and_the_best_one_ever() {
+    void a_customer_reports_the_current_run_of_weeks_and_the_best_one_ever() {
         BalancesView account = balancesOf(seeded.savingsAccountOf(ANKE));
 
         assertThat(account.currentStreakWeeks()).isNotNegative();
@@ -52,16 +53,16 @@ class TheStreakOnASavingsAccountApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * A deposit that carries a week past what it asks for leaves the account on a run of at least
+     * A deposit that carries a week past what it asks for leaves the customer on a run of at least
      * this week, and leaves the best-ever figure at least that long.
      *
-     * <p>At least, rather than exactly one: this account may already have been on a run when the
+     * <p>At least, rather than exactly one: this customer may already have been on a run when the
      * test started, and asserting the exact figure would be asserting about weeks this test did not
-     * put there. The exact figures from an account with no history at all are the clock-moving
+     * put there. The exact figures from a customer with no history at all are the clock-moving
      * classes' business.
      */
     @Test
-    void securing_this_week_puts_the_account_on_a_run_of_at_least_this_week() {
+    void securing_this_week_puts_the_customer_on_a_run_of_at_least_this_week() {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
 
         depositAccepted(savingsAccount, seeded.currentAccountOf(ANKE), "55.00");
@@ -73,24 +74,38 @@ class TheStreakOnASavingsAccountApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * Each savings account carries its own run. A deposit into one is not quietly lengthening
-     * another's — including another held by the same customer, which is the only way to ask the
-     * question at all.
+     * One run per customer, whichever of their accounts the money goes into: a deposit that secures
+     * the week secures it wherever it is read from, so the account that was not paid into reports
+     * the run and the week the deposit made.
+     *
+     * <p>And somebody else's run is untouched, which is the line this does not cross. Both halves in
+     * one test on purpose: "the run is shared" and "the run is not everybody's" are the two things
+     * the change had to get right, and either alone would pass on a figure that ignored the customer.
      */
     @Test
-    void a_deposit_into_one_savings_account_lengthens_no_other_ones_run() {
+    void a_deposit_into_one_savings_account_lengthens_the_customers_own_run_and_nobody_elses() {
         long paidInto = seeded.savingsAccountOf(ANKE);
         long theSameCustomersOther = seeded.otherSavingsAccountOf(ANKE);
         long somebodyElses = seeded.savingsAccountOf(BRAM);
-        BalancesView otherBefore = balancesOf(theSameCustomersOther);
         BalancesView elsesBefore = balancesOf(somebodyElses);
 
         depositAccepted(paidInto, seeded.currentAccountOf(ANKE), "75.00");
 
+        // Read beside the account that was not paid into: the week it reports is secured and the run
+        // it reports is at least this week, because both are the customer's.
         BalancesView otherAfter = balancesOf(theSameCustomersOther);
-        assertThat(otherAfter.currentStreakWeeks()).isEqualTo(otherBefore.currentStreakWeeks());
-        assertThat(otherAfter.bestStreakWeeks()).isEqualTo(otherBefore.bestStreakWeeks());
+        assertThat(otherAfter.stillNeededThisWeek()).isEqualByComparingTo("0.00");
+        assertThat(otherAfter.currentStreakWeeks()).isGreaterThanOrEqualTo(1);
+        // The same two figures on the account that was paid into, because there is one answer.
+        BalancesView paidIntoAfter = balancesOf(paidInto);
+        assertThat(otherAfter.newSavingsThisWeek())
+                .isEqualByComparingTo(paidIntoAfter.newSavingsThisWeek());
+        assertThat(otherAfter.currentStreakWeeks()).isEqualTo(paidIntoAfter.currentStreakWeeks());
+        assertThat(otherAfter.bestStreakWeeks()).isEqualTo(paidIntoAfter.bestStreakWeeks());
+        // And the other customer saved nothing, so nothing of theirs moved.
         BalancesView elsesAfter = balancesOf(somebodyElses);
+        assertThat(elsesAfter.newSavingsThisWeek())
+                .isEqualByComparingTo(elsesBefore.newSavingsThisWeek());
         assertThat(elsesAfter.currentStreakWeeks()).isEqualTo(elsesBefore.currentStreakWeeks());
         assertThat(elsesAfter.bestStreakWeeks()).isEqualTo(elsesBefore.bestStreakWeeks());
     }

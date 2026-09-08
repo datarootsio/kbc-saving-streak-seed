@@ -92,12 +92,14 @@ class AStreakBuildsWeekByWeekApiTest extends ApiIntegrationTest {
         assertThat(weekTwo.bestStreakWeeks()).isEqualTo(2);
         assertThat(weekTwo.pointsBalance()).isEqualTo(100);
 
-        // The same customer's other savings account watched the whole thing and has no run at all.
-        // Every figure in this application is per-account, and a streak is not the exception: one
-        // account's saving is not quietly funding the other's.
+        // The same customer's other savings account reports the same run, because the run is the
+        // customer's: they saved for two weeks running, and which of their goals the money went
+        // towards is not what a week counts. Its own money balance is still nothing — that part has
+        // stayed per-account, and this is the assertion that says which is which.
         BalancesView theOtherAccount = app.balancesOf(theSameCustomersOther);
-        assertThat(theOtherAccount.newSavingsThisWeek()).isEqualByComparingTo("0.00");
-        assertThat(theOtherAccount.currentStreakWeeks()).isZero();
-        assertThat(theOtherAccount.bestStreakWeeks()).isZero();
+        assertThat(theOtherAccount.moneyBalance()).isEqualByComparingTo("0.00");
+        assertThat(theOtherAccount.newSavingsThisWeek()).isEqualByComparingTo("50.00");
+        assertThat(theOtherAccount.currentStreakWeeks()).isEqualTo(2);
+        assertThat(theOtherAccount.bestStreakWeeks()).isEqualTo(2);
     }
 }

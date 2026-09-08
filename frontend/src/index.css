@@ -685,6 +685,23 @@ body {
   white-space: nowrap;
 }
 
+/* The week and the run on the overview: the same cell the account page shows, in a panel that is
+   already padded. It gives its own inset back and keeps the coloured rule along the top, which is
+   what names the figure before the words are read. */
+.balances.saving {
+  background: none;
+  gap: 0;
+  /* One cell, across the panel at every width. The row on the account page divides into two and
+     three because it has three figures to fit; this has one, and the bar and the sentence under it
+     want the width — a progress bar in a third of a panel reads as a third of a bar. */
+  grid-template-columns: 1fr;
+}
+
+.balances.saving > .week {
+  padding: 1.25rem 0 0;
+  background: none;
+}
+
 /* A balance that has just moved lights up, so the figure that changed is the one you look at. */
 .balances > div.bumped {
   animation: bump 1.1s var(--ease);
@@ -1061,21 +1078,33 @@ button::after {
 
 /* ------------------------------------------------------------ spending them */
 
-.spend {
-  padding: 1.5rem;
-  border-bottom: 1px solid rgb(var(--line) / 0.14);
-}
-
-.spend > h3 {
-  margin: 0;
-  font-size: 1rem;
+/* What there is to spend, above what it buys. The headline points figure on the overview, because
+   the points are the customer's and this is the one place they are shown and spent. */
+.points-to-spend {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  color: var(--points);
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--brand-deep);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.spend .explanation {
-  margin: 0.35rem 0 1rem;
+.points-to-spend svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  /* Baseline-aligned with the figure rather than with the words after it, which sit a size down. */
+  align-self: center;
+}
+
+.points-to-spend .unit {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink-faint);
 }
 
 .spend-area {
@@ -1226,6 +1255,14 @@ button::after {
 
 .ledger .history + .history {
   border-left: 1px solid rgb(var(--line) / 0.14);
+}
+
+/* What has been claimed, under the catalogue it was claimed from, inside a panel that is already
+   padded: it needs the rule above it rather than a second inset. */
+.panel > .history {
+  margin-top: 1.25rem;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid rgb(var(--line) / 0.14);
 }
 
 .vouchers {
@@ -1720,22 +1757,6 @@ button.quiet.back svg {
   letter-spacing: -0.01em;
 }
 
-.card-points {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-top: 0.1rem;
-  color: var(--points);
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.card-points svg {
-  width: 0.75rem;
-  height: 0.75rem;
-}
-
 .card .iban {
   display: block;
   margin-top: 0.1rem;
@@ -1768,14 +1789,6 @@ button.quiet.back svg {
   height: 1.1rem;
 }
 
-/* ---------------------------------------------------------------- browsing the catalogue */
-
-/* The same rewards, with nothing to press: on the overview the catalogue is a price list, because
-   points belong to one savings account and this page is not looking at one. */
-.catalogue.browsing .offer {
-  grid-template-areas: 'icon words price';
-}
-
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 30rem) {
@@ -1804,12 +1817,6 @@ button.quiet.back svg {
       'icon words words'
       'price price claim';
     gap: 0.6rem 0.85rem;
-  }
-
-  .catalogue.browsing .offer {
-    grid-template-areas:
-      'icon words words'
-      'price price price';
   }
 
   /* The chevron goes: at this width the card is plainly the tappable thing without it, and the

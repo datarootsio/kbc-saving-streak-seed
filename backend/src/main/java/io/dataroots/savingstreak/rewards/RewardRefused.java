@@ -18,7 +18,7 @@ public class RewardRefused extends RuntimeException {
      * it has a different thing to do next: find the right account, or go and save some more.
      */
     public enum Kind {
-        NO_SUCH_ACCOUNT,
+        NO_SUCH_CUSTOMER,
         NOT_ENOUGH_POINTS
     }
 

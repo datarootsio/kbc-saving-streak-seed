@@ -100,7 +100,7 @@ class RefusalsAsHttp {
     @ExceptionHandler(RewardRefused.class)
     ResponseEntity<ProblemDetail> rewardRefused(RewardRefused refusal) {
         HttpStatus status = switch (refusal.kind()) {
-            case NO_SUCH_ACCOUNT -> HttpStatus.NOT_FOUND;
+            case NO_SUCH_CUSTOMER -> HttpStatus.NOT_FOUND;
             case NOT_ENOUGH_POINTS -> HttpStatus.BAD_REQUEST;
         };
         return ResponseEntity.status(status)

@@ -45,15 +45,21 @@ public class AccountsService {
     }
 
     /**
-     * What to call the holder of the given savings account, or nothing at all if there is no such
-     * account.
+     * Who holds the given savings account, or nothing at all if there is no such account.
      *
-     * <p>A name rather than the customer: the caller wants to say whose account this is, and a
-     * module that hands out its entities to be read elsewhere has no boundary left to speak of.
+     * <p>The holder rather than the customer record: whoever asks wants to say whose account this is
+     * and to name the customer whose points a deposit into it earns, and a module that hands out its
+     * entities to be read elsewhere has no boundary left to speak of.
      */
     @Transactional(readOnly = true)
-    public Optional<String> ownerNameOfSavingsAccount(long savingsAccountId) {
-        return savingsAccounts.findOwnerNameById(savingsAccountId);
+    public Optional<AccountHolder> holderOfSavingsAccount(long savingsAccountId) {
+        return savingsAccounts.findHolderById(savingsAccountId);
+    }
+
+    /** Whether there is a customer with this identifier at all, for callers that only ask. */
+    @Transactional(readOnly = true)
+    public boolean customerExists(long customerId) {
+        return customers.existsById(customerId);
     }
 
     /** Whether there is a savings account with this identifier at all, for callers that only ask. */
@@ -83,6 +89,15 @@ public class AccountsService {
      */
     public static String noSuchCurrentAccount(long currentAccountId) {
         return "There is no current account " + currentAccountId + ".";
+    }
+
+    /**
+     * And for a customer, which anything kept per customer has to be able to say. Points are kept
+     * that way and rewards are claimed that way, so the sentence would otherwise be written out in
+     * the Rewards module as well as here.
+     */
+    public static String noSuchCustomer(long customerId) {
+        return "There is no customer " + customerId + ".";
     }
 
     /**

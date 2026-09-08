@@ -21,10 +21,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The points ledger, and the only way into it. It credits the points a deposit earns and reports
- * what a savings account has.
+ * what a customer has.
+ *
+ * <p>A customer, not a savings account. Points are one pot per person: a customer saving towards
+ * two goals earns into the same pot from both and spends out of it on either, so where the euros
+ * went decides nothing about whose points they are. This module is keyed by the customer throughout
+ * and never learns that savings accounts exist.
  *
  * <p>What it will answer is deliberately this narrow: what something earned and under which
- * reasons, how many points an account has, and whether a number of them could be spent. A caller
+ * reasons, how many points a customer has, and whether a number of them could be spent. A caller
  * cannot learn that points are kept as dated batches, when a batch was earned, or how much of one
  * is left — which is why spending arrived as an addition to this module and changed no caller.
  *
@@ -81,12 +86,15 @@ public class PointsService {
      * <p>The caller says when, because the points were earned at the moment the money moved rather
      * than at the moment this method happened to run.
      *
+     * <p>The customer is named rather than the savings account the money went into. Which of their
+     * accounts earned this is on the deposit, which is what {@code depositId} is for.
+     *
      * @throws IllegalArgumentException if the rate would pay less than one point per whole euro
      */
     @Transactional
-    public PointsByReason creditPointsFor(long savingsAccountId, long depositId, BigDecimal amountInEuros,
+    public PointsByReason creditPointsFor(long customerId, long depositId, BigDecimal amountInEuros,
                                           BigDecimal multiplier, Instant earnedAt) {
-        refuseARateThatPaysLessThanTheEuros(savingsAccountId, depositId, multiplier);
+        refuseARateThatPaysLessThanTheEuros(customerId, depositId, multiplier);
         long wholeEuros = wholeEurosIn(amountInEuros);
         long paidAtTheRate = pointsOn(wholeEuros, multiplier);
         long streakBonus = paidAtTheRate - wholeEuros;
@@ -94,20 +102,20 @@ public class PointsService {
         // deposit of EUR 0.99 reads as the rule working rather than as points having gone missing —
         // and so that a bonus of 2 on a base of 7 can be checked against the multiplication a
         // reviewer would do by hand.
-        log.debug("points to credit worked out from the amount savingsAccountId={} depositId={} "
+        log.debug("points to credit worked out from the amount customerId={} depositId={} "
                         + "amountInEuros={} wholeEuros={} multiplier={} paidAtTheRate={} "
                         + "streakBonus={} earnedAt={}",
-                savingsAccountId, depositId, amountInEuros, wholeEuros, multiplier, paidAtTheRate,
+                customerId, depositId, amountInEuros, wholeEuros, multiplier, paidAtTheRate,
                 streakBonus, earnedAt);
-        credits.save(PointsCredit.baseAccrualFor(savingsAccountId, depositId, wholeEuros, earnedAt));
+        credits.save(PointsCredit.baseAccrualFor(customerId, depositId, wholeEuros, earnedAt));
         PointsByReason credited = PointsByReason.of(PointsReason.BASE_ACCRUAL, wholeEuros);
         if (streakBonus > 0) {
-            credits.save(PointsCredit.streakBonusFor(savingsAccountId, depositId, streakBonus, earnedAt));
+            credits.save(PointsCredit.streakBonusFor(customerId, depositId, streakBonus, earnedAt));
             credited = new PointsByReason(Map.of(
                     PointsReason.BASE_ACCRUAL, wholeEuros, PointsReason.STREAK_BONUS, streakBonus));
         }
-        log.info("points credited savingsAccountId={} depositId={} multiplier={} pointsByReason={} points={}",
-                savingsAccountId, depositId, multiplier, credited.points(), credited.total());
+        log.info("points credited customerId={} depositId={} multiplier={} pointsByReason={} points={}",
+                customerId, depositId, multiplier, credited.points(), credited.total());
         return credited;
     }
 
@@ -130,29 +138,33 @@ public class PointsService {
      * whoever worked one out. Said out loud rather than credited anyway, because the alternative is a
      * deposit that quietly earned fewer points than its euros and a balance nobody can explain.
      */
-    private static void refuseARateThatPaysLessThanTheEuros(long savingsAccountId, long depositId,
+    private static void refuseARateThatPaysLessThanTheEuros(long customerId, long depositId,
                                                             BigDecimal multiplier) {
         if (multiplier == null || multiplier.compareTo(BigDecimal.ONE) < 0) {
             String reason = "a rate never pays less than one point per whole euro, and this one was "
                     + multiplier;
-            log.warn("points not credited savingsAccountId={} depositId={} reason={}",
-                    savingsAccountId, depositId, reason);
+            log.warn("points not credited customerId={} depositId={} reason={}",
+                    customerId, depositId, reason);
             throw new IllegalArgumentException(reason);
         }
     }
 
     /**
-     * What the savings account can spend, summed from what remains across its credits. Derived on
-     * every read, so no stored total can drift away from the batches underneath it.
+     * What the customer can spend, summed from what remains across their credits — every batch they
+     * have earned, whichever of their savings accounts earned it. Derived on every read, so no
+     * stored total can drift away from the batches underneath it.
      */
     @Transactional(readOnly = true)
-    public long balanceOf(long savingsAccountId) {
-        return credits.remainingPointsOf(savingsAccountId);
+    public long balanceOf(long customerId) {
+        return credits.remainingPointsOf(customerId);
     }
 
     /**
-     * Spends points out of the account's batches, oldest first, and answers whether there were
+     * Spends points out of the customer's batches, oldest first, and answers whether there were
      * enough. Nothing is taken from any batch unless the whole amount can be found.
+     *
+     * <p>Oldest across the whole pot, not oldest within one savings account: the batches are the
+     * customer's, so a reward is paid for by whatever they earned first, wherever they earned it.
      *
      * <p>Whether there were enough comes back as an answer rather than as a refusal, because the
      * reason a refusal would give is not this module's to write: what the points were being spent on,
@@ -168,11 +180,11 @@ public class PointsService {
      *                                  report to anybody
      */
     @Transactional
-    public boolean spend(long savingsAccountId, long points) {
+    public boolean spend(long customerId, long points) {
         if (points <= 0) {
             throw new IllegalArgumentException("points to spend has to be more than zero, was " + points);
         }
-        List<PointsCredit> oldestFirst = credits.unspentOldestFirst(savingsAccountId);
+        List<PointsCredit> oldestFirst = credits.unspentOldestFirst(customerId);
         // Counted from the batches this spend would draw from, rather than asked of the database a
         // second time: the figure checked and the rows changed are then the same rows.
         long available = oldestFirst.stream().mapToLong(PointsCredit::getRemainingPoints).sum();

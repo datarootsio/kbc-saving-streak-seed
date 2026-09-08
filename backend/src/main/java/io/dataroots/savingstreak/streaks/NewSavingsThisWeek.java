@@ -6,8 +6,11 @@ import java.math.RoundingMode;
 /**
  * How much new saving has landed in a week, and what the week still asks for.
  *
+ * <p>A week of one customer's saving, counting every account they paid into: the figure is what they
+ * put away, not what any one goal took in.
+ *
  * <p>Gross, and that is the rule this record carries: it is what was paid in, never what is left of
- * it. A withdrawal takes money back out of the account without un-happening the deposit it came out
+ * it. A withdrawal takes money back out of an account without un-happening the deposit it came out
  * of, so a week that took EUR 60 in and let EUR 20 back out has still taken EUR 60 in. Read net, a
  * Thursday withdrawal would retroactively un-secure a week that was already secured on Tuesday,
  * which is either a bonus clawed back or a ledger disagreeing with the streak derived from it.

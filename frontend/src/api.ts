@@ -12,14 +12,42 @@ export type CurrentAccount = {
   balance: number
 }
 
-/** A savings account in an overview, worth what it holds and what that has earned. */
+/** A savings account in an overview, worth the money in it. */
 export type SavingsAccount = {
   id: number
   moneyBalance: number
-  pointsBalance: number
 }
 
+/**
+ * What a customer holds, what their saving has earned them, and how the saving is going.
+ *
+ * <p>`pointsBalance` is the customer's own figure and sits beside the two lists rather than inside
+ * either of them: points are earned by paying into any of these savings accounts and spent on
+ * rewards, and they belong to the person rather than to one account. It is the backend's figure,
+ * summed there from everything they have earned less everything they have claimed.
+ *
+ * <p>So are the week and the run of weeks. A week counts what the customer put away wherever they
+ * put it, so there is one week in progress and one run behind it however many accounts they keep —
+ * the same six figures a savings account's own endpoint reports, under the same names, because they
+ * are the same figures read for the same person.
+ *
+ * <p>What the week asks for comes down with the progress towards it, for the reason
+ * {@link SavingsAccountBalances} gives: the €50 a week costs is the backend's figure, and a page
+ * that wrote it into its own markup would be a second place it lived.
+ */
 export type CustomerAccounts = {
+  pointsBalance: number
+  /** Gross new saving that has landed since Monday, across every account they hold. */
+  newSavingsThisWeek: number
+  weeklyMinimum: number
+  /** What the week still asks for, and never below zero. */
+  stillNeededThisWeek: number
+  /** Consecutive weeks the customer has secured, and zero once the run has lapsed. */
+  currentStreakWeeks: number
+  /** The longest run they have ever had, which a lapse does not erase. */
+  bestStreakWeeks: number
+  /** What a whole euro paid in earns right now, as a multiple of a point. */
+  currentMultiplier: number
   currentAccounts: CurrentAccount[]
   savingsAccounts: SavingsAccount[]
 }
@@ -117,6 +145,11 @@ export type SavingsAccountBalances = {
   id: number
   customerName: string
   moneyBalance: number
+  /**
+   * What the holder has to spend, which is not this account's figure but theirs: the same number is
+   * reported beside every account they hold. Paying in here adds to it, which is why it is shown
+   * beside this balance — what paying in *here* earned is on each deposit in the history.
+   */
   pointsBalance: number
   /** Gross new saving that has landed since Monday, counted in the backend's own timezone. */
   newSavingsThisWeek: number
@@ -250,29 +283,31 @@ export async function fetchRewards(signal?: AbortSignal): Promise<Reward[]> {
 }
 
 /**
- * What this savings account has claimed, newest first. The other half of the points balance: the
- * deposits say what came in, these say what went out, and the balance is what the two leave.
+ * What this customer has claimed, newest first. The other half of their points balance: the deposits
+ * into every account they hold say what came in, these say what went out, and the balance is what
+ * the two leave.
  */
 export async function fetchClaimed(
-  savingsAccountId: number,
+  customerId: number,
   signal?: AbortSignal,
 ): Promise<ClaimedReward[]> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/redemptions`, { signal })
+  const response = await fetch(`/api/customers/${customerId}/redemptions`, { signal })
   if (!response.ok) {
-    throw new Error(await reasonRefused(response, 'Could not load what this account has claimed'))
+    throw new Error(await reasonRefused(response, 'Could not load what you have claimed'))
   }
   return response.json()
 }
 
 /**
- * Claims a reward, and there is no way back: the voucher exists the moment this succeeds. What it
- * costs is not sent — the price is the backend's, and a page that named one could name the wrong one.
+ * Claims a reward, and there is no way back: the voucher exists the moment this succeeds.
+ *
+ * <p>Claimed by the customer rather than out of a savings account, because that is whose points pay
+ * for it: somebody saving towards two goals has one pot and does not have to pick which one buys the
+ * cinema ticket. What it costs is not sent — the price is the backend's, and a page that named one
+ * could name the wrong one.
  */
-export async function claimReward(
-  savingsAccountId: number,
-  reward: string,
-): Promise<ClaimedReward> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/redemptions`, {
+export async function claimReward(customerId: number, reward: string): Promise<ClaimedReward> {
+  const response = await fetch(`/api/customers/${customerId}/redemptions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reward }),

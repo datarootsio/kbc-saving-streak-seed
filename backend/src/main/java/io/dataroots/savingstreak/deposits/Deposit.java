@@ -38,6 +38,20 @@ class Deposit {
 
     private long savingsAccountId;
 
+    /**
+     * Whose saving this is.
+     *
+     * <p>Written down rather than looked up through the account, because it is what a week and a run
+     * of weeks are counted by: both are the customer's, so both are one query over the deposits this
+     * column names rather than a query per account they hold. Which account the money went into is
+     * the column above, and it is still what a balance and a history are read by.
+     *
+     * <p>Nullable in the database only because a deposit recorded before a week belonged to a
+     * customer has no value in it. {@link DepositsOnStartUp} fills those in before the application
+     * serves a single request, so nothing that reads this ever sees a null.
+     */
+    private Long customerId;
+
     private long sourceCurrentAccountId;
 
     private BigDecimal amount;
@@ -78,8 +92,10 @@ class Deposit {
         // for JPA
     }
 
-    Deposit(long savingsAccountId, long sourceCurrentAccountId, BigDecimal amount, Instant depositedAt) {
+    Deposit(long savingsAccountId, long customerId, long sourceCurrentAccountId, BigDecimal amount,
+            Instant depositedAt) {
         this.savingsAccountId = savingsAccountId;
+        this.customerId = customerId;
         this.sourceCurrentAccountId = sourceCurrentAccountId;
         this.amount = amount;
         // All of it, because none of it has gone anywhere yet.

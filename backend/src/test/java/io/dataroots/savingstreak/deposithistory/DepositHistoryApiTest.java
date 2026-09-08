@@ -94,13 +94,14 @@ class DepositHistoryApiTest extends ApiIntegrationTest {
      * batch it earned and each claim with what it cost. That they agree is the whole point of showing
      * them — a balance nobody can add up for themselves is one they have to take on trust.
      *
-     * <p>The money balance is the deposits and nothing else: claiming a reward spends points, never
-     * euros. The points balance takes two lists to explain, which it did not before rewards could be
-     * claimed — what was earned, less what has been spent. Both sides are needed, and a page showing
-     * only the deposits would be showing a figure that no longer follows from them.
+     * <p>The money balance is the account's own deposits and nothing else: claiming a reward spends
+     * points, never euros. The points balance is the customer's and takes every account they hold to
+     * explain — everything earned, wherever it was earned, less what has been spent. Both sides are
+     * needed, and a page showing only one account's deposits would be showing a figure that does not
+     * follow from them.
      *
      * <p>Asserted across the whole of both lists rather than this test's own two deposits, because
-     * the claim is an invariant about the account and not about what this test put into it.
+     * the claim is an invariant about the customer and not about what this test put in.
      */
     @Test
     void the_listed_amounts_and_points_add_up_to_the_two_balances() {
@@ -110,12 +111,17 @@ class DepositHistoryApiTest extends ApiIntegrationTest {
         deposit(savingsAccount, currentAccount, "0.40");
 
         DepositView[] history = depositsInto(savingsAccount).getBody();
-        ClaimedRewardView[] claimed = claimsAgainst(savingsAccount).getBody();
+        ClaimedRewardView[] claimed = claimsBy(ANKE).getBody();
         BalancesView balances = balancesOf(savingsAccount);
 
         assertThat(Arrays.stream(history).map(DepositView::amount).reduce(BigDecimal.ZERO, BigDecimal::add))
                 .isEqualByComparingTo(balances.moneyBalance());
-        long earned = Arrays.stream(history).mapToLong(DepositView::pointsEarned).sum();
+        // Earned across every account this customer holds, because that is the pot the balance is:
+        // this one's deposits alone would be short by whatever the other one has earned.
+        long earned = seeded.savingsAccountsOf(ANKE).stream()
+                .flatMap(account -> Arrays.stream(depositsInto(account).getBody()))
+                .mapToLong(DepositView::pointsEarned)
+                .sum();
         long spent = Arrays.stream(claimed).mapToLong(ClaimedRewardView::pointsSpent).sum();
         assertThat(earned - spent).isEqualTo(balances.pointsBalance());
     }
@@ -138,9 +144,9 @@ class DepositHistoryApiTest extends ApiIntegrationTest {
         return http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
     }
 
-    private ResponseEntity<ClaimedRewardView[]> claimsAgainst(long savingsAccountId) {
-        return http.getForEntity(
-                "/api/savings-accounts/{id}/redemptions", ClaimedRewardView[].class, savingsAccountId);
+    private ResponseEntity<ClaimedRewardView[]> claimsBy(String customerName) {
+        return http.getForEntity("/api/customers/{id}/redemptions", ClaimedRewardView[].class,
+                seeded.customerIdOf(customerName));
     }
 
     private ResponseEntity<DepositView[]> depositsInto(long savingsAccountId) {
