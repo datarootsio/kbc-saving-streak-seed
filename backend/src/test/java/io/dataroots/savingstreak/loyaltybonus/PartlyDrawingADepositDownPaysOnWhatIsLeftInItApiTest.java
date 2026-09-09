@@ -29,8 +29,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Two accounts of one customer on one clock rather than two test methods, for the reason the
  * rest of this package gives: the clock only goes forward. One balance is then the whole of the
- * arithmetic — a deposit paid on what it started with rather than on what is left in it would show
- * up as 75 where this test expects 25.
+ * arithmetic — and both deposits started at EUR 500, so paying an anniversary on what a deposit
+ * started with rather than on what is left in it would pay 50 apiece and put that balance at 1100
+ * where this test expects 1025.
  *
  * <p>Its own application, for the reason {@link AnApplicationWithAClockToMove} gives.
  */

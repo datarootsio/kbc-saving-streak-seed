@@ -32,8 +32,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Two accounts rather than two test methods, for the reason the rest of this package gives: the
  * clock only goes forward, so a second method would find the year already moved on. Two accounts of
  * one customer rather than two customers, because the points are the customer's and one balance is
- * then the whole of the arithmetic: a sweep that wrongly paid the emptied deposit would show up as
- * 100 where the test expects 50.
+ * then the whole of the arithmetic: a sweep that paid the emptied deposit on what it originally held
+ * rather than on what is left in it would put that balance at 1100, both deposits paying 50, where
+ * this test expects 1050. What one balance cannot tell apart is an emptied deposit merely being let
+ * back into the sweep's query — a tenth of nothing is nothing, so the balance reads the same either
+ * way and no customer is a point worse off. It is the figure that is guarded here, not the query.
  *
  * <p>Nothing here needed a rule of its own to be written. What an anniversary pays is worked out
  * from what is still in the deposit at that moment, so a deposit drawn down to nothing is worth
@@ -115,7 +118,8 @@ class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends Api
 
         assertThat(app.pointsBalanceOf(ANKE))
                 .as("a tenth of the 500 euros that stayed, and nothing at all for the 500 that left "
-                        + "— two deposits paid would be 100 here, not 50")
+                        + "— a sweep reading each deposit's original 500 rather than what is "
+                        + "left in it would be 100 here, not 50")
                 .isEqualTo(1000 + 50);
 
         // And now the second one is emptied too, the day after being paid. This is the half of the
@@ -127,10 +131,17 @@ class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends Api
                 .as("the withdrawal takes back none of the 50 the anniversary paid")
                 .isEqualTo(1000 + 50);
 
-        // Nor does a sweep run after the withdrawal reconsider an anniversary it has already paid.
+        // Nor does a sweep run after the money left find anything to undo. Both deposits hold
+        // nothing by now, so DepositRepository.stillHoldingMoneyThatLandedBefore leaves them out
+        // and this sweep considers no deposit at all: there is nothing here for it to pay and
+        // nothing for it to take back, which is the outcome the withdrawal has to leave behind.
+        // That an anniversary already paid is not paid a second time is a different rule and is
+        // guarded where the sweep can still see the deposit — ticket 01's
+        // AnAnniversaryPaysATenthOfTheDepositsEurosApiTest, which sweeps the same anniversary
+        // twice with the money still in it.
         app.runJob(THE_LOYALTY_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE))
-                .as("a sweep run after the money left neither pays again nor claws anything back")
+                .as("a sweep with no deposit left to look at pays nothing and claws nothing back")
                 .isEqualTo(1000 + 50);
 
         // The batch that past anniversary paid survives the withdrawal untouched — at the figure it
