@@ -150,3 +150,54 @@ refuses.
    re-evaluates it and logs one DEBUG line per unpaid anniversary — a line a year, for ever. The
    implementer weighed this against a table of zero rows and chose the log; it is DEBUG only and
    reversible.
+
+### Findings from the second-pass code review, and what I made of each
+
+A `/code-review` over `agentic_engineered..ticket/01-...` reported after the pass was recorded. It
+raised five points. None of them is an unmet criterion of this ticket, and all five are written down
+here because two of them are work somebody must do next.
+
+1. **The deposit total no longer equals its stated parts, and the page shows it.** Confirmed, and it
+   is user-visible: `GET /api/savings-accounts/1/deposits` reports deposit 8 as `basePoints=500,
+   streakBonusPoints=100, pointsEarned=650`, and the history page renders `700` above
+   `500 base + 100 bonus at 1,20×` (screenshot `...review.1.history.png`; the 700 is 600 plus a
+   second anniversary paid later in my session). Four places document the invariant that is now
+   false: `RecordedDeposit`'s javadoc, `web/DepositResponse.java:14`, `frontend/src/api.ts:218` and
+   `support/DepositView.java:13`. **Not a defect in this ticket.** Ticket 01 asks for exactly this
+   ("The points ledger gains one more reason a deposit can have earned under"), and the spec is
+   explicit that the reason "joins the set of reasons a deposit can have earned under, so every
+   existing per-deposit breakdown carries it with no change to any caller". Ticket 04 owns the third
+   field and the invariant, ticket 05 the page. Whoever picks up 04 should expect to fix all four
+   comments and the `WhatItEarned` line in `frontend/src/App.tsx:1505`.
+2. **`Deposit.getCustomerId()` unboxes a nullable `Long`, and the sweep is the first unfiltered
+   reader.** Real in structure, unreachable on data this application creates, and worth hardening
+   anyway. `customerId` is `private Long` because `DepositsOnStartUp.sayWhoseSavingEveryDepositWas()`
+   can leave a legacy row null when the savings account has no holder, and every pre-existing reader
+   filters `where deposit.customerId = :customerId` so it can never see such a row.
+   `depositsStillHoldingMoneyThatLandedBefore` reads every customer's rows, so one null would throw
+   an NPE and roll back the whole nightly sweep for everybody. It cannot happen here:
+   `SavingsAccount.customer` is `@ManyToOne(optional = false)`, nothing anywhere deletes a savings
+   account or a deposit, and a deposit is refused unless its savings account exists — so the
+   `leftAlone` branch that leaves a null behind cannot fire. The cheap fix, for whoever is next in
+   this module: add `and deposit.customerId is not null` to the query in
+   `DepositRepository.stillHoldingMoneyThatLandedBefore`, or return `Long` and WARN past such a row.
+3. **A money-movement row's `pointsEarned` grows years after the euros moved.** Confirmed, same root
+   cause as (1) — the `INTO_SAVINGS` row reports `PointsByReason.total()`. The spec's "nothing to the
+   ledger of money that moved" means no new entry, and none is created; I verified the ledger stayed
+   at exactly the movements I made. `PayingABonusMovesNoMoneyAndSecuresNoWeekApiTest` asserts only
+   the row count, so if the growing figure on an existing row is wanted it is currently untested
+   either way. Worth a decision in ticket 04, not a blocker here.
+4. **A back-dated bonus can make `pointsExpiringNextOn` a date in the past.** Confirmed observable —
+   the page read "25 points expire on 23 september 2032" while the application clock read 2034. But
+   this is what the spec chose with its eyes open ("a batch for an anniversary long past may
+   therefore be credited already beyond its own twelve months and be swept away by the expiry job
+   the same night ... the honest outcome of both rules holding at once"), and any batch the expiry
+   sweep has not yet collected shows the same way, loyalty or not. Not new behaviour and not a
+   criterion of this ticket.
+5. **A unique-index violation would roll back the whole sweep rather than one anniversary.** I tried
+   the scenario rather than reasoning about it: two `payLoyaltyBonuses` runs fired simultaneously
+   over eight deposits with seven unpaid anniversaries returned 200 and 200, logged
+   `anniversariesPaid=7 points=222` and `anniversariesPaid=0 points=0`, and moved the balance by
+   exactly 222. SQLite's single writer serialises the two transactions, so the loser reads the
+   committed rows rather than colliding with them. If it ever did collide the next run recovers, so
+   this is a robustness note at most.
