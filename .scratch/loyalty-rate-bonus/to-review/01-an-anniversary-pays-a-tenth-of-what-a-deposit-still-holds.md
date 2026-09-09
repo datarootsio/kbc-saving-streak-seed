@@ -1,6 +1,6 @@
 # 01: An anniversary pays a tenth of the euros a deposit still holds
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** None (can start immediately).
 
@@ -41,17 +41,17 @@ the same way an expired batch carries the moment it went. The record also keeps 
 was worked out from, because the deposit's remaining amount moves on afterwards and that figure is
 otherwise gone.
 
-- [ ] A deposit left untouched for twelve months earns a tenth of its whole euros, and the points count towards the customer's balance.
-- [ ] A sweep run inside the twelve months pays nothing, and says out loud that it looked.
-- [ ] A deposit left untouched pays again on its second and third anniversaries, each counted from the day it landed rather than from the last payment.
-- [ ] A deposit whose anniversaries have all passed unpaid is paid every one of them in a single sweep, each dated at the anniversary it is for.
-- [ ] A deposit holding under €10 earns nothing on its anniversary.
-- [ ] A deposit holding nothing earns nothing, and is not considered by the sweep at all.
-- [ ] Running the sweep twice pays nothing the second time.
-- [ ] The bonus is a tenth of the euros' own points, never a tenth of what the streak multiplier paid.
-- [ ] The sweep can be run out of turn through the development jobs endpoint, by name, and reports itself in the list of jobs that can be run.
-- [ ] The sweep takes its moment from the application's clock, so a wound-forward clock is what decides which anniversaries have arrived.
-- [ ] Paying a bonus moves no money: no ledger entry, no change to any balance in euros.
-- [ ] Paying a bonus secures no week and changes no streak.
-- [ ] The anniversary arithmetic gets a unit test of its own for the calendar cases the HTTP seam cannot reach — twelve months multiplied out, February clamping, and the ordinal of a given date.
-- [ ] The sweep logs one INFO line per run carrying the moment it judged against, the cut-off its query used, how many deposits it considered, how many anniversaries it paid and the points; and one DEBUG line per deposit carrying the anniversary, its ordinal, what remained, the whole euros and the points, or the reason it was passed over.
+- [x] A deposit left untouched for twelve months earns a tenth of its whole euros, and the points count towards the customer's balance.
+- [x] A sweep run inside the twelve months pays nothing, and says out loud that it looked.
+- [x] A deposit left untouched pays again on its second and third anniversaries, each counted from the day it landed rather than from the last payment.
+- [x] A deposit whose anniversaries have all passed unpaid is paid every one of them in a single sweep, each dated at the anniversary it is for.
+- [x] A deposit holding under €10 earns nothing on its anniversary.
+- [x] A deposit holding nothing earns nothing, and is not considered by the sweep at all.
+- [x] Running the sweep twice pays nothing the second time.
+- [x] The bonus is a tenth of the euros' own points, never a tenth of what the streak multiplier paid.
+- [x] The sweep can be run out of turn through the development jobs endpoint, by name, and reports itself in the list of jobs that can be run.
+- [x] The sweep takes its moment from the application's clock, so a wound-forward clock is what decides which anniversaries have arrived.
+- [x] Paying a bonus moves no money: no ledger entry, no change to any balance in euros.
+- [x] Paying a bonus secures no week and changes no streak.
+- [x] The anniversary arithmetic gets a unit test of its own for the calendar cases the HTTP seam cannot reach — twelve months multiplied out, February clamping, and the ordinal of a given date.
+- [x] The sweep logs one INFO line per run carrying the moment it judged against, the cut-off its query used, how many deposits it considered, how many anniversaries it paid and the points; and one DEBUG line per deposit carrying the anniversary, its ordinal, what remained, the whole euros and the points, or the reason it was passed over.
