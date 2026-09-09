@@ -1,6 +1,6 @@
 # 03: Gifted points keep the age they were earned at
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -34,7 +34,7 @@ a year forward.
 - [x] Points given back and forth between two customers do not outlive their twelve months.
 - [x] Gifted points near the end of their twelve months appear in the points the recipient is told expire next, on the day their own twelve months are up.
 - [x] Gifted points count towards the recipient's balance from the moment the gift goes through.
-- [ ] Gifted points can be spent on a reward, and are spent oldest-first alongside the recipient's own points.
+- [x] Gifted points can be spent on a reward, and are spent oldest-first alongside the recipient's own points.
 - [x] Received points can be given onward to a third customer, and carry their original age when they go.
 - [x] A gift of points whose anniversary has already passed is credited and then swept away, and both events are readable in the log.
 - [x] A claim refused for want of points quotes a balance that includes whatever gifted points the customer holds.
