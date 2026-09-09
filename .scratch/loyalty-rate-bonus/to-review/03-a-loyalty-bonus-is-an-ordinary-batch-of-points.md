@@ -1,6 +1,6 @@
 # 03: A loyalty bonus is an ordinary batch of points
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
