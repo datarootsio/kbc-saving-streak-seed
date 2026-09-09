@@ -39,6 +39,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * that earned them rather than the date of either hop. A third pot would be a third name in the
  * assertions and nothing else.
  *
+ * <p>Because the points go home, the hop is asserted from his side as well as from hers: his own
+ * record shows the onward gift as one he sent, sitting above the gift he received. Without that,
+ * "the second hop carried the original date" and "the batch she drew down resurfaced in her pot"
+ * would be the same set of figures, and only the first of them is what this test is about.
+ *
  * <p>Its own application, on a database nothing has ever been written to: it winds the clock past an
  * anniversary, and it needs points in Bram's pot, which two tests on the shared database assert he
  * has never had.
@@ -99,6 +104,23 @@ class ReceivedPointsCanBeGivenOnwardApiTest extends ApiIntegrationTest {
         assertThat(onward.points()).isEqualTo(older.pointsEarned());
         assertThat(onward.senderId()).isEqualTo(app.customerIdOf(BRAM));
         assertThat(onward.recipientId()).isEqualTo(app.customerIdOf(ANKE));
+
+        // And the hop is on his own record as one he sent, under the gift that put the points in
+        // his pot in the first place. Read from his side there is no doubt whose act it was: the
+        // date assertions below are about a batch that came back to the customer who earned it, and
+        // this is what says a second gift happened at all rather than her own batch resurfacing.
+        GiftView[] hisGifts = app.giftsOf(BRAM);
+        assertThat(hisGifts).hasSize(2);
+        assertThat(hisGifts[0].id()).isEqualTo(onward.id());
+        assertThat(hisGifts[0].direction())
+                .as("newest first, and the newest is the one he gave on")
+                .isEqualTo("SENT");
+        assertThat(hisGifts[0].points()).isEqualTo(older.pointsEarned());
+        assertThat(hisGifts[0].recipientId()).isEqualTo(app.customerIdOf(ANKE));
+        assertThat(hisGifts[1].direction())
+                .as("beneath it, the gift he never earned a point of")
+                .isEqualTo("RECEIVED");
+        assertThat(hisGifts[1].points()).isEqualTo(everythingSheHeld);
 
         // Oldest first out of his pot too, so what he is left holding is the younger slice on the
         // younger day — the age of that batch survived being gifted once and drawn on twice.

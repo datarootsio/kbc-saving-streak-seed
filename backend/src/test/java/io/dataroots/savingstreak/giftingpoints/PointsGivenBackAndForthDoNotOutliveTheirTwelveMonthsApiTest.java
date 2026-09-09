@@ -29,7 +29,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>A sweep is run after every hop as well, and takes nothing each time. That is the other half:
  * points that vanished early would make the ending assertion pass for the wrong reason, and a rule
- * that expired a batch the moment it changed hands would look identical at the end of the year.
+ * that expired a batch the moment it changed hands would look identical at the end of the year. It
+ * is worth being exact about what those in-loop sweeps do, because every hop is inside the twelve
+ * months and the sweep only gathers batches old enough to be worth judging: they find nothing to
+ * consider at all and so never reach the anniversary comparison. Nothing taken is still the answer
+ * the year needs, and the balance read beside each one is what would catch points that went early.
  *
  * <p>What each hop asserts is the balance moving whole — a gift of everything the holder has, so
  * nothing is left behind to muddy the next hop — and the day the holder is told their points go,
@@ -105,8 +109,12 @@ class PointsGivenBackAndForthDoNotOutliveTheirTwelveMonthsApiTest extends ApiInt
                             + "from the hop", hop)
                     .isEqualTo(theirTwelveMonthsAreUpOn);
 
-            // Nor did it shorten it: a sweep run now finds points inside their twelve months and
-            // leaves them alone, so the ending below cannot pass because they went early.
+            // Nor did it shorten it: a sweep run now takes nothing. It does not even judge these
+            // points — every hop lands well inside the twelve months, so the batch is younger than
+            // the cut-off the sweep gathers candidates by and the sweep never looks at it, which is
+            // itself the statement that a gift did not backdate them into range. What the assertion
+            // catches is points ending early by any route at all, hop included: without it the
+            // ending below would pass on a pot that had been empty since the first hop.
             app.runJob(THE_EXPIRY_SWEEP);
             assertThat(app.pointsBalanceOf(whoHasThemNow))
                     .as("a sweep after hop %d takes nothing, because their year is not up", hop)
