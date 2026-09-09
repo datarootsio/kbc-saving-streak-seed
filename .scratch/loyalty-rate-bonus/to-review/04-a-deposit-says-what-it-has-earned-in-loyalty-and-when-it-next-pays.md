@@ -1,6 +1,6 @@
 # 04: A deposit says what it has earned in loyalty and when it next pays
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -28,12 +28,12 @@ Nothing is added to the account overview. There is no total loyalty bonus across
 figure on the summary — the bonus is shown on the deposits that earned it, where the next
 anniversary means something.
 
-- [ ] Each deposit in the history reports the loyalty bonus it has been paid, across every anniversary.
-- [ ] Each deposit in the history reports the date of its next anniversary and what that anniversary is currently worth.
-- [ ] A deposit's next-anniversary figure falls after a withdrawal from it.
-- [ ] A deposit holding nothing reports no next anniversary at all.
-- [ ] A deposit holding under €10 reports its next anniversary date with nothing to be earned on it.
-- [ ] The total a deposit has earned is its base points, its streak bonus and its loyalty bonuses, and the three always sum to it.
-- [ ] A deposit just made reports no loyalty bonus and a first anniversary twelve months out.
-- [ ] What a deposit earned when it landed is unchanged by this ticket, and the existing assertions about it still pass untouched.
-- [ ] The account overview gains nothing.
+- [x] Each deposit in the history reports the loyalty bonus it has been paid, across every anniversary.
+- [x] Each deposit in the history reports the date of its next anniversary and what that anniversary is currently worth.
+- [x] A deposit's next-anniversary figure falls after a withdrawal from it.
+- [x] A deposit holding nothing reports no next anniversary at all.
+- [x] A deposit holding under €10 reports its next anniversary date with nothing to be earned on it.
+- [x] The total a deposit has earned is its base points, its streak bonus and its loyalty bonuses, and the three always sum to it.
+- [x] A deposit just made reports no loyalty bonus and a first anniversary twelve months out.
+- [x] What a deposit earned when it landed is unchanged by this ticket, and the existing assertions about it still pass untouched.
+- [x] The account overview gains nothing.
