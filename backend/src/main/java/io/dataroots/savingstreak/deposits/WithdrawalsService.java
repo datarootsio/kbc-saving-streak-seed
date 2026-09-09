@@ -65,6 +65,7 @@ public class WithdrawalsService {
         Withdrawal withdrawal = withdrawals.save(new Withdrawal(savingsAccountId, toCurrentAccountId, amount, now));
         BigDecimal stillToAllocate = amount;
         List<WithdrawalAllocation> made = new ArrayList<>();
+        List<String> drawnDown = new ArrayList<>();
         for (Deposit deposit : oldestFirst) {
             if (stillToAllocate.signum() == 0) {
                 break;
@@ -74,12 +75,25 @@ public class WithdrawalsService {
                 deposit.reduceBy(taken);
                 made.add(new WithdrawalAllocation(withdrawal.getId(), deposit.getId(), taken));
                 stillToAllocate = stillToAllocate.subtract(taken);
+                // Gathered rather than logged here, so that a withdrawal spread over a long list of
+                // deposits is still one line in the log.
+                drawnDown.add("[depositId=" + deposit.getId() + " landedAt=" + deposit.getDepositedAt()
+                        + " took=" + asMoney(taken) + " leftInIt=" + asMoney(deposit.getRemainingAmount())
+                        + "]");
             }
         }
         allocations.saveAll(made);
         accounts.depositInto(toCurrentAccountId, amount);
         log.debug("withdrawal allocated savingsAccountId={} withdrawalId={} depositsTouched={} cents={}",
                 savingsAccountId, withdrawal.getId(), made.size(), amount.movePointRight(2).longValueExact());
+        // Which deposits the money actually came out of, in the order it came out of them, and what
+        // is left in each afterwards. The order is a rule rather than an accident of storage — the
+        // deposit that has been there longest goes first — and it is what decides where a forfeited
+        // loyalty anniversary falls, since what an anniversary pays is worked out from what is left
+        // in that deposit. Said out loud at the moment it is decided, because the alternative is
+        // inferring it a year later from what an anniversary did or did not pay.
+        log.debug("withdrawal drew the oldest deposits down first savingsAccountId={} withdrawalId={} "
+                + "drawnDown={}", savingsAccountId, withdrawal.getId(), String.join(" ", drawnDown));
         log.info("withdrawal accepted withdrawalId={} savingsAccountId={} toCurrentAccountId={} amount={} "
                         + "withdrawnAt={}", withdrawal.getId(), savingsAccountId, toCurrentAccountId,
                 asMoney(amount), withdrawal.getWithdrawnAt());
