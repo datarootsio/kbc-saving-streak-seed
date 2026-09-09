@@ -380,13 +380,15 @@ public class PointsService {
             // reason belongs to them; what this module knows and they do not is what the pot was
             // made of when it came up short.
             log.debug("points not spent customerId={} points={} reason=only {} left across {} "
-                    + "unexpired batches", customerId, points, available, oldestFirst.size());
+                            + "batches with anything left in them",
+                    customerId, points, available, oldestFirst.size());
             return false;
         }
         long stillToFind = points;
-        // What came out of which batch, in the order it came out, so that the one rule this ledger
-        // keeps dated batches in order to follow is readable rather than merely intended. Built as
-        // the loop goes and written once after it, so nothing is logged inside the loop.
+        // Asked once, before the loop, so that the gathering and the line that says it can never
+        // disagree about whether anybody is listening — a level changed mid-spend would otherwise
+        // print a list missing its first batches.
+        boolean sayWhichBatchesItCameOffOf = log.isDebugEnabled();
         List<String> drawnOn = new ArrayList<>();
         for (PointsCredit batch : oldestFirst) {
             if (stillToFind == 0) {
@@ -394,9 +396,20 @@ public class PointsService {
             }
             long taken = batch.take(stillToFind);
             stillToFind -= taken;
-            drawnOn.add("batchId=" + batch.getId() + " reason=" + batch.getReason()
-                    + " earnedAt=" + batch.getEarnedAt() + " taken=" + taken
-                    + " leftInIt=" + batch.getRemainingPoints());
+            // What came out of which batch, in the order it came out, so that the one rule this
+            // ledger keeps dated batches in order to follow is readable rather than merely
+            // intended. Gathered rather than logged here, so that a spend spread over a long list
+            // of batches is still one line in the log, and guarded, because rendering a batch is
+            // work — five values per batch the spend reaches — and the string is thrown away when
+            // the application runs at INFO. The same reasoning as the withdrawal's drawn-down
+            // list, and the opposite of the expiry sweep's per-batch line above, which passes
+            // getters and renders nothing; this gathering is also the only one of the three on a
+            // per-request path, since a spend runs on every claim rather than once a night.
+            if (sayWhichBatchesItCameOffOf) {
+                drawnOn.add("[batchId=" + batch.getId() + " reason=" + batch.getReason()
+                        + " earnedAt=" + batch.getEarnedAt() + " taken=" + taken
+                        + " leftInIt=" + batch.getRemainingPoints() + "]");
+            }
         }
         // The batches are managed and would be written out at the end of the transaction anyway.
         // Saying so leaves nothing for a reader to infer from Hibernate's behaviour.
@@ -404,9 +417,11 @@ public class PointsService {
         // The inputs behind the whole decision: which batches were nearest their twelve months, how
         // much each of them gave up, and what was left in the last one the spend reached. A reward
         // paid for out of a bonus reads as one of these, with the reason on it saying so.
-        log.debug("points spent oldest first customerId={} points={} available={} "
-                        + "unexpiredBatches={} drawnOn={}",
-                customerId, points, available, oldestFirst.size(), drawnOn);
+        if (sayWhichBatchesItCameOffOf) {
+            log.debug("points spent oldest first customerId={} points={} available={} "
+                            + "batchesWithSomethingLeft={} drawnOn={}",
+                    customerId, points, available, oldestFirst.size(), String.join(" ", drawnOn));
+        }
         return true;
     }
 
