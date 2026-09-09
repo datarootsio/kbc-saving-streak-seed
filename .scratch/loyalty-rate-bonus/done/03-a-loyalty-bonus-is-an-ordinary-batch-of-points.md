@@ -1,6 +1,6 @@
 # 03: A loyalty bonus is an ordinary batch of points
 
-Status: needs-review
+Status: done
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -296,3 +296,121 @@ points spent oldest first customerId=1 points=40 available=69 batchesWithSomethi
 
 Full log lines and the page screenshots are in
 `.scratch/loyalty-rate-bonus/logs/03-a-loyalty-bonus-is-an-ordinary-batch-of-points.review.2.md`.
+
+## Verified
+
+Reviewed on attempt 3, on branch `ticket/03-a-loyalty-bonus-is-an-ordinary-batch-of-points` over
+`ticket/02-a-withdrawal-forfeits-only-the-anniversary-it-did-not-reach..HEAD`. All eight criteria
+were exercised by hand against a running application on a throwaway database and each is backed by a
+log line I read. This branch is safe to merge.
+
+**The diff is small and entirely as the ticket predicted.** Three new API tests in
+`backend/src/test/java/io/dataroots/savingstreak/loyaltybonus/` and one production hunk: two DEBUG
+lines added to `PointsService.spend`. No new ledger behaviour, no special case for `LOYALTY_BONUS`
+anywhere — which is the point of the ticket. Nothing in the frontend, nothing in the test support.
+
+**Checks, run by me.** `cd backend && ./mvnw test` → `Tests run: 212, Failures: 0, Errors: 0,
+Skipped: 0`, BUILD SUCCESS. `cd frontend && npm run typecheck` (Node v24.16.0) → clean, exit 0. The
+three new classes also pass on their own, one test each.
+
+**Attempt 2's five prose corrections are all genuinely fixed, and I re-derived each.**
+
+- `ALoyaltyBonusExpiresTwelveMonthsAfterItsAnniversaryApiTest:87` no longer claims to mirror the
+  nightly order. It now says the expiry sweep runs *after* the loyalty sweep "rather than half an
+  hour ahead of it as the nightly pair does", which is true of production: `OldPointsExpireNightly:47`
+  is `0 0 3 * * *` and `LoyaltyBonusesArePaidNightly:48` is `0 30 3 * * *`. The implementer kept the
+  reversed calls rather than the sentence, and was right to: the assertion exists to show a sweep
+  that has a freshly paid bonus in front of it leaves it alone, which is unreachable if expiry runs
+  first. The sibling `ADepositKeepsPaying...:25` states the same production order, so the two files
+  now agree.
+- `PointsService:406` no longer claims the spend's gathering is the only one of the three on a
+  per-request path. It now claims only what is true: the expiry sweep's unguarded line "runs once a
+  night, where a spend runs on every claim."
+- `ALoyaltyBonusIsSpentLikeAnyOtherPointsApiTest:129` says "a week" (the two deposits are one
+  `aWeekPasses()` apart — I read the bonuses dated 2027-09-09 and 2027-09-16 off the running app).
+  The Javadoc's "a fortnight" at line 36 is a different pair (bonus day 372 vs fresh deposit day 386)
+  and correctly left alone.
+- Both 758-day constants now say "four weeks" past a 730/731-day mark, and
+  `ADepositKeepsPaying...:93` says twelve months after the first anniversary "fell on the second
+  anniversary, four weeks before this run". I re-derived 365/731/1096/1461 against 379/700/758/1500;
+  every constant sits on the correct side with room.
+- Every remaining "fortnight" in the three files is genuinely 14 days (379 vs 365 in three places;
+  the day-372 bonus against the day-386 deposit; a batch dated at the sweep versus at the
+  anniversary), and every "same day" claim is accurate.
+
+**What I ran over HTTP** against `localhost:8080` on a fresh throwaway database (clock 2026-09-09,
+0 points; claim body field is `reward`, not `rewardCode`). Anke is customer 1 / savings 1 / current 1,
+Bram customer 2 / savings 3 / current 2.
+
+```
+POST /api/savings-accounts/1/deposits {"amount":"100.00","fromCurrentAccountId":1}  -> 100 pts
+POST /api/savings-accounts/3/deposits {"amount":"500.00","fromCurrentAccountId":2}  -> 500 pts
+POST /api/dev/clock/advance           {"days":7}
+POST /api/savings-accounts/1/deposits {"amount":"50.00","fromCurrentAccountId":1}   -> 50 base + 5 streak
+POST /api/dev/clock/advance           {"days":379}
+POST /api/dev/jobs/payLoyaltyBonuses/run   -> C1 155->170, C2 500->550      (criterion 3)
+POST /api/dev/jobs/expireOldPoints/run     -> C1 15, C2 50: bonus only      (criterion 4, inside)
+POST /api/customers/1/redemptions {"reward":"SNACK_VOUCHER"}    -> 400, quotes 15   (criterion 8)
+POST /api/customers/1/redemptions {"reward":"CHARITY_DONATION"} -> 201, balance 5   (criterion 1)
+POST /api/savings-accounts/1/deposits {"amount":"90.00","fromCurrentAccountId":1}
+POST /api/customers/1/redemptions {"reward":"SNACK_VOUCHER"}    -> 201, balance 55  (criterion 2)
+POST /api/dev/clock/advance {"days":372} + expireOldPoints  -> C2 0          (criterion 4, past)
+POST /api/dev/jobs/payLoyaltyBonuses/run   -> C2 50 into an empty pot        (criterion 6)
+POST /api/dev/clock/advance {"days":742} + payLoyaltyBonuses -> C2 150
+POST /api/dev/jobs/expireOldPoints/run     -> C2 50                          (criterion 7)
+```
+
+**Criterion 5 is the one that proves the batch is dated at its anniversary rather than at the
+sweep.** After the sweep at 2027-09-30 took the base points, `GET /api/customers/1/accounts` read
+`pointsExpiringNext: 10, pointsExpiringNextOn: "2028-09-09"` — twelve months after the anniversary
+(2027-09-09), not twelve months after the sweep, which would have read 2028-09-30.
+
+**Criterion 2 in one log line.** A later 40-point claim reached four batches, three loyalty bonuses
+then a base accrual, in strict `earnedAt` order with no regard to reason:
+
+```
+points spent oldest first customerId=1 points=40 available=54 batchesWithSomethingLeft=4
+  drawnOn=[batchId=14 reason=LOYALTY_BONUS earnedAt=2030-09-09T11:32:23.007Z taken=10 leftInIt=0]
+          [batchId=18 reason=LOYALTY_BONUS earnedAt=2030-09-16T11:32:23.071Z taken=5 leftInIt=0]
+          [batchId=20 reason=LOYALTY_BONUS earnedAt=2030-09-30T11:33:04.978Z taken=9 leftInIt=0]
+          [batchId=21 reason=BASE_ACCRUAL  earnedAt=2030-10-18T11:34:30.830Z taken=16 leftInIt=14]
+```
+
+**Criterion 7, both events in the log**, for Bram's third anniversary credited on 2030-10-18 already
+beyond its own twelve months and taken by the sweep that followed:
+
+```
+loyalty bonus paid depositId=2 customerId=2 anniversary=2029-09-09T11:32:23.038Z ordinal=3 remainingAmount=500.00 wholeEuros=500 rate=0.10 points=50 recordId=10
+points batch expired batchId=15 customerId=2 reason=LOYALTY_BONUS earnedAt=2029-09-09T11:32:23.038Z anniversary=2030-09-09T11:32:23.038Z pointsExpired=50
+```
+
+**Criterion 8's refusal leaves both halves in the log**, the DEBUG saying what the pot was made of
+and the WARN carrying the customer-facing reason:
+
+```
+DEBUG ... points not spent customerId=1 points=40 reason=only 15 left across 2 batches with anything left in them
+WARN  ... claim rejected customerId=1 reward=SNACK_VOUCHER kind=NOT_ENOUGH_POINTS reason=Coffee or snack voucher costs 40 points, and you have 15.
+```
+
+**The `isDebugEnabled` guard genuinely suppresses.** I started a second application at default INFO
+on port 8081 and drove a deposit, a year, both sweeps, a refusal and a claim through it:
+`grep -c` returns 0 for both `points spent oldest first` and `points not spent`, while
+`claim rejected ... reason=Coffee or snack voucher costs 40 points, and you have 10.` is still
+there on WARN. Log kept at `logs/03-...review.3.info-app.log`.
+
+**The page.** Driven with Playwright (chromium), console/pageerror/requestfailed subscribed to
+`logs/03-...review.3.browser.log`. Signed in as Anke and screenshotted
+(`logs/03-...review.3.overview.png`): fully styled, and the Rewards card reads "14 points to spend"
+with "14 points expire on 18 oktober 2031", matching the API — so the bonus-derived balance and its
+expiry date reach the customer. All three claims appear under Claimed with their voucher codes. The
+console carried only Vite's connect messages and the React DevTools notice; the two
+`[requestfailed] ... net::ERR_ABORTED` entries are StrictMode double-mount aborts, identical to the
+two in attempt 2's browser log, and the page rendered its data. The backend log for the whole session
+has no ERROR, no exception and no 5xx — `Completed 200 OK` x54, `Completed 201 CREATED` x8 and the
+one deliberate `Completed 400 BAD_REQUEST`; the Vite log has no transform or build error.
+
+**One non-blocking observation for a future reader**, not worth another round trip: the class Javadoc
+at `ADepositKeepsPayingAfterItsOwnPointsHaveExpiredApiTest:25` says "The two sweeps are run in the
+order the nightly jobs run in, expiry and then loyalty", which holds for the first two year-blocks;
+the last block runs loyalty and then expiry, but the inline comment at line 127 names that one "The
+next night's expiry sweep", so it is night N paying and night N+1 sweeping rather than a contradiction.
