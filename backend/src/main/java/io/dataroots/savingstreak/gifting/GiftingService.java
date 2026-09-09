@@ -69,10 +69,13 @@ public class GiftingService {
      * guessed, and it is what stops unlimited gifting from being an expiry-laundering machine:
      * {@link PointsService#movePoints} carries the reasoning where the dating happens.
      *
-     * <p>Four things are refused and nothing else: a sender nobody has heard of, a recipient nobody
+     * <p>Five things are refused and nothing else: a sender nobody has heard of, a recipient nobody
      * banks under, a gift to yourself, a figure that is not a positive whole number of points, and a
-     * gift larger than the sender's balance. Every one of them that does not need the gift's
-     * identifier is settled before anything at all is written.
+     * gift larger than the sender's balance. The first four are settled before anything at all is
+     * written. The fifth is not: how many points somebody holds needs no gift identifier and could
+     * have been asked before the row was saved, but it is the ledger's answer to the move rather
+     * than a question asked ahead of it, so it comes back after the save. That is what the
+     * save-before-move order below concedes, and the rollback is what makes it safe.
      *
      * <p>The gift row is saved <em>before</em> the points move, which is the opposite order to a
      * reward claim — that spends the points and then saves the redemption. It has to be this way
@@ -87,7 +90,7 @@ public class GiftingService {
      * @param pointsAsTyped the figure exactly as the customer typed it, so that "2.5" and "abc" are
      *                      ruled on here and answered in words rather than being coerced into
      *                      something plausible on the way in
-     * @throws GiftRefused if the gift is one of the four this module will not make
+     * @throws GiftRefused if the gift is one of the five this module will not make
      */
     @Transactional
     public GiftGiven give(long senderCustomerId, String recipientContactDetails, String pointsAsTyped) {
@@ -174,16 +177,24 @@ public class GiftingService {
             throw refusing(senderCustomerId, recipientContactDetails, NOT_A_NUMBER_OF_POINTS,
                     "A gift is a whole number of points, and \"" + typed + "\" is not a number.");
         }
+        // Every sentence from here on quotes the characters that were typed, and never the figure
+        // they parsed into. BigDecimal reads an exponent of any size for almost nothing —
+        // "1e999999999" is a couple of small fields — and it is writing that figure back out that
+        // costs: toPlainString() of "1.5e-999999999" is a billion characters and takes the heap with
+        // it, and toBigInteger() of "1e999999999" throws rather than answering, out of the middle of
+        // a refusal that was on its way to being reported in words. A refusal that kills the request
+        // is not a refusal in words, which is the whole reason the figure is carried as text. So the
+        // typed characters are what every one of these sentences quotes — the cheap answer and the
+        // honest one at once, because they are what the person can see they typed.
         if (figure.signum() <= 0) {
             throw refusing(senderCustomerId, recipientContactDetails, NOT_A_NUMBER_OF_POINTS,
-                    "A gift has to be more than zero points, and " + figure.toPlainString()
-                            + " is not.");
+                    "A gift has to be more than zero points, and " + typed + " is not.");
         }
         // Trailing zeroes stripped first, so that "5.0" is the whole number somebody meant and only
         // a figure with something after the point is refused.
         if (figure.stripTrailingZeros().scale() > 0) {
             throw refusing(senderCustomerId, recipientContactDetails, NOT_A_NUMBER_OF_POINTS,
-                    "Points are whole, and " + figure.toPlainString() + " is not a whole number.");
+                    "Points are whole, and " + typed + " is not a whole number.");
         }
         try {
             return figure.longValueExact();
@@ -191,7 +202,7 @@ public class GiftingService {
             // A whole positive figure too large to count in points. It is a shortfall rather than a
             // typo — nobody holds that many — so it is answered as one, with the balance quoted.
             throw refusing(senderCustomerId, recipientContactDetails, NOT_ENOUGH_POINTS,
-                    "That gift costs " + figure.toBigInteger() + " points, and you have "
+                    "That gift costs " + typed + " points, and you have "
                             + points.balanceOf(senderCustomerId) + ".");
         }
     }

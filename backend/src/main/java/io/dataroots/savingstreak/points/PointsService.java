@@ -454,8 +454,14 @@ public class PointsService {
      * <p>Whether there were enough comes back as an answer rather than as a refusal, exactly as
      * {@link #spend} does and for the same reason: what the points were being moved for, and what
      * to call the shortfall in front of the person who asked, belongs to whoever is moving them.
-     * This ledger has no opinion about the two people either — that they are two, that neither is
-     * the other, and that both exist, are settled before anything gets here.
+     *
+     * <p>That both customers exist is the caller's to have settled: a ledger that knows nothing
+     * about people cannot check it, and who exists is the Accounts module's answer. That the two are
+     * two different people this does check, because it can and because the alternative is silent
+     * nonsense — a pot moved into itself would be cut into fresh slices carrying a gift's reference,
+     * and the move would report success having changed nothing anybody asked to change. Said out
+     * loud as {@link #spend} says a figure of nothing out loud, and for the same reason: neither is
+     * a refusal to report to anybody, both are a mistake in whoever called.
      *
      * <p>The reference is written onto every arriving batch and means whatever the reason on it
      * means; {@link PointsCredit#sourceReferenceId} says so. Nothing here learns what it refers to.
@@ -464,15 +470,26 @@ public class PointsService {
      * a spend would draw from either: their points are gone, and moving them would hand over points
      * the sender's own balance has already stopped counting.
      *
-     * @throws IllegalArgumentException if asked to move nothing or a negative number of points,
-     *                                  which is a mistake in the caller rather than a refusal to
-     *                                  report to anybody
+     * @throws IllegalArgumentException if asked to move nothing or a negative number of points, or
+     *                                  to move a customer's points to themselves — either is a
+     *                                  mistake in the caller rather than a refusal to report to
+     *                                  anybody
      */
     @Transactional
     public Optional<List<MovedPoints>> movePoints(long fromCustomerId, long toCustomerId, long points,
                                                   long sourceReferenceId) {
         if (points <= 0) {
-            throw new IllegalArgumentException("points to move has to be more than zero, was " + points);
+            String reason = "points to move has to be more than zero, was " + points;
+            log.warn("points not moved fromCustomerId={} toCustomerId={} reason={}",
+                    fromCustomerId, toCustomerId, reason);
+            throw new IllegalArgumentException(reason);
+        }
+        if (fromCustomerId == toCustomerId) {
+            String reason = "points move between two customers, and both of these were "
+                    + fromCustomerId;
+            log.warn("points not moved fromCustomerId={} toCustomerId={} reason={}",
+                    fromCustomerId, toCustomerId, reason);
+            throw new IllegalArgumentException(reason);
         }
         List<PointsCredit> oldestFirst = credits.unspentOldestFirst(fromCustomerId);
         // Counted from the batches this move would draw from rather than asked of the database a

@@ -2,15 +2,15 @@ package io.dataroots.savingstreak.gifting;
 
 /**
  * A gift the application will not make, carrying the reason in words the person who tried to make it
- * can act on — a mistyped address, a pointless act, a figure that is not a number of points, or a
- * pot with less in it than they meant to give.
+ * can act on — a sender nobody has heard of, a mistyped address, a pointless act, a figure that is
+ * not a number of points, or a pot with less in it than they meant to give.
  *
  * <p>Gifting's own refusal rather than one borrowed from Rewards, even though both modules spend a
  * customer's points and both can come up short. The two refuse for their own reasons and will grow
  * apart: this one already has kinds about a second person, which nothing about claiming a reward
  * will ever have.
  *
- * <p>These four kinds are the whole of the rule. There is no cap on the size of one gift, no daily
+ * <p>These five kinds are the whole of the rule. There is no cap on the size of one gift, no daily
  * total, no cooldown, no minimum and no limit on how many people one customer may give to — a stated
  * absence rather than an oversight. Should a limit ever be wanted it belongs here beside them.
  *
