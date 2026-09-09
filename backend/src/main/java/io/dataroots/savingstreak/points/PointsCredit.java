@@ -70,7 +70,17 @@ class PointsCredit {
     @Enumerated(EnumType.STRING)
     private PointsReason reason;
 
-    /** What earned the points — a deposit, under either of the reasons a deposit earns under. */
+    /**
+     * The identifier of the thing that caused this batch, in the module the {@link #reason} names —
+     * a deposit under any of the three reasons a deposit earns under, and the gift under {@link
+     * PointsReason#GIFT_RECEIVED}.
+     *
+     * <p>Meaningful only alongside the reason, which it always has been: this is a bare number with
+     * no foreign key behind it, and reading one module's identifiers as another's is what the
+     * reason is asked for in order to prevent. {@link PointsCreditRepository#earnedBy} says the
+     * same thing from the query's end — the reasons are named in it precisely so that a gift's
+     * reference is never read as a deposit's.
+     */
     private long sourceReferenceId;
 
     protected PointsCredit() {
@@ -119,6 +129,31 @@ class PointsCredit {
      */
     static PointsCredit loyaltyBonusFor(long customerId, long depositId, long points, Instant earnedAt) {
         return new PointsCredit(customerId, points, PointsReason.LOYALTY_BONUS, depositId, earnedAt);
+    }
+
+    /**
+     * A slice of another customer's pot, arriving in this one because they gave it away: as many
+     * points as came out of their batch, dated at the moment <em>their</em> batch was earned.
+     *
+     * <p>The inherited date is the whole reason a gift is sliced rather than spent and re-credited.
+     * A fresh date would restart the twelve months on every hop, and two customers passing the same
+     * points back and forth would keep a balance alive indefinitely — "a point lasts twelve months"
+     * would hold for everybody who never gifted and be void for everybody who did. Dating the
+     * arrival at the original earning closes that by construction rather than by another rule.
+     *
+     * <p>An ordinary batch in every other respect, which is the point of crediting it this way:
+     * spendable on any reward, spent oldest-first alongside everything else, counted in what the
+     * customer is told expires next, and gone twelve months after the moment it was earned. Nothing
+     * in this ledger can tell it from a deposit's own credit except the reason written on it — and
+     * a batch handed over after its own anniversary has passed arrives already beyond its twelve
+     * months and goes in the same night's sweep, which is both rules holding at once rather than
+     * either misbehaving.
+     *
+     * <p>The reference is the gift rather than a deposit. Nothing about this batch points at a
+     * deposit, because no deposit of this customer's earned it.
+     */
+    static PointsCredit giftReceivedFor(long customerId, long giftId, long points, Instant earnedAt) {
+        return new PointsCredit(customerId, points, PointsReason.GIFT_RECEIVED, giftId, earnedAt);
     }
 
     /**

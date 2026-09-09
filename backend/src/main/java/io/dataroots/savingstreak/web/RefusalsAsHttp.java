@@ -3,6 +3,7 @@ package io.dataroots.savingstreak.web;
 import io.dataroots.savingstreak.clock.ClockRefused;
 import io.dataroots.savingstreak.deposits.DepositRefused;
 import io.dataroots.savingstreak.deposits.WithdrawalRefused;
+import io.dataroots.savingstreak.gifting.GiftRefused;
 import io.dataroots.savingstreak.jobs.JobFailed;
 import io.dataroots.savingstreak.jobs.JobRefused;
 import io.dataroots.savingstreak.rewards.RewardRefused;
@@ -102,6 +103,25 @@ class RefusalsAsHttp {
         HttpStatus status = switch (refusal.kind()) {
             case NO_SUCH_CUSTOMER -> HttpStatus.NOT_FOUND;
             case NOT_ENOUGH_POINTS -> HttpStatus.BAD_REQUEST;
+        };
+        return ResponseEntity.status(status)
+                .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));
+    }
+
+    /**
+     * A gift the application will not make. Two of them are about somebody who is not there, which
+     * is what a 404 says; the other three are about a real pair of customers and a request they
+     * cannot be asked to honour.
+     *
+     * <p>Not enough points is a bad request rather than a conflict, for the reason a claim's is:
+     * nothing is in an unexpected state, the customer tried to give away more than they hold, and
+     * the sentence that comes back says how much they have.
+     */
+    @ExceptionHandler(GiftRefused.class)
+    ResponseEntity<ProblemDetail> giftRefused(GiftRefused refusal) {
+        HttpStatus status = switch (refusal.kind()) {
+            case NO_SUCH_CUSTOMER, NO_SUCH_RECIPIENT -> HttpStatus.NOT_FOUND;
+            case TO_YOURSELF, NOT_A_NUMBER_OF_POINTS, NOT_ENOUGH_POINTS -> HttpStatus.BAD_REQUEST;
         };
         return ResponseEntity.status(status)
                 .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));

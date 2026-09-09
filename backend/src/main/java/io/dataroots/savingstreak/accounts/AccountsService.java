@@ -45,6 +45,20 @@ public class AccountsService {
     }
 
     /**
+     * The customer with this identifier, or nothing at all if there is no such customer.
+     *
+     * <p>The customer rather than only whether they exist, for a caller that has to name them: a
+     * module reporting something one customer did to another has to be able to put both names in
+     * front of whoever reads it, and asking whether they exist and then asking who they are is two
+     * queries for one fact. {@link #customerExists} is still the answer where only the fact is
+     * wanted.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Customer> customerWith(long customerId) {
+        return customers.findById(customerId);
+    }
+
+    /**
      * Who holds the given savings account, or nothing at all if there is no such account.
      *
      * <p>The holder rather than the customer record: whoever asks wants to say whose account this is
@@ -98,6 +112,20 @@ public class AccountsService {
      */
     public static String noSuchCustomer(long customerId) {
         return "There is no customer " + customerId + ".";
+    }
+
+    /**
+     * And for contact details nobody banks under, which anything that finds a customer the way
+     * signing in does has to be able to say. Signing in says it about the address somebody typed
+     * about themselves, and a gift says it about the address they typed about somebody else — the
+     * same objection, and worth being the same sentence.
+     *
+     * <p>The address is deliberately not named back. This application knows who exists and not who
+     * is typing, so an answer that echoed the address would be telling whoever asked slightly more
+     * about who banks here than they gave it.
+     */
+    public static String noCustomerBanksUnderThoseContactDetails() {
+        return "No customer banks here under that email address.";
     }
 
     /**

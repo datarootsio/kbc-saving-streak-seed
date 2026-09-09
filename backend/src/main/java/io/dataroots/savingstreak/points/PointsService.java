@@ -37,6 +37,12 @@ import org.springframework.transaction.annotation.Transactional;
  * earned, or how much of one is left — which is why spending arrived as an addition to this module
  * and changed no caller, and why expiry arrived the same way.
  *
+ * <p>Moving points from one pot to another arrived the same way again, in {@link #movePoints}. It
+ * has to live here because the batches and their dates are this ledger's own, and it says only what
+ * it moved and when each slice was originally earned — never which batch any of it came off of. Who
+ * may give points to whom, and what to call a move that cannot be made, is not this module's
+ * question: the ledger has no opinion about people.
+ *
  * <p>Twelve months is this module's rule and lives in {@link PointsExpiry}. Nothing outside can
  * expire a particular batch, or ask when one was earned in order to work the rule out for itself:
  * the ledger sweeps itself when it is told what time it is, and says what that cost.
@@ -59,6 +65,12 @@ public class PointsService {
      *
      * <p>Unmodifiable, because it is handed to the repository and written into a log line: a set a
      * caller could add to is a query that could quietly come to ask for something else.
+     *
+     * <p>{@link PointsReason#GIFT_RECEIVED} is deliberately not in it, and that absence is load
+     * bearing rather than an omission: points somebody was given were not earned by any deposit of
+     * theirs, so no deposit's breakdown grows a field and every existing figure a deposit reports
+     * means exactly what it did. A batch credited under that reason references a gift, and reading
+     * one as a deposit is precisely what naming the reasons here prevents.
      */
     private static final Set<PointsReason> EARNED_BY_A_DEPOSIT = Collections.unmodifiableSet(
             EnumSet.of(PointsReason.BASE_ACCRUAL, PointsReason.STREAK_BONUS,
@@ -423,6 +435,112 @@ public class PointsService {
                     customerId, points, available, oldestFirst.size(), String.join(" ", drawnOn));
         }
         return true;
+    }
+
+    /**
+     * Moves a stated number of points from one customer's pot to another's, oldest first, against a
+     * stated source reference — and answers with the slices it moved, or nothing at all when the
+     * sender does not hold that many. Nothing moves unless the whole amount can be found.
+     *
+     * <p>Sliced rather than spent-and-recredited, and this is the one decision in it. Each slice
+     * arrives in the receiving pot as a batch of its own <em>dated at the moment the batch it came
+     * out of was earned</em>, so a move drawn from three batches of different ages arrives as three
+     * batches of different ages. A single fresh batch dated now would be simpler and would restart
+     * the twelve months on every move: with nothing limiting how often points may be moved, two
+     * customers passing the same points back and forth would keep them alive indefinitely, and the
+     * twelve-month rule would hold only for whoever never moved any. {@link
+     * PointsCredit#giftReceivedFor} carries the same reasoning from the batch's end.
+     *
+     * <p>Whether there were enough comes back as an answer rather than as a refusal, exactly as
+     * {@link #spend} does and for the same reason: what the points were being moved for, and what
+     * to call the shortfall in front of the person who asked, belongs to whoever is moving them.
+     * This ledger has no opinion about the two people either — that they are two, that neither is
+     * the other, and that both exist, are settled before anything gets here.
+     *
+     * <p>The reference is written onto every arriving batch and means whatever the reason on it
+     * means; {@link PointsCredit#sourceReferenceId} says so. Nothing here learns what it refers to.
+     *
+     * <p>Expired batches are not moved, however much was left in them, because they are not batches
+     * a spend would draw from either: their points are gone, and moving them would hand over points
+     * the sender's own balance has already stopped counting.
+     *
+     * @throws IllegalArgumentException if asked to move nothing or a negative number of points,
+     *                                  which is a mistake in the caller rather than a refusal to
+     *                                  report to anybody
+     */
+    @Transactional
+    public Optional<List<MovedPoints>> movePoints(long fromCustomerId, long toCustomerId, long points,
+                                                  long sourceReferenceId) {
+        if (points <= 0) {
+            throw new IllegalArgumentException("points to move has to be more than zero, was " + points);
+        }
+        List<PointsCredit> oldestFirst = credits.unspentOldestFirst(fromCustomerId);
+        // Counted from the batches this move would draw from rather than asked of the database a
+        // second time, as the spend above does: the figure checked and the rows changed are then the
+        // same rows.
+        long available = oldestFirst.stream().mapToLong(PointsCredit::getRemainingPoints).sum();
+        // The inputs behind the decision, before it is taken: what the sender's pot was made of when
+        // the move was judged, so that a refusal and a move can be told apart by more than their
+        // outcome.
+        log.debug("points to move judged against the sender's batches fromCustomerId={} "
+                        + "toCustomerId={} points={} available={} batchesWithSomethingLeft={} "
+                        + "sourceReferenceId={}",
+                fromCustomerId, toCustomerId, points, available, oldestFirst.size(), sourceReferenceId);
+        if (available < points) {
+            // The refusal itself is worded and warned about by whoever is moving the points, because
+            // the reason belongs to them; what this module knows and they do not is what the pot was
+            // made of when it came up short.
+            log.debug("points not moved fromCustomerId={} toCustomerId={} points={} reason=only {} "
+                            + "left across {} batches with anything left in them",
+                    fromCustomerId, toCustomerId, points, available, oldestFirst.size());
+            return Optional.empty();
+        }
+        long stillToFind = points;
+        // Asked once, before the loop, for the reason the spend above gives: a level changed
+        // mid-move would otherwise print a list missing its first batches.
+        boolean sayWhichBatchesItCameOffOf = log.isDebugEnabled();
+        List<String> drawnOn = new ArrayList<>();
+        List<MovedPoints> moved = new ArrayList<>();
+        List<PointsCredit> arriving = new ArrayList<>();
+        for (PointsCredit batch : oldestFirst) {
+            if (stillToFind == 0) {
+                break;
+            }
+            long taken = batch.take(stillToFind);
+            stillToFind -= taken;
+            // The arriving batch is dated at the batch it came out of, which is the whole rule.
+            arriving.add(PointsCredit.giftReceivedFor(
+                    toCustomerId, sourceReferenceId, taken, batch.getEarnedAt()));
+            moved.add(new MovedPoints(taken, batch.getEarnedAt()));
+            // What came out of which batch, in the order it came out, gathered rather than logged
+            // here so that a move spread over a long list of batches is still one line — and
+            // guarded, because rendering a batch is work and the string is thrown away when the
+            // application runs at INFO. The same reasoning, and the same shape, as the spend above.
+            if (sayWhichBatchesItCameOffOf) {
+                drawnOn.add("[batchId=" + batch.getId() + " reason=" + batch.getReason()
+                        + " earnedAt=" + batch.getEarnedAt() + " taken=" + taken
+                        + " leftInIt=" + batch.getRemainingPoints() + "]");
+            }
+        }
+        // The drawn-on batches are managed and would be written out at the end of the transaction
+        // anyway; the arriving ones are new and would not. Saying both leaves nothing for a reader to
+        // infer from Hibernate's behaviour.
+        credits.saveAll(oldestFirst);
+        credits.saveAll(arriving);
+        if (sayWhichBatchesItCameOffOf) {
+            log.debug("points moved oldest first fromCustomerId={} toCustomerId={} points={} "
+                            + "available={} batchesWithSomethingLeft={} slices={} drawnOn={}",
+                    fromCustomerId, toCustomerId, points, available, oldestFirst.size(), moved.size(),
+                    String.join(" ", drawnOn));
+        }
+        // The same line a deposit's own credit and a loyalty bonus write, in the same words, because
+        // it is the same event: points arriving in somebody's pot. A reviewer greps "points credited"
+        // and sees every way this ledger has ever grown, with the reason saying which of them this
+        // was. One line for the move rather than one per slice, because the arrival is one event and
+        // the slices are already in the DEBUG line above.
+        log.info("points credited customerId={} sourceReferenceId={} reason={} points={} batches={}",
+                toCustomerId, sourceReferenceId, PointsReason.GIFT_RECEIVED, points, moved.size());
+        return Optional.of(List.copyOf(moved));
     }
 
     /**

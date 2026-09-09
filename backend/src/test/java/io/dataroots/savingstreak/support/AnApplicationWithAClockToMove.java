@@ -235,6 +235,49 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return claimed.getBody();
     }
 
+    /**
+     * A gift of points from one customer to another, with the refusal ruled out: a gift that was
+     * turned down would leave a test asserting that points nobody moved are still where they were —
+     * and passing.
+     *
+     * <p>The recipient is named to this method by name and reaches the API as the contact details
+     * they bank under, because that is what the contract carries. The points go over the wire as the
+     * text they are given here, the way a deposit's amount does, so a test can hand this whatever a
+     * customer could type.
+     */
+    public GiftView give(String senderName, String recipientName, String points) {
+        ResponseEntity<GiftView> given =
+                giveNaming(senderName, seeded.contactDetailsOf(recipientName), points);
+        assertThat(given.getStatusCode())
+                .describedAs("a gift this test needs in order to have moved any points")
+                .isEqualTo(HttpStatus.CREATED);
+        return given.getBody();
+    }
+
+    /**
+     * The same request with the recipient addressed as whatever text is given here, answered with
+     * whatever the API answered — for a test about how an address is matched, where the point is the
+     * text and not that the gift went through.
+     */
+    public ResponseEntity<GiftView> giveNaming(String senderName, String recipientAsTyped,
+                                               String points) {
+        return http.postForEntity(
+                "/api/customers/{id}/gifts",
+                Map.of("recipientContactDetails", recipientAsTyped, "points", points),
+                GiftView.class,
+                seeded.customerIdOf(senderName));
+    }
+
+    /** Which customer this is, for a test asserting on who a gift names. */
+    public long customerIdOf(String customerName) {
+        return seeded.customerIdOf(customerName);
+    }
+
+    /** What the customer signs in with, which is also how a gift addresses them. */
+    public String contactDetailsOf(String customerName) {
+        return seeded.contactDetailsOf(customerName);
+    }
+
     /** Why a claim the customer could not afford was refused, in the words they are given. */
     public String whyTheClaimWasRefused(String customerName, String reward) {
         ResponseEntity<ProblemView> refused = http.postForEntity(
