@@ -53,7 +53,7 @@ class ALoyaltyBonusExpiresTwelveMonthsAfterItsAnniversaryApiTest extends ApiInte
      */
     private static final int DAYS_SHORT_OF_THE_BONUSES_OWN_YEAR = 700;
 
-    /** And a fortnight past them, with the same room either side of the calendar's variation. */
+    /** And four weeks past them, with the same room either side of the calendar's variation. */
     private static final int DAYS_PAST_THE_BONUSES_OWN_YEAR = 758;
 
     private static AnApplicationWithAClockToMove app;
@@ -84,9 +84,11 @@ class ALoyaltyBonusExpiresTwelveMonthsAfterItsAnniversaryApiTest extends ApiInte
         app.runJob(THE_LOYALTY_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE)).isEqualTo(500 + 50);
 
-        // The same night's expiry sweep, run in the order the nightly jobs run in. The deposit's own
-        // 500 reached their twelve months on the very day this anniversary fell, so they go; the
-        // bonus the anniversary just paid has a year of its own ahead of it, so it stays.
+        // The same night's expiry sweep, run after the loyalty sweep rather than half an hour ahead
+        // of it as the nightly pair does, because the whole point here is a sweep that has the
+        // bonus in front of it and leaves it alone. The deposit's own 500 reached their twelve
+        // months on the very day this anniversary fell, so they go; the bonus the anniversary just
+        // paid has a year of its own ahead of it, so it stays.
         app.runJob(THE_EXPIRY_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE))
                 .as("the deposit's own points are twelve months old and the bonus is a day old")

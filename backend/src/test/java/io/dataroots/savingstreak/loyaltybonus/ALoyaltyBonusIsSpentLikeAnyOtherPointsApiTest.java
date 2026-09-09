@@ -126,7 +126,7 @@ class ALoyaltyBonusIsSpentLikeAnyOtherPointsApiTest extends ApiIntegrationTest {
                 .as("a bonus buys a reward like any other points, so the 10 have gone")
                 .isEqualTo(5);
 
-        // The 10 that went were the older deposit's bonus, dated a fortnight before the newer one's:
+        // The 10 that went were the older deposit's bonus, dated a week before the newer one's:
         // oldest first, among the bonuses themselves. What is left goes twelve months after the
         // second deposit's anniversary, which is two years to the day after that deposit landed.
         assertThat(app.pointsExpiringNextOf(ANKE)).isEqualTo(5);

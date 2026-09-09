@@ -45,7 +45,7 @@ class ADepositKeepsPayingAfterItsOwnPointsHaveExpiredApiTest extends ApiIntegrat
     private static final int DAYS_PAST_THE_FIRST_ANNIVERSARY = 379;
 
     /**
-     * A fortnight past the second anniversary — twenty-four calendar months is 730 or 731 days — and
+     * Four weeks past the second anniversary — twenty-four calendar months is 730 or 731 days — and
      * so also past the first anniversary's own twelve months, which fall on that same day.
      */
     private static final int DAYS_PAST_THE_SECOND_ANNIVERSARY = 758;
@@ -91,7 +91,8 @@ class ADepositKeepsPayingAfterItsOwnPointsHaveExpiredApiTest extends ApiIntegrat
                 .isEqualTo(50);
 
         // The second year. The expiry sweep runs first, as it does every night, and takes the first
-        // anniversary's bonus: twelve months after that anniversary is this same day.
+        // anniversary's bonus: twelve months after that anniversary fell on the second anniversary,
+        // four weeks before this run.
         app.daysPass(DAYS_PAST_THE_SECOND_ANNIVERSARY - DAYS_PAST_THE_FIRST_ANNIVERSARY);
         app.runJob(THE_EXPIRY_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE))

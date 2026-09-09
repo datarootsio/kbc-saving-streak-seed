@@ -403,8 +403,8 @@ public class PointsService {
             // work — five values per batch the spend reaches — and the string is thrown away when
             // the application runs at INFO. The same reasoning as the withdrawal's drawn-down
             // list, and the opposite of the expiry sweep's per-batch line above, which passes
-            // getters and renders nothing; this gathering is also the only one of the three on a
-            // per-request path, since a spend runs on every claim rather than once a night.
+            // getters and renders nothing — and which runs once a night, where a spend runs on
+            // every claim.
             if (sayWhichBatchesItCameOffOf) {
                 drawnOn.add("[batchId=" + batch.getId() + " reason=" + batch.getReason()
                         + " earnedAt=" + batch.getEarnedAt() + " taken=" + taken
