@@ -81,10 +81,10 @@ public class WithdrawalsService {
                 stillToAllocate = stillToAllocate.subtract(taken);
                 // Gathered rather than logged here, so that a withdrawal spread over a long list of
                 // deposits is still one line in the log. Guarded, because rendering a deposit is
-                // work — five values and two amounts formatted per deposit the withdrawal reaches —
-                // and the string is thrown away when the application runs at INFO. The same
-                // reasoning as the streak walk's derivation line, and the opposite of the points
-                // sweep's per-batch line, which passes getters and renders nothing.
+                // work — four values per deposit the withdrawal reaches, two of them amounts to
+                // format — and the string is thrown away when the application runs at INFO. The
+                // same reasoning as the streak walk's derivation line, and the opposite of the
+                // points sweep's per-batch line, which passes getters and renders nothing.
                 if (sayWhichDepositsItCameOutOf) {
                     drawnDown.add("[depositId=" + deposit.getId() + " landedAt=" + deposit.getDepositedAt()
                             + " took=" + asMoney(taken) + " leftInIt=" + asMoney(deposit.getRemainingAmount())

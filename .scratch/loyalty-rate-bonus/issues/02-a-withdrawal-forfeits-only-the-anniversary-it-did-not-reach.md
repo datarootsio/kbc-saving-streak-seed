@@ -1,6 +1,6 @@
 # 02: A withdrawal forfeits only the anniversary it did not reach
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -41,6 +41,35 @@ reading the record, so the criterion is now worded as what this seam can observe
 the withdrawal at its figure and its earned-at moment, and nothing rewrites it. **The read itself is
 carried by ticket 04**, which puts a deposit's loyalty figures on the API; asserting on the euros
 belongs there.
+
+## Finding: an anniversary is judged when the sweep runs, not when it falls
+
+Recorded here under the ticket's own sentence — "if it turns out something is needed, that is this
+ticket's finding rather than a reason to widen it" — and raised by the reviewer of attempt 3. No
+production code was changed for it.
+
+A withdrawal forfeits an anniversary that has already fallen but has not yet been swept, even though
+the money did serve the full twelve months. `LoyaltyService` reads what the deposit holds at the
+moment the sweep judges it, and `DepositRepository.stillHoldingMoneyThatLandedBefore` (`where
+deposit.remainingAmount > 0`) drops a deposit at zero out of the query before the rule is applied at
+all. So a €1,000 deposit that turns one year old at 09:00 and is emptied at 12:00 the same day is
+paid nothing by the small-hours sweep that follows: 100 points lost on money that stayed the whole
+year. Normally that window is a few hours; it is the whole of any stretch the nightly job does not
+run, and it is unbounded for a deposit carrying several unpaid past anniversaries at once — the case
+`ADepositMadeBeforeTheSchemeExistedIsPaidEveryAnniversaryAtOnceApiTest` exists for — which loses all
+of them to one withdrawal.
+
+This is a recorded trade-off rather than a defect of this ticket: the spec's Implementation Decisions
+already choose this reading out loud ("a tenth of the whole euros still in that deposit at the moment
+the anniversary is judged"), and criteria 2 and 5 are both worded around a bonus that *was already
+paid*. Nothing in this branch would fail if that window widened. Whether the sweep should instead
+judge on what the deposit held at the anniversary is a decision for whoever owns the spec.
+
+Two smaller notes from the same review, neither changed and neither blocking: the DEBUG line's
+`drawnDown` list has no bound, so draining an account built from years of weekly deposits emits one
+long line where `PointsService` would write one line per row; and the class javadoc's arrangement
+argument is about the figure a wrong sweep would report, not about the sweep's query — which the
+javadoc now says itself.
 
 ## Review feedback - attempt 1
 

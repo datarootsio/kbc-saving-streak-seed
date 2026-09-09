@@ -122,9 +122,11 @@ class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends Api
                         + "left in it would be 100 here, not 50")
                 .isEqualTo(1000 + 50);
 
-        // And now the second one is emptied too, the day after being paid. This is the half of the
-        // rule that says a bonus already paid is the customer's: the money going does not unmake the
-        // year it stayed for.
+        // And now the second one is emptied too, the moment after being paid — the clock does not
+        // move between that sweep and this withdrawal. That order is the load-bearing fact here:
+        // swept first, so the deposit still held its money when the anniversary was judged, and
+        // emptied afterwards. This is the half of the rule that says a bonus already paid is the
+        // customer's: the money going does not unmake the year it stayed for.
         app.withdraw(leftAlone, ANKE, "500.00");
         assertThat(app.balancesOf(leftAlone).moneyBalance()).isEqualByComparingTo("0.00");
         assertThat(app.pointsBalanceOf(ANKE))
