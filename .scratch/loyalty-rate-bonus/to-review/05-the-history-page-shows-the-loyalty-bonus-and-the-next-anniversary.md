@@ -1,6 +1,6 @@
 # 05: The history page shows the loyalty bonus and the next anniversary
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 04 (a deposit says what it has earned in loyalty and when it next pays).
 
@@ -18,10 +18,10 @@ A deposit with no loyalty bonus yet does not need a nothing shown against it, an
 been emptied has no promise to make, so both say less rather than showing a zero. The page stays
 readable at the narrow widths the history was already built for, in both themes.
 
-- [ ] A deposit that has been paid a loyalty bonus shows it in its breakdown, beside the base points and the streak bonus.
-- [ ] The breakdown's parts still visibly add up to the total the deposit has earned.
-- [ ] A deposit shows when it next pays and what that anniversary is worth.
-- [ ] A deposit that has never been paid a loyalty bonus shows no loyalty figure rather than a zero.
-- [ ] A deposit that has been emptied shows no next anniversary.
-- [ ] The page holds up at the narrow widths the history is already checked at, in light and dark.
-- [ ] The types the page reads the deposit through carry the three new fields, and the typecheck passes.
+- [x] A deposit that has been paid a loyalty bonus shows it in its breakdown, beside the base points and the streak bonus.
+- [x] The breakdown's parts still visibly add up to the total the deposit has earned.
+- [x] A deposit shows when it next pays and what that anniversary is worth.
+- [x] A deposit that has never been paid a loyalty bonus shows no loyalty figure rather than a zero.
+- [x] A deposit that has been emptied shows no next anniversary.
+- [x] The page holds up at the narrow widths the history is already checked at, in light and dark.
+- [x] The types the page reads the deposit through carry the three new fields, and the typecheck passes.
