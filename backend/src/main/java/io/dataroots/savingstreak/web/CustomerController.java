@@ -7,6 +7,7 @@ import io.dataroots.savingstreak.accounts.CustomerAccounts;
 import io.dataroots.savingstreak.accounts.SavingsAccount;
 import io.dataroots.savingstreak.deposits.DepositsService;
 import io.dataroots.savingstreak.deposits.MoneyMovementsService;
+import io.dataroots.savingstreak.gifting.GiftingService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
@@ -34,16 +35,18 @@ class CustomerController {
 
     private final AccountsService accounts;
     private final DepositsService deposits;
+    private final GiftingService gifting;
     private final MoneyMovementsService movements;
     private final PointsService points;
     private final RewardsService rewards;
     private final StreaksService streaks;
 
-    CustomerController(AccountsService accounts, DepositsService deposits,
+    CustomerController(AccountsService accounts, DepositsService deposits, GiftingService gifting,
                        MoneyMovementsService movements, PointsService points,
                        RewardsService rewards, StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
+        this.gifting = gifting;
         this.movements = movements;
         this.points = points;
         this.rewards = rewards;
@@ -87,8 +90,12 @@ class CustomerController {
                 // which is all this application can honestly tell apart: it knows who exists, and
                 // not who is typing. Worded for someone who mistyped their own address, because in
                 // a training session that is who it will be.
+                // Worded by Accounts, which owns what a customer is and therefore what it sounds
+                // like when nobody banks under an address. A gift addressed to a stranger has to
+                // say the same thing, and two copies of the sentence are one rewording away from
+                // disagreeing about what absence sounds like.
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No customer banks here under that email address."));
+                        AccountsService.noCustomerBanksUnderThoseContactDetails()));
     }
 
     /**
@@ -197,6 +204,35 @@ class CustomerController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "There is nothing called \"" + code + "\" in the rewards catalogue.");
         }
+    }
+
+    /**
+     * Gives some of the customer's points to another customer of the bank, named by the contact
+     * details they bank under.
+     *
+     * <p>Against the customer rather than one of their accounts, for the reason a claim is: these
+     * are their points, out of the one pot everything they save earns into.
+     *
+     * <p>Reading the request, not judging it. Whether the recipient exists, whether they are
+     * somebody else, whether the figure is a number of points at all and whether the sender holds
+     * that many are all rules, and every one of them belongs to Gifting, which refuses on its own.
+     * What is checked here is only whether the two things a gift is made of were sent at all — the
+     * same line the claim endpoint draws about the reward it names.
+     */
+    @PostMapping("/{customerId}/gifts")
+    @ResponseStatus(HttpStatus.CREATED)
+    GiftResponse give(@PathVariable long customerId, @RequestBody GiftRequest request) {
+        if (request == null || request.recipientContactDetails() == null
+                || request.recipientContactDetails().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A gift needs the email address of the customer it is going to.");
+        }
+        if (request.points() == null || request.points().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A gift needs a number of points to give.");
+        }
+        return GiftResponse.of(
+                gifting.give(customerId, request.recipientContactDetails(), request.points()));
     }
 
     /** Worded for whoever reads it: a refusal reaches the screen with its reason unchanged. */
