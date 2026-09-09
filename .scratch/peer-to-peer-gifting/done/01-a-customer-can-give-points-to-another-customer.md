@@ -1,6 +1,6 @@
 # 01: A customer can give points to another customer
 
-Status: needs-review
+Status: done
 
 **Blocked by:** None (can start immediately).
 
@@ -200,3 +200,128 @@ Criteria 2 to 9 are ticked on this evidence.
 
 Apart from the `1e999999999` request above, which was fired deliberately, the backend log for the
 whole session contains no 500 and no ERROR.
+
+## Verified — attempt 2
+
+Passed. The attempt-1 blocking defect is genuinely fixed, all nine criteria were exercised against a
+running application, and the branch is clean to merge. Verified on
+`ticket/01-a-customer-can-give-points-to-another-customer` against `agentic_engineered`, on a
+throwaway database with `io.dataroots.savingstreak` at DEBUG.
+
+### The blocking defect is fixed
+
+All three payloads that killed attempt 1 now answer 400 in words in ~10ms, each with a WARN behind
+it. Fired live at `POST /api/customers/1/gifts` with a valid recipient:
+
+| `points` | before | now |
+| --- | --- | --- |
+| `1e999999999` | HTTP 500, uncaught `ArithmeticException`, no WARN | 400 `That gift costs 1e999999999 points, and you have 90.` |
+| `1.5e-999999999` | `OutOfMemoryError` | 400 `Points are whole, and 1.5e-999999999 is not a whole number.` |
+| `-1e-999999999` | `OutOfMemoryError` | 400 `A gift has to be more than zero points, and -1e-999999999 is not.` |
+
+The fix is the right one and general, not tuned to those three: every branch now quotes the trimmed
+input string, and nothing renders the parsed `BigDecimal`. I fired thirteen further hostile figures
+the implementer had not tried — `1e2147483647`, `-1e2147483647`, `0e999999999`, `1E+2147483646`,
+`1.000000000000000000000000000e999999999`, `-0.00000000000000000000001`, `9223372036854775808`,
+`+91`, `0x10`, `Infinity`, `NaN`, `1_000` — and every one answered 400 in words in under 30ms.
+`APointsFigureIsAnsweredInWordsApiTest` locks this in by asserting the answer `contains(typed)`,
+which is the property that keeps the parsed figure out of the response.
+
+### What was exercised, and what the log said
+
+A ten-gift session between the two seeded customers, with the clock wound forward and an expiry
+sweep run through the endpoints a trainer would use.
+
+- **The 201 and its shape.** `{"id":1,"direction":"SENT","senderId":1,"senderName":"Anke Peeters",
+  "recipientId":2,"recipientName":"Bram De Vos","points":90,"givenAt":"2027-01-27T16:14:10.423Z"}` —
+  `givenAt` sits on the wound-forward clock, not the machine's 2026-09-09.
+- **The address is matched sign-in's way.** `"   ANKE.PEETERS@EXAMPLE.BE  "` resolved to Anke.
+  Extracting the sentence into `AccountsService` left sign-in unchanged: an unknown address still
+  answers 404 `No customer banks here under that email address.` on the API and renders in the
+  styled error panel on the page, and a padded, shouted valid address still signs in 200.
+- **Conservation.** 90 → 0 for Anke and 0 → 90 for Bram on the first gift; 90 → 20 / 0 → 70 on the
+  gift back. Across the whole session: 130 points earned, 60 expired, 40 spent on a reward, and
+  exactly 30 left in the two pots. Nothing created, skimmed or destroyed.
+- **Oldest first, across as many batches as needed.** Anke held 60 earned 2026-12-18 and 30 earned
+  2027-01-27; a gift of 70 took all of the older and 10 of the newer:
+  `points moved oldest first fromCustomerId=2 toCustomerId=1 points=70 available=90
+  batchesWithSomethingLeft=2 slices=2 drawnOn=[batchId=3 reason=GIFT_RECEIVED
+  earnedAt=2026-12-18T16:13:22.835Z taken=60 leftInIt=0] [batchId=4 reason=GIFT_RECEIVED
+  earnedAt=2027-01-27T16:13:22.887Z taken=10 leftInIt=20]`
+- **Inherited dating, proved three ways.** Read straight out of the SQLite file, every
+  `GIFT_RECEIVED` batch carries its source batch's `earned_at` and never a gift's `given_at`. The
+  recipient's `pointsExpiringNext` became 60 on **2027-12-18** — the anniversary of the day the
+  *sender* earned them, a month before the gift was even made. And winding to 2027-12-19 and running
+  `expireOldPoints` took exactly the inherited slices and nothing else: Anke 62 → 10, Bram 68 → 60,
+  logged as `points batch expired batchId=5 customerId=1 reason=GIFT_RECEIVED
+  earnedAt=2026-12-18T16:13:22.835Z anniversary=2027-12-18T16:13:22.835Z pointsExpired=52`. The
+  sweep one day earlier, on 2027-12-17, correctly took nothing. Had the gift reset the clock these
+  points would have lived to 2028-01-27.
+- **A reason of its own, out of every deposit's breakdown.** The gift batches carry
+  `source_reference_id` 1 and 2, which collide with deposit ids 1 and 2 — the hardest case
+  available. Both of Anke's deposits still report base-only 60 and 30, and Bram's own later 40.00
+  deposit reports 40 base and nothing else while he holds 28 gifted points.
+- **One row per gift, and the pre-move save really rolls back.** After 10 gifts and 26 refusals the
+  `gift` table held exactly 10 rows, carrying both customer ids, the points and the moment. Three of
+  those refusals were `NOT_ENOUGH_POINTS`, thrown *after* `gifts.save(...)`.
+- **Refusals all answer in words with a WARN behind them.** Unknown recipient 404, unknown sender
+  404 (`There is no customer 999.`), self-gift 400, `2.5` 400, `abc` 400, `0` 400, `-5` 400,
+  over-balance 400 (`That gift costs 71 points, and you have 70.`), and a JSON number `2.5` 400.
+  26 refusals produced 26 `gift rejected` WARNs, each with its kind and reason.
+- **Edges.** `5.0` and a bare JSON `3` go through as whole numbers; a sender's *expired* points are
+  not giftable (10 live plus 52 expired was refused 11 with `you have 10`); five gifts of 1 back to
+  back and a whole-balance gift all returned 201, so there is no cap or cooldown; a gift moves no
+  money (Bram's money ledger holds only his deposit) and leaves the streak and multiplier untouched.
+- **Gifted points are really spendable.** Driven on the page with Playwright: signed in as the
+  recipient, the home screen renders fully styled with 60 points to spend, and claiming the coffee
+  voucher took 40 of them and issued `SS-SNK-ZB2SQ3`. No `pageerror`; the single `console:error` is
+  the 404 from the deliberate unknown-address sign-in.
+- **Logging.** `gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 points=90
+  givenAt=2027-01-27T16:14:10.423Z` (10 of them), the ledger's own `points credited customerId=2
+  sourceReferenceId=1 reason=GIFT_RECEIVED points=90 batches=2`, and the guarded DEBUG slice line
+  `gift drawn from the sender's oldest points first giftId=1 ... drawnOn=[points=60
+  earnedAt=2026-12-18T16:13:22.835Z] [points=30 earnedAt=2027-01-27T16:13:22.887Z]`. The
+  `isDebugEnabled` guard a previous review made blocking is in place in `spend`'s shape:
+  `PointsService` reads the flag once into a local before the loop and guards both the gathering and
+  the emit; `GiftingService` guards the slice rendering and the extra `balanceOf` query. No
+  `System.out` in the diff.
+
+**Across the whole session the backend log contains zero ERROR lines and zero 500s.**
+
+### Checks
+
+`cd backend && ./mvnw test` → **223 tests, 0 failures, 0 errors, BUILD SUCCESS** (219 before, 4 new).
+`cd frontend && npm run typecheck` → clean on Node v24.16.0. The `src/test` changes are additive
+only — no line was removed from any existing test file — and no frontend file is touched, which is
+right, because the page is ticket 06.
+
+### Two findings recorded rather than blocking
+
+Neither is an unmet criterion of this ticket. Both are written down so they are not lost.
+
+1. **A very long digit string makes parsing itself the slow path, and it deserves its own ticket
+   alongside its worse twin on the deposit path.** `figure.stripTrailingZeros()` in
+   `wholePositivePointsIn` is quadratic in the digit count, and nothing bounds the length of the
+   `points` text. Measured standalone on JDK 17.0.15: 10,000 digits 36ms, 100,000 digits 2.76s,
+   200,000 digits 11.0s — 2x the digits for 4x the time. Confirmed live: `{"points":"1" + 100000
+   zeros}` from a valid sender took **3.50s** for one request and echoed a 100KB `detail`. A ~1MB
+   body extrapolates to minutes of CPU on one request thread.
+   *Not blocking, for three reasons.* It answers in words, it logs its WARN
+   (`kind=NOT_ENOUGH_POINTS reason=That gift costs 1000000000…`), and the process survives — so
+   unlike attempt 1's defect it breaks no lab rule and is a hardening concern, not a broken
+   criterion. A request-size gate needs refusal wording that ticket 02 owns. And the same class of
+   hazard is **pre-existing and strictly worse one module over**, untouched by this branch:
+   `AmountOfMoney.whyItIsNotOne` still renders `toPlainString()` of the *parsed* figure, so
+   `{"amount":"1.5e-100000"}` on a deposit returned a **100,070-character** refusal, and
+   `1.5e-999999999` there is the `OutOfMemoryError` this ticket just removed from gifting. Gifting
+   is now the safer of the two. One ticket should bound the typed figure on both paths.
+2. **`GiftingService.give` would NPE on a null `recipientContactDetails`**, because
+   `accounts.customerIdentifiedBy` trims without a null guard. Unreachable over HTTP today —
+   `CustomerController.give` rejects null and blank first with `A gift needs the email address of
+   the customer it is going to.` — but the javadoc on a `public` entry point promises "five things
+   are refused and nothing else", and ticket 03 onwards adds callers. One guard.
+
+All four of attempt 1's "worth fixing while you are in there" items were also done: the javadoc now
+counts five refusals and names `NO_SUCH_CUSTOMER`, `give`'s javadoc says what the save-before-move
+order really concedes instead of the opposite, and `PointsService#movePoints` now refuses
+`fromCustomerId == toCustomerId` with a WARN and no longer claims to check that both customers exist.
