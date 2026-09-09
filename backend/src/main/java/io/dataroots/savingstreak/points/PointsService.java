@@ -61,7 +61,8 @@ public class PointsService {
      * caller could add to is a query that could quietly come to ask for something else.
      */
     private static final Set<PointsReason> EARNED_BY_A_DEPOSIT = Collections.unmodifiableSet(
-            EnumSet.of(PointsReason.BASE_ACCRUAL, PointsReason.STREAK_BONUS));
+            EnumSet.of(PointsReason.BASE_ACCRUAL, PointsReason.STREAK_BONUS,
+                    PointsReason.LOYALTY_BONUS));
 
     private final PointsCreditRepository credits;
 
@@ -125,6 +126,53 @@ public class PointsService {
         log.info("points credited customerId={} depositId={} multiplier={} pointsByReason={} points={}",
                 customerId, depositId, multiplier, credited.points(), credited.total());
         return credited;
+    }
+
+    /**
+     * Credits a stated number of points to a customer against a deposit, earned at a stated moment,
+     * for the money in that deposit having stayed where it was put.
+     *
+     * <p>The second way into this ledger, and deliberately a much smaller one than the first. A
+     * deposit's own credit arrives as an amount of money and a rate and is priced here, because
+     * "one point per whole euro at the rate the week paid" is this module's rule. A loyalty bonus
+     * arrives already decided: when an anniversary falls, how often, and what a tenth of the euros
+     * comes to are the Loyalty module's rule end to end, and a ledger that recomputed any of it
+     * would be a second opinion about a figure that has one.
+     *
+     * <p>So this module learns nothing about anniversaries. It is handed a number of points and the
+     * moment they were earned, exactly as it is handed the moment a deposit's money moved, and it
+     * writes one ordinary dated batch — spendable, spent oldest-first, expiring twelve months after
+     * the moment given here, and counted in what the customer is told expires next. There is no
+     * special case anywhere in the ledger for this reason, which is the point of crediting it this
+     * way.
+     *
+     * <p>The moment is the anniversary rather than the moment the sweep ran, because that is when
+     * the money had in fact stayed a further year. It means a bonus paid for an anniversary long
+     * past may already be beyond its own twelve months and go in the same night's expiry sweep. Both
+     * rules holding at once is the honest answer, and both are in the log.
+     *
+     * <p>The customer is named rather than the savings account the money is sitting in, as
+     * everywhere else here: their points are one pot.
+     *
+     * @throws IllegalArgumentException if asked to credit nothing or less, which is a mistake in
+     *                                  whoever worked the bonus out rather than a refusal to report
+     *                                  to anybody — an anniversary worth nothing is not an event and
+     *                                  has no batch to leave behind
+     */
+    @Transactional
+    public void creditLoyaltyBonus(long customerId, long depositId, long points, Instant earnedAt) {
+        if (points <= 0) {
+            String reason = "a loyalty bonus is a batch of points and this one was " + points;
+            log.warn("points not credited customerId={} depositId={} reason={}",
+                    customerId, depositId, reason);
+            throw new IllegalArgumentException(reason);
+        }
+        credits.save(PointsCredit.loyaltyBonusFor(customerId, depositId, points, earnedAt));
+        // The same line a deposit's own credit writes, in the same words, because it is the same
+        // event: points arriving in somebody's pot. A reviewer greps "points credited" and sees
+        // every way this ledger has ever grown, with the reason saying which of them this was.
+        log.info("points credited customerId={} depositId={} reason={} points={} earnedAt={}",
+                customerId, depositId, PointsReason.LOYALTY_BONUS, points, earnedAt);
     }
 
     /**

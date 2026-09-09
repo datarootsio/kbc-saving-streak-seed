@@ -173,6 +173,17 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return seeded.pointsExpiringNextOnOf(customerName);
     }
 
+    /**
+     * What is in the customer's current account, for a test that has to say no euros moved.
+     *
+     * <p>The other end of every movement this application makes, and the figure that would give a
+     * bonus away if paying one ever touched money: a savings balance that had not changed while the
+     * current account had would be euros moving in a direction nobody asked for.
+     */
+    public BigDecimal currentAccountBalanceOf(String customerName) {
+        return seeded.currentAccountBalanceOf(customerName);
+    }
+
     /** Every movement of money in or out of the customer's savings, newest first. */
     public MoneyMovementView[] moneyMovementsOf(String customerName) {
         return http.getForObject("/api/customers/{id}/money-movements", MoneyMovementView[].class,

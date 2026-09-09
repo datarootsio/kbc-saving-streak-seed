@@ -85,6 +85,31 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
                                @Param("until") Instant until);
 
     /**
+     * Every deposit that still has money in it and landed before a moment, oldest first, with the
+     * identifier settling ties at the millisecond the application records.
+     *
+     * <p>Everybody's at once, because the sweep that asks for these is one pass over the deposits
+     * rather than a pass per customer.
+     *
+     * <p>Deposits holding nothing are outside the query rather than filtered out of the answer.
+     * Money cannot come back into a deposit — a new payment in is a new deposit with a clock of its
+     * own — so a deposit drawn down to zero can never be worth anything again, and reading it back
+     * every night in order to decide that afresh would be reading a row to say nothing about it.
+     *
+     * <p>Landed before a moment rather than every deposit ever made, because the caller's rule
+     * turns on age and a deposit made this morning cannot yet be old enough for it. Exclusive of
+     * the moment, for the reason {@link #landedBetween} gives.
+     *
+     * <p>Oldest first because that is the order the money arrived in, and because it makes the
+     * caller's line-per-deposit read as a chronology rather than as whatever order the database
+     * felt like.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.remainingAmount > 0 and deposit.depositedAt < :until "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> stillHoldingMoneyThatLandedBefore(@Param("until") Instant until);
+
+    /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many
      * that was.
      *

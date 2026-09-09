@@ -388,6 +388,50 @@ public class DepositsService {
     }
 
     /**
+     * The deposits that still hold money and landed before a moment, oldest first — which deposit,
+     * whose it is, how much of it is left, and when it landed.
+     *
+     * <p>A fact, and this module keeps its opinion about points to itself, which is none. What money
+     * that has stayed put is worth is somebody else's rule; the question Deposits can answer is
+     * which money has stayed and how much of it there is.
+     *
+     * <p>Everybody's deposits at once, because the caller is a nightly sweep over all of them rather
+     * than a customer looking at their own. Whoever wants one account's history asks
+     * {@link #depositsInto}.
+     *
+     * <p>What is left rather than what landed, which is the difference that makes the answer worth
+     * asking for: a deposit half drawn down still holds half, and a deposit emptied holds nothing
+     * and is not in the answer at all. Deposits holding nothing are left out by the query rather
+     * than by the caller — money never comes back into one, so a deposit at zero has nothing left
+     * to decide about.
+     *
+     * <p>Before a moment, exclusive, so that this and the two listings above split time at it the
+     * same way. Whoever asks names the moment; this module does not read the clock.
+     */
+    @Transactional(readOnly = true)
+    public List<DepositStillHoldingMoney> depositsStillHoldingMoneyThatLandedBefore(Instant until) {
+        List<DepositStillHoldingMoney> holding =
+                deposits.stillHoldingMoneyThatLandedBefore(until).stream()
+                        // Quoted to the cent here, once, because this is where the amount leaves the
+                        // module: SQLite has no decimal type and hands EUR 12.50 back as 12.5, and a
+                        // caller working a figure out from it or writing it into a log line would
+                        // either restate the rounding or print something that does not read as money.
+                        .map(deposit -> new DepositStillHoldingMoney(
+                                deposit.getId(),
+                                deposit.getCustomerId(),
+                                quotedToTheCent(deposit.getRemainingAmount()),
+                                deposit.getDepositedAt()))
+                        .toList();
+        // The boundary that was asked about and how many deposits still holding money fell before
+        // it, so that a caller finding nothing to do can tell a query that came back empty from a
+        // rule that declined everything it was handed. The deposits themselves are left to whoever
+        // asked to log: it knows what it was counting them for.
+        log.debug("deposits still holding money that landed before a moment until={} deposits={}",
+                until, holding.size());
+        return holding;
+    }
+
+    /**
      * What the savings account holds, summed from what remains of the deposits made into it. Derived
      * on every read, so there is no stored figure that could drift away from them.
      *
