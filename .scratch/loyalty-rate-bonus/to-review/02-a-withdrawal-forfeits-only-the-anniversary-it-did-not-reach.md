@@ -1,6 +1,6 @@
 # 02: A withdrawal forfeits only the anniversary it did not reach
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -25,10 +25,10 @@ when its anniversary arrives. The work is saying so in tests that would fail if 
 true. If it turns out something is needed, that is this ticket's finding rather than a reason to
 widen it.
 
-- [ ] A deposit emptied before its first anniversary earns nothing on it.
-- [ ] A deposit emptied after its first anniversary keeps the bonus it was already paid, and earns nothing on its second.
-- [ ] A deposit drawn halfway down before its anniversary earns a tenth of what is left in it.
-- [ ] A withdrawal that only partly covers the savings comes out of the oldest deposit, and the newer deposits' anniversaries pay in full.
-- [ ] A withdrawal after an anniversary has been paid takes back none of those points, and the customer's balance is unchanged by it.
-- [ ] A deposit drawn below €10 earns nothing on its anniversary while the remaining euros stay in the account.
-- [ ] Withdrawing changes no earlier bonus record: what a past anniversary was worked out from is still readable afterwards.
+- [x] A deposit emptied before its first anniversary earns nothing on it.
+- [x] A deposit emptied after its first anniversary keeps the bonus it was already paid, and earns nothing on its second.
+- [x] A deposit drawn halfway down before its anniversary earns a tenth of what is left in it.
+- [x] A withdrawal that only partly covers the savings comes out of the oldest deposit, and the newer deposits' anniversaries pay in full.
+- [x] A withdrawal after an anniversary has been paid takes back none of those points, and the customer's balance is unchanged by it.
+- [x] A deposit drawn below €10 earns nothing on its anniversary while the remaining euros stay in the account.
+- [x] Withdrawing changes no earlier bonus record: what a past anniversary was worked out from is still readable afterwards.
