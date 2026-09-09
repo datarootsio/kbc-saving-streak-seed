@@ -60,12 +60,22 @@ class APointsFigureIsAnsweredInWordsApiTest extends ApiIntegrationTest {
      * A figure that parses for nothing and prints for a fortune. Each of these is one POST away from
      * any customer, and the answer to all of them is the ordinary refusal.
      *
+     * <p>The three in the middle are the same hazard reached through {@code stripTrailingZeros()},
+     * which is where a figure that parsed perfectly well can still fault: it takes a one off the
+     * scale per zero it strips, and a scale that walks off the end of an {@code int} throws. Two or
+     * more trailing zeroes on top of an exponent that has already bottomed the scale out is what it
+     * takes, so they are here alongside the near misses that survive it — {@code 1e2147483647} has
+     * no zeroes to strip and {@code 10e2147483647} lands exactly on the boundary — because it is the
+     * near misses that make this look covered when it is not.
+     *
      * <p>The last is the plain version of the same thing — a whole number of points larger than any
      * pot could count — and it is here so that the branch answering a figure too large to hold is
      * covered by the case that reads like a typo as well as by the ones that read like an attack.
      */
     @ParameterizedTest
-    @ValueSource(strings = {"1e999999999", "1.5e-999999999", "-1e-999999999", "99999999999999999999"})
+    @ValueSource(strings = {"1e999999999", "1.5e-999999999", "-1e-999999999",
+            "100e2147483647", "1000e2147483646", "100.00e2147483647",
+            "1e2147483647", "10e2147483647", "99999999999999999999"})
     void a_figure_nobody_could_hold_is_refused_in_words_and_moves_nothing(String typed) {
         long ankeHeld = seeded.pointsBalanceOf(ANKE);
         long bramHeld = seeded.pointsBalanceOf(BRAM);

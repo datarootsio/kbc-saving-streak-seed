@@ -239,19 +239,47 @@ public class GiftingService {
         }
         // Trailing zeroes stripped first, so that "5.0" is the whole number somebody meant and only
         // a figure with something after the point is refused.
-        if (figure.stripTrailingZeros().scale() > 0) {
+        //
+        // Guarded, because stripping is the one thing here that can fail on a figure that parsed
+        // perfectly well. It takes a zero off the digits and a one off the scale each time round, and
+        // a scale that walks past Integer.MIN_VALUE throws rather than answering — so a figure with a
+        // huge positive exponent and two or more trailing zeroes ("100e2147483647") faults out of the
+        // middle of a method whose entire job is to answer in words. Every figure that can reach the
+        // catch is enormous and positive: signum is already known to be positive above, and only an
+        // exponent big enough to bottom the scale out can overflow it. So it is the same shortfall the
+        // figures too large to count in a long get, and it is answered in the same sentence.
+        BigDecimal withoutTrailingZeroes;
+        try {
+            withoutTrailingZeroes = figure.stripTrailingZeros();
+        } catch (ArithmeticException theScaleRanOutOfRoom) {
+            throw moreThanAnybodyCouldEverHold(senderCustomerId, recipientContactDetails, typed);
+        }
+        if (withoutTrailingZeroes.scale() > 0) {
             throw refusing(senderCustomerId, recipientContactDetails, NOT_A_NUMBER_OF_POINTS,
                     "Points are whole, and " + typed + " is not a whole number.");
         }
         try {
             return figure.longValueExact();
-        } catch (ArithmeticException moreThanAnybodyCouldEverHold) {
-            // A whole positive figure too large to count in points. It is a shortfall rather than a
-            // typo — nobody holds that many — so it is answered as one, with the balance quoted.
-            throw refusing(senderCustomerId, recipientContactDetails, NOT_ENOUGH_POINTS,
-                    "That gift costs " + typed + " points, and you have "
-                            + points.balanceOf(senderCustomerId) + ".");
+        } catch (ArithmeticException tooLargeToCountInPoints) {
+            throw moreThanAnybodyCouldEverHold(senderCustomerId, recipientContactDetails, typed);
         }
+    }
+
+    /**
+     * A whole positive figure larger than a pot could ever count. It is a shortfall rather than a
+     * typo — nobody holds that many — so it is answered as one, with the balance quoted, in the
+     * sentence an ordinary over-balance gift already gets.
+     *
+     * <p>Shared by the two ways a figure can turn out to be that large, because they are the same
+     * refusal seen from either end of {@link BigDecimal}: one is a figure too big to fit in a
+     * {@code long}, the other a figure whose exponent is too big for the class itself to keep
+     * working with. Neither is anything the person typing needs told apart.
+     */
+    private GiftRefused moreThanAnybodyCouldEverHold(long senderCustomerId,
+                                                     String recipientContactDetails, String typed) {
+        return refusing(senderCustomerId, recipientContactDetails, NOT_ENOUGH_POINTS,
+                "That gift costs " + typed + " points, and you have "
+                        + points.balanceOf(senderCustomerId) + ".");
     }
 
     /**
