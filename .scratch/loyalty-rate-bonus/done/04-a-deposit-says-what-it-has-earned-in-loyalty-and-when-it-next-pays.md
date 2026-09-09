@@ -1,6 +1,6 @@
 # 04: A deposit says what it has earned in loyalty and when it next pays
 
-Status: needs-review
+Status: done
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -213,3 +213,139 @@ between `daysPass` and the sweep.
 
 The read's DEBUG line gained `depositsOwedAnAnniversaryTheSweepHasNotPaid=`, so a date in the past on
 the page is explainable from the log rather than looking like an off-by-a-year.
+
+## Verified
+
+Reviewed as the whole of `ticket/03-a-loyalty-bonus-is-an-ordinary-batch-of-points..ticket/04-a-deposit-says-what-it-has-earned-in-loyalty-and-when-it-next-pays`
+(3 commits, 15 files, +1009/-79, backend only) and driven against a running application on a
+throwaway database. Both of attempt 1's findings are settled: one is fixed, and the other was
+mistaken. Decision: **done**.
+
+### Attempt 1's first finding was wrong, and this is how to check it
+
+Attempt 1 held that `@Transactional(readOnly = true)` on the package-private
+`SavingsAccountController.depositsInto` is silently ignored, on the strength of the
+public-methods-only rule that `LoyaltyService.payLoyaltyBonuses` and `PointsService` each state in
+a comment. That rule stopped being Spring's in Spring Framework 6.0, and this application runs on
+spring-tx 6.2.19. Confirmed two ways, independently of the implementer's own evidence:
+
+    javap -c -p AbstractTransactionManagementConfiguration.class
+      # transactionAttributeSource():
+      #   0: new AnnotationTransactionAttributeSource
+      #   4: iconst_0                       <- publicMethodsOnly = false
+      #   5: invokespecial <init>:(Z)V
+
+and at runtime, a second instance started on port 8081 with `org.springframework.orm.jpa` at DEBUG
+and `depositsInto` package-private exactly as it stands
+(`...04-....review.2.txcheck.backend.log`, one `GET /api/savings-accounts/1/deposits`):
+
+    JpaTransactionManager : Creating new transaction with name
+      [io.dataroots.savingstreak.web.SavingsAccountController.depositsInto]:
+      PROPAGATION_REQUIRED,ISOLATION_DEFAULT,readOnly
+    JpaTransactionManager : Opened new EntityManager [SessionImpl(484458599<open>)] for JPA transaction
+    ... Participating in existing transaction        (x6)
+    DepositsService  : deposit history reported with what each deposit earned savingsAccountId=1 ...
+    DepositsService  : deposits in an account that still hold money savingsAccountId=1 deposits=1
+    LoyaltyService   : when each deposit in an account next pays savingsAccountId=1 ...
+    JpaTransactionManager : Initiating transaction commit
+
+One transaction encloses both `DepositsService.depositsInto` and
+`LoyaltyService.whenTheDepositsInAnAccountNextPay`, on the same `EntityManager`. The javadoc
+paragraph the implementer defended is true as written, and the modifier is rightly unchanged. A
+reviewer's earlier finding is not privileged, and this one does not survive the source.
+
+### Attempt 1's second finding is fixed, and the fix is regression-tested
+
+Driven over HTTP on the running application, clock moved with `/api/dev/clock/advance` and the
+sweep run as `POST /api/dev/jobs/payLoyaltyBonuses/run`:
+
+| what I did | what came back |
+|---|---|
+| `POST` EUR 500 into savings 1 | `loyaltyBonusPoints:0, nextAnniversaryOn:"2027-09-09", nextAnniversaryPoints:50` |
+| +379 days, **sweep not run** | `nextAnniversaryOn:"2027-09-09"` still, worth 50, loyalty 0 — the anniversary that is owed, not 2028's |
+| sweep | `loyaltyBonusPoints:50, pointsEarned:550, basePoints:500, next 2028-09-09 / 50` |
+| withdraw EUR 250 | next `25` on the **same** date, loyalty 50 and total 550 kept |
+| empty savings 2 (EUR 500 out) | `nextAnniversaryOn:null, nextAnniversaryPoints:null` together, `loyaltyBonusPoints:50, pointsEarned:550` |
+| `POST` EUR 9 | `nextAnniversaryOn:"2028-09-23", nextAnniversaryPoints:0` |
+| +1100 days, **sweep not run** | savings 1: `nextAnniversaryOn:"2028-09-09"` worth 25 — the *earliest* owed and unpaid, three years back, not the calendar's 2031 |
+| same read, the EUR 9 deposit | `nextAnniversaryOn:"2031-09-23"` worth 0 — the calendar's next, **not** pinned at its unrecordable 2028-09-23 |
+| sweep | `loyaltyBonusPoints:125, pointsEarned:625, next 2031-09-09 / 25` |
+
+The two rules really are combined the way the feedback warned they had to be: the unpaid-rows walk
+is gated on the deposit being worth something, so a EUR 9 deposit is not pinned in its first year.
+The gate is safe for a reason worth writing down: `remainingAmount` is only ever subtracted from, so
+a deposit worth something today was worth something at every anniversary it has passed, and a
+missing row can therefore only mean "the sweep has not run".
+
+Every criterion above was exercised, not inferred:
+
+- **three parts sum, all three non-zero** — four EUR 100 deposits a week apart for Bram raised the
+  multiplier to 1.30x; a year on and a sweep, the history reads `100/30/10 = 140`, `100/20/10 = 130`,
+  `100/10/10 = 120`, `100/0/10 = 110`. The bonus is a tenth of the euros, not of euros x rate.
+- **unchanged when it landed** — `basePoints` and `streakBonusPoints` never moved across four sweeps
+  while `pointsEarned` went 500 -> 550 -> 625 -> 650.
+- **overview gains nothing** — `GET /api/savings-accounts/1` returns no loyalty and no anniversary
+  field; the new test asserts it against the raw body rather than a record that would have to be
+  changed first to notice.
+- **refusal** — `GET /api/savings-accounts/999/deposits` -> 404 `"There is no savings account 999."`
+- **February clamping** — clock wound to 2032-02-29, a deposit there reports `2033-02-28`.
+
+### Logging
+
+Every state above left a line from `io.dataroots.savingstreak` at DEBUG in
+`...04-....app.2r.backend.log`; no WARN and no ERROR, and `Completed 500` appears zero times. The
+line that makes a past date explainable rather than an off-by-a-year is the new counter, and it read
+1 exactly when the page showed a date in the past:
+
+    LoyaltyService : when each deposit in an account next pays savingsAccountId=1
+      asAt=2027-09-23T12:37:17.953656Z depositsStillHoldingMoney=1
+      worthNothingOnTheirNextAnniversary=0 depositsOwedAnAnniversaryTheSweepHasNotPaid=1
+      nextAnniversariesWorthAltogether=50
+
+Both readings of "nothing" are distinguishable from the log alone: an emptied account reads
+`depositsStillHoldingMoney=0`, the EUR 9 deposit `worthNothingOnTheirNextAnniversary=1`. The history
+read's own line carries the other end of it:
+`deposit history reported ... paidALoyaltyBonus=4 loyaltyBonusPoints=40`.
+
+### Checks and the page
+
+`cd backend && ./mvnw test` -> 215 tests, 0 failures, BUILD SUCCESS
+(`...04-....review.2.checks.log`). `cd frontend && npm run typecheck` -> exit 0. The new
+`TheHistorySaysWhatEachDepositHasBeenPaidAndWhenItNextPaysApiTest` runs (1 test) and
+`LoyaltyAnniversaryTest` is now 10; no existing assertion was weakened, only the documented
+base+streak+loyalty invariant widened.
+
+The page is not in this diff and does not need to be, but it still renders: Playwright, chromium,
+signed in as Anke and opened savings account 1
+(`...review.2.overview.png`, `...review.2.savings1.png`, console at
+`...review.2.browser.log`). Fully styled, EUR 250,00 saved and 1.209 points matching the API
+exactly, no `pageerror`; the only `requestfailed` entries are `ERR_ABORTED` duplicates from React's
+double-invoked effects, and the same requests succeed. Note for whoever reads a screenshot of this
+app: the figures count up on load, so a frame captured immediately after `networkidle` shows
+part-way values (I first read "EUR 97,97" and 474 points before the animation settled) — wait for it
+before believing a number.
+
+### Not blocking, worth someone's time
+
+- `POST /api/savings-accounts/{id}/deposits` still assembles its 201 from two transactions
+  (`SavingsAccountController.java:151-158`): the deposit commits, then the loyalty read opens its
+  own. A withdrawal emptying that deposit in between makes `get(made.id())` null and both
+  anniversary fields null, against the inline comment's "It holds all of its money, so it is always
+  in this answer". Attempt 1 raised this and ruled it out of scope; it stays out of scope, but it is
+  now a one-word fix, because a package-private handler *is* advised.
+- The javadoc on `NextAnniversaryOfADeposit` and `LoyaltyService.whenTheDepositsInAnAccountNextPay`
+  describes the past-dated case as "those few hours" / "a day just gone". On a clock a trainer wound
+  forward without sweeping it is years, as the 2028-09-09 reading above shows. Behaviour is right;
+  the wording understates it, and ticket 05 needs to render it without a label that reads as a
+  contradiction.
+- The comments at `LoyaltyService.payLoyaltyBonuses` and `PointsService` that say a proxy cannot
+  advise a non-public method are now demonstrably stale, and neither method needs to be public for
+  visibility either — both are called from inside their own package. The new javadoc on
+  `depositsInto` names them as wrong, which is the honest interim state; a three-site cleanup is its
+  own change.
+- The new API test does not cover the EUR 9 deposit past its first anniversary, which is the half of
+  the combined rule that is easiest to break. I verified it by hand (2031-09-23, not 2028-09-23); an
+  assertion would keep it verified.
+- `depositsInto`'s 404 leaves no WARN, unlike `withdrawalsFrom` two methods below which does. That
+  line pre-dates this ticket (`git show ticket/03:...SavingsAccountController.java` has it
+  unchanged), so it is not this branch's omission.
