@@ -376,18 +376,37 @@ public class PointsService {
         // second time: the figure checked and the rows changed are then the same rows.
         long available = oldestFirst.stream().mapToLong(PointsCredit::getRemainingPoints).sum();
         if (available < points) {
+            // The refusal itself is worded and warned about by whoever is spending, because the
+            // reason belongs to them; what this module knows and they do not is what the pot was
+            // made of when it came up short.
+            log.debug("points not spent customerId={} points={} reason=only {} left across {} "
+                    + "unexpired batches", customerId, points, available, oldestFirst.size());
             return false;
         }
         long stillToFind = points;
+        // What came out of which batch, in the order it came out, so that the one rule this ledger
+        // keeps dated batches in order to follow is readable rather than merely intended. Built as
+        // the loop goes and written once after it, so nothing is logged inside the loop.
+        List<String> drawnOn = new ArrayList<>();
         for (PointsCredit batch : oldestFirst) {
             if (stillToFind == 0) {
                 break;
             }
-            stillToFind -= batch.take(stillToFind);
+            long taken = batch.take(stillToFind);
+            stillToFind -= taken;
+            drawnOn.add("batchId=" + batch.getId() + " reason=" + batch.getReason()
+                    + " earnedAt=" + batch.getEarnedAt() + " taken=" + taken
+                    + " leftInIt=" + batch.getRemainingPoints());
         }
         // The batches are managed and would be written out at the end of the transaction anyway.
         // Saying so leaves nothing for a reader to infer from Hibernate's behaviour.
         credits.saveAll(oldestFirst);
+        // The inputs behind the whole decision: which batches were nearest their twelve months, how
+        // much each of them gave up, and what was left in the last one the spend reached. A reward
+        // paid for out of a bonus reads as one of these, with the reason on it saying so.
+        log.debug("points spent oldest first customerId={} points={} available={} "
+                        + "unexpiredBatches={} drawnOn={}",
+                customerId, points, available, oldestFirst.size(), drawnOn);
         return true;
     }
 
