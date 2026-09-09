@@ -1,8 +1,11 @@
 package io.dataroots.savingstreak.loyalty;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import io.dataroots.savingstreak.deposits.DepositStillHoldingMoney;
@@ -31,6 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
  * hold money and how much, Points credits a number of points against a deposit at a moment, and
  * neither learns that anniversaries exist.
  *
+ * <p>It answers two things and they are the same rule read in two directions: the sweep pays the
+ * anniversaries that have arrived, and the read below says when a deposit next pays and what that
+ * anniversary is worth at what the deposit holds today. Both work the figure out the same way, from
+ * the euros still in the deposit, so what a customer is promised on a Tuesday is what the sweep
+ * pays them if the money is still there on the Wednesday.
+ *
  * <p>There is no rule of its own for forfeiting. What an anniversary pays is worked out from what is
  * still in the deposit <em>at that moment</em>, so a deposit drawn down to nothing is worth nothing
  * on its anniversary and one drawn halfway down is worth half. The generous reading is deliberate:
@@ -46,11 +55,14 @@ public class LoyaltyService {
     private final DepositsService deposits;
     private final PointsService points;
     private final LoyaltyBonusPaidRepository paid;
+    private final Clock clock;
 
-    LoyaltyService(DepositsService deposits, PointsService points, LoyaltyBonusPaidRepository paid) {
+    LoyaltyService(DepositsService deposits, PointsService points, LoyaltyBonusPaidRepository paid,
+                   Clock clock) {
         this.deposits = deposits;
         this.points = points;
         this.paid = paid;
+        this.clock = clock;
     }
 
     /**
@@ -119,6 +131,73 @@ public class LoyaltyService {
         log.info("loyalty bonuses paid asAt={} landedBefore={} depositsConsidered={} "
                         + "anniversariesPaid={} points={}",
                 now, landedBefore, holding.size(), anniversariesPaid, pointsPaid);
+    }
+
+    /**
+     * When each deposit in a savings account next pays and what that anniversary is worth at what
+     * the deposit holds today, by deposit.
+     *
+     * <p>The promise the scheme is making about money that is still there, which is why what is in
+     * the answer is decided by what is in the deposit. A deposit the customer has emptied is not in
+     * it at all: the money has gone, there is no anniversary left for it to reach, and a date shown
+     * against it would be a promise about euros that are not in the account. A deposit holding nine
+     * euros <em>is</em> in it, with a date and nothing to be earned on it, because rounding down is
+     * a rule the customer is entitled to see rather than an absence they have to guess at.
+     *
+     * <p>The figure falls when the customer withdraws, without anything here knowing that a
+     * withdrawal happened. It is a tenth of the euros still in the deposit, so drawing a deposit
+     * halfway down halves what its next anniversary is worth — the cost of a withdrawal, legible on
+     * the history afterwards, which is the whole reason this is reported at what the deposit holds
+     * now rather than at what landed in it.
+     *
+     * <p>A map by deposit rather than a list, because the caller is putting these beside the
+     * account's history rows and has to be able to find the one belonging to a row — and to find
+     * that there is none, which is the answer for every deposit that has been emptied.
+     *
+     * <p>What each deposit has already been paid is not here and is not asked for. Those are points
+     * in the customer's pot, the ledger reports them against the deposit like every other reason a
+     * deposit has earned under, and reading them a second way here would be a second answer to
+     * disagree with the first.
+     *
+     * <p>This one reads the clock, unlike the sweep above, which is told what time it is. The sweep
+     * has a caller that already knows the moment and one transaction in which every anniversary must
+     * be judged against the same one; this has a customer looking at a page, and there is nobody in
+     * that path with a better claim to what time it is than the application's own clock — a read
+     * that took the moment from the web layer would let the answer depend on which endpoint asked.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, NextAnniversaryOfADeposit> whenTheDepositsInAnAccountNextPay(long savingsAccountId) {
+        Instant now = clock.instant();
+        List<DepositStillHoldingMoney> holding = deposits.depositsStillHoldingMoneyIn(savingsAccountId);
+        Map<Long, NextAnniversaryOfADeposit> next = new LinkedHashMap<>();
+        long worthAltogether = 0;
+        long worthNothing = 0;
+        for (DepositStillHoldingMoney deposit : holding) {
+            int ordinal = LoyaltyAnniversary.theAnniversaryComingNextFor(deposit.depositedAt(), now);
+            Instant anniversary = LoyaltyAnniversary.anniversaryOf(deposit.depositedAt(), ordinal);
+            long wholeEuros = LoyaltyRate.wholeEurosIn(deposit.remainingAmount());
+            long worth = LoyaltyRate.pointsOn(wholeEuros);
+            next.put(deposit.id(), new NextAnniversaryOfADeposit(
+                    deposit.id(), LoyaltyAnniversary.dayOf(anniversary), worth));
+            worthAltogether += worth;
+            if (worth == 0) {
+                worthNothing++;
+            }
+        }
+        // One line for the read, with the arithmetic behind it: the moment the anniversaries were
+        // counted from, how many deposits still hold money and are therefore being promised
+        // something, how many of them are promised nothing because a tenth of what they hold rounds
+        // away, and what the account's next anniversaries come to altogether. A customer asking why
+        // a figure fell after they withdrew is answered by this line either side of the withdrawal.
+        //
+        // Counts and a total rather than a line per deposit, as the history read beside it does:
+        // this runs on every read of an account's history, and a line per deposit would bury the
+        // business events in a page load.
+        log.debug("when each deposit in an account next pays savingsAccountId={} asAt={} "
+                        + "depositsStillHoldingMoney={} worthNothingOnTheirNextAnniversary={} "
+                        + "nextAnniversariesWorthAltogether={}",
+                savingsAccountId, now, holding.size(), worthNothing, worthAltogether);
+        return next;
     }
 
     /**

@@ -144,7 +144,13 @@ public class DepositsService {
         return new RecordedDeposit(
                 deposit.getId(), deposit.getAmount(), credited.total(),
                 credited.earnedAs(PointsReason.BASE_ACCRUAL),
-                credited.earnedAs(PointsReason.STREAK_BONUS), multiplier, deposit.getDepositedAt());
+                credited.earnedAs(PointsReason.STREAK_BONUS),
+                // Nothing, and read out of the breakdown rather than written as a nought: a deposit
+                // earns a loyalty bonus on its anniversaries and it has not had one yet. Asked the
+                // same way here as in the history, so a deposit just made and the same deposit read
+                // back cannot answer differently.
+                credited.earnedAs(PointsReason.LOYALTY_BONUS),
+                multiplier, deposit.getDepositedAt());
     }
 
     /**
@@ -262,10 +268,21 @@ public class DepositsService {
         long withoutARateOfTheirOwn = made.stream()
                 .filter(deposit -> deposit.getMultiplierApplied() == null)
                 .count();
+        // And what the account's anniversaries have paid altogether, counted the same way: how many
+        // of these deposits have ever been paid a loyalty bonus and what those bonuses came to. A
+        // total that grew overnight is explainable from the sweep's own line; this is the other end
+        // of it, and it says which deposits the customer is being shown the growth against.
+        long paidALoyaltyBonus = history.stream()
+                .filter(deposit -> deposit.loyaltyBonusPoints() > 0)
+                .count();
+        long loyaltyBonusPoints = history.stream()
+                .mapToLong(RecordedDeposit::loyaltyBonusPoints)
+                .sum();
         log.debug("deposit history reported with what each deposit earned savingsAccountId={} "
-                        + "deposits={} atTheRateTheyWerePaidAt={} atTheOrdinaryRateForLackOfOne={}",
+                        + "deposits={} atTheRateTheyWerePaidAt={} atTheOrdinaryRateForLackOfOne={} "
+                        + "paidALoyaltyBonus={} loyaltyBonusPoints={}",
                 savingsAccountId, history.size(), history.size() - withoutARateOfTheirOwn,
-                withoutARateOfTheirOwn);
+                withoutARateOfTheirOwn, paidALoyaltyBonus, loyaltyBonusPoints);
         return history;
     }
 
@@ -277,6 +294,7 @@ public class DepositsService {
                 earned.total(),
                 earned.earnedAs(PointsReason.BASE_ACCRUAL),
                 earned.earnedAs(PointsReason.STREAK_BONUS),
+                earned.earnedAs(PointsReason.LOYALTY_BONUS),
                 rateItWasPaidAt(deposit),
                 deposit.getDepositedAt());
     }
@@ -428,6 +446,43 @@ public class DepositsService {
         // asked to log: it knows what it was counting them for.
         log.debug("deposits still holding money that landed before a moment until={} deposits={}",
                 until, holding.size());
+        return holding;
+    }
+
+    /**
+     * The deposits into one savings account that still hold money, oldest first — which deposit,
+     * whose it is, how much of it is left, and when it landed.
+     *
+     * <p>The same fact {@link #depositsStillHoldingMoneyThatLandedBefore} answers, asked about one
+     * account instead of about everybody and without a boundary in time. A nightly sweep wants the
+     * deposits old enough for its rule; a customer's history wants the deposits in front of that
+     * customer, whatever age they are, because a rule about money that stays put has something to
+     * say about every one of them.
+     *
+     * <p>Two reads rather than one that does both, because the two callers are asking different
+     * questions and a single read taking an account and a moment would have each of them passing
+     * something it does not mean. This module's opinion about points is, as ever, none: it says
+     * which money has stayed and how much of it there is.
+     */
+    @Transactional(readOnly = true)
+    public List<DepositStillHoldingMoney> depositsStillHoldingMoneyIn(long savingsAccountId) {
+        List<DepositStillHoldingMoney> holding = deposits.stillHoldingMoneyIn(savingsAccountId).stream()
+                // Quoted to the cent here, once, for the reason the sweep's listing gives: SQLite
+                // has no decimal type and hands EUR 12.50 back as 12.5, and a caller working a
+                // figure out from it would either restate the rounding or print something that does
+                // not read as money.
+                .map(deposit -> new DepositStillHoldingMoney(
+                        deposit.getId(),
+                        deposit.getCustomerId(),
+                        quotedToTheCent(deposit.getRemainingAmount()),
+                        deposit.getDepositedAt()))
+                .toList();
+        // How many of the account's deposits still hold money, so that a caller reporting nothing
+        // about the older ones can be told from a query that came back empty. The deposits
+        // themselves are left to whoever asked to log: this runs on every read of an account's
+        // history, and it knows what it was counting them for.
+        log.debug("deposits in an account that still hold money savingsAccountId={} deposits={}",
+                savingsAccountId, holding.size());
         return holding;
     }
 

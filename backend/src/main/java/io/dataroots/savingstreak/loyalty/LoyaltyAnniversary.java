@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.loyalty;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.Period;
 
 import io.dataroots.savingstreak.streaks.SavingsWeek;
@@ -107,5 +108,36 @@ final class LoyaltyAnniversary {
                 .minus(HOW_OFTEN_A_DEPOSIT_PAYS)
                 .plusDays(2)
                 .toInstant();
+    }
+
+    /**
+     * Which of this deposit's anniversaries is the next one to fall — the one after the last that
+     * has arrived, and the first for a deposit still inside its first year.
+     *
+     * <p>Asked of {@link #anniversariesPassedBy} rather than counted again, so that "when does it
+     * next pay" and "what has it passed" cannot disagree: the anniversary reported as coming is
+     * exactly the one the sweep would pay next if the money stayed where it is.
+     *
+     * <p>There is always a next one. The clock recurs for as long as the money is there, so a
+     * deposit ten years old is not out of anniversaries — it is one year from its eleventh. Whether
+     * a deposit has a promise left to make is a question about the money still in it, and the
+     * caller that asks that is the one holding the amount.
+     */
+    static int theAnniversaryComingNextFor(Instant landedAt, Instant now) {
+        return anniversariesPassedBy(landedAt, now) + 1;
+    }
+
+    /**
+     * The day an anniversary falls on, in the zone the calendar is read in — the same reading the
+     * points ledger gives the day a batch expires, and for the same reason.
+     *
+     * <p>A day rather than a moment, because that is what is promised. A deposit's anniversary
+     * arrives at whatever time of day the money landed and the sweep that pays it runs overnight, so
+     * an exact time would be precision the customer cannot act on. It also settles the zone for
+     * whoever renders the date: a page turning a moment into a day would pick the zone of the
+     * machine it happened to be running on, and a customer in London would be told a date a day out.
+     */
+    static LocalDate dayOf(Instant anniversary) {
+        return anniversary.atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate();
     }
 }

@@ -110,6 +110,27 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
     List<Deposit> stillHoldingMoneyThatLandedBefore(@Param("until") Instant until);
 
     /**
+     * The deposits into one savings account that still have money in them, oldest first, with the
+     * identifier settling ties at the millisecond the application records.
+     *
+     * <p>One account rather than everybody's, because the caller is a customer looking at their own
+     * history rather than a sweep passing over all of them. {@link #stillHoldingMoneyThatLandedBefore}
+     * is the sweep's question and the two differ in exactly that.
+     *
+     * <p>No boundary in time, either. A rule that turns on age asks for the deposits old enough for
+     * it; a page asks about the deposits in front of the customer, whatever age they are, because
+     * every one of them has an anniversary coming.
+     *
+     * <p>Deposits holding nothing are outside the query rather than filtered out of the answer, for
+     * the reason the sweep's query gives: money never comes back into one, so a deposit at zero has
+     * nothing left to decide about.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.savingsAccountId = :savingsAccountId and deposit.remainingAmount > 0 "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> stillHoldingMoneyIn(@Param("savingsAccountId") long savingsAccountId);
+
+    /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many
      * that was.
      *

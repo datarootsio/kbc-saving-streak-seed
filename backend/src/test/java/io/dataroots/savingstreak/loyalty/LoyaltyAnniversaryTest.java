@@ -233,6 +233,60 @@ class LoyaltyAnniversaryTest {
                 .isZero();
     }
 
+    /**
+     * Which anniversary a deposit has coming — the figure the history reports a date and a value
+     * for, and the one the sweep would pay next if the money stayed where it is.
+     *
+     * <p>The two have to be the same anniversary. A deposit whose first anniversary arrived this
+     * morning has been paid it and is counting towards its second, so an off-by-one here would show
+     * a customer a date that has already passed and a bonus they have already had.
+     */
+    @Test
+    void the_anniversary_coming_next_is_the_one_after_the_last_that_arrived() {
+        Instant landed = brussels(2026, 1, 15, 9, 30);
+
+        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, landed))
+                .as("a deposit made a moment ago is counting towards its first")
+                .isEqualTo(1);
+        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 1, 15, 9, 29)))
+                .as("and still is, a minute short of it")
+                .isEqualTo(1);
+        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 1, 15, 9, 30)))
+                .as("the first has arrived, so the promise is now about the second")
+                .isEqualTo(2);
+        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2036, 1, 15, 12, 0)))
+                .as("ten years in, a deposit is not out of anniversaries: it is one year from its "
+                        + "eleventh")
+                .isEqualTo(11);
+
+        // And the date that comes back is the one a calendar gives, which is the whole point of
+        // asking this rather than adding a year to today.
+        assertThat(dayOfAnniversary(landed,
+                LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 6, 1, 0, 0))))
+                .isEqualTo(LocalDate.of(2028, 1, 15));
+    }
+
+    /**
+     * The day an anniversary falls on is read in the zone this application counts calendars in, not
+     * in whatever zone the machine reporting it happens to be set to.
+     *
+     * <p>Money paid in just after midnight on a summer night in Brussels landed at half past ten the
+     * evening before in UTC, and its anniversary is a Brussels date. A page or a service reading
+     * that moment in UTC would tell the customer the day before the one they were promised.
+     */
+    @Test
+    void the_day_an_anniversary_falls_on_is_read_in_the_zone_the_calendar_is_read_in() {
+        Instant justAfterMidnightInSummer = brussels(2026, 7, 15, 0, 30);
+        Instant itsFirstAnniversary = LoyaltyAnniversary.anniversaryOf(justAfterMidnightInSummer, 1);
+
+        assertThat(LoyaltyAnniversary.dayOf(itsFirstAnniversary))
+                .as("the day the customer would write on a calendar")
+                .isEqualTo(LocalDate.of(2027, 7, 15));
+        assertThat(itsFirstAnniversary.atZone(ZoneId.of("UTC")).toLocalDate())
+                .as("and the day a reader in the wrong zone would have reported, which is not it")
+                .isEqualTo(LocalDate.of(2027, 7, 14));
+    }
+
     private static LocalDate dayOfAnniversary(Instant landedAt, int ordinal) {
         return LoyaltyAnniversary.anniversaryOf(landedAt, ordinal).atZone(BRUSSELS).toLocalDate();
     }
