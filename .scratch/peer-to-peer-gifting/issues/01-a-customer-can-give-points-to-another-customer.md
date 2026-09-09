@@ -251,16 +251,23 @@ only a `gift rejected ... kind=NOT_ENOUGH_POINTS` WARN arriving minutes later to
 route, and it fails the standard that review already set: a figure that cannot be answered promptly
 is not "a refusal in words", which is the entire reason the ticket carries the figure as typed. I
 had initially passed this on the reasoning that the same hazard was pre-existing and worse on the
-deposit path, and **that reasoning was wrong** — I measured both at the same payload size and the
-new endpoint is far worse, because the deposit path has no `stripTrailingZeros` call:
+deposit path, and **that reasoning does not hold for this hazard** — I measured both at the same
+payload size and the new endpoint is far worse, because the deposit path has no `stripTrailingZeros`
+call:
 
 | 120,000-digit figure | time |
 | --- | --- |
 | `POST /api/savings-accounts/1/deposits` (pre-existing) | 0.35 s |
 | `POST /api/customers/1/gifts` (this branch) | **4.68 s** |
 
-So this branch introduces the worst input-handling hazard in the application rather than inheriting
-it.
+So the CPU-exhaustion hazard is introduced by this branch rather than inherited from its neighbours,
+and that is what makes it this ticket's to close.
+
+Be precise about which hazard is which, because there are two and only one of them is yours. The
+**length** hazard above (a long digit string, scale 0) is this branch's. A separate **scale** hazard
+(a small string with a huge exponent, `1.5e-999999999`) is what attempt 1 blocked, and gifting now
+answers it correctly in ~10ms. Do not go looking for the scale hazard here — it is fixed. See the
+out-of-scope note at the end for where it still lives.
 
 **The fix should be one line and needs no new wording.** A whole number of points can never need
 more than 19 characters, so an early length check on `typed` — before `new BigDecimal` — routed into
@@ -358,3 +365,27 @@ this evidence; criterion 1 is unticked for the blocking item above and nothing e
 
 Across the whole session, apart from the deliberately hostile requests, the backend log contains
 **zero ERROR lines and zero 500s**.
+
+### Out of scope for this ticket, recorded so it is not lost
+
+**Do not fix this as part of ticket 01.** The scale hazard attempt 1 blocked gifting for is still
+live one module over, on code this branch does not touch:
+`POST /api/savings-accounts/{id}/deposits` and the withdrawal equivalent carry the amount as text
+(`web/DepositRequest.java`), parse it with `new BigDecimal(amount.trim())`
+(`web/SavingsAccountController.java:193` — a 14-character token, so Jackson's default number-length
+limit never fires), and then render **the parsed figure** through `amount.toPlainString()` at
+`deposits/AmountOfMoney.java:38` and `:44`. `{"amount":"1.5e-999999999"}` or `{"amount":"-1e-999999999"}`
+therefore renders on the order of 10^9 characters and takes the heap with it.
+
+I confirmed the mechanism at a bounded scale rather than firing the real thing at a shared
+application: `{"amount":"1.5e-100000"}` on a deposit came back as a **100,070-character** refusal
+(`An amount of money has at most two decimal places, and 0.0000…0015 has 100001.`), which is the
+parsed figure being rendered, exactly as attempt 1 described for gifting. Do not fire the
+nine-digit-exponent version at a running instance — an `OutOfMemoryError` in a Tomcat worker
+destabilises the JVM for every other request.
+
+This is pre-existing and not a regression from this ticket (`AmountOfMoney.java` and
+`SavingsAccountController.java` have an empty diff against `agentic_engineered`), so it does not
+affect this verdict, and gifting is now the better-behaved of the two paths. It wants a ticket of its
+own: the fix is the mirror of the one asked for above, and it would change deposit and withdrawal
+refusal *wording*, which a gifting slice should not own.
