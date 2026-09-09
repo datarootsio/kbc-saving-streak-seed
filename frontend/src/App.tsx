@@ -1528,16 +1528,21 @@ function WhatItEarned({ deposit }: { deposit: RecordedDeposit }) {
       {points.format(deposit.basePoints)} base + {points.format(deposit.streakBonusPoints)} bonus{' '}
       {/* The rate and its × stay on one line: a × alone at the start of a line reads as a figure
           with something snapped off it, the way the rate beside the week does. */}
-      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>
+      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>{' '}
       {/* Last, and only when there is one. It is the only part of this sum that arrived after the
           money did, so it reads as something added to a settled arithmetic rather than as a third
           thing the deposit was paid on the day — which is what it is. It also keeps the rate next
           to the bonus it is the rate of; "at 1,30×" after a loyalty figure would read as the rate
-          of the loyalty, and the loyalty deliberately has no rate. */}
+          of the loyalty, and the loyalty deliberately has no rate.
+
+          The space before it is the one above, outside both spans, and that placement is the whole
+          break opportunity between the rate and the loyalty: JSX drops the newline between an
+          element and the expression after it, so a space held inside a nowrap span would leave
+          "at 1,30× + 30 loyalty" a single unbreakable run — wider than the third of a row this
+          cell gets, and the opposite of what .breakdown-rate keeps whole for. */}
       {deposit.loyaltyBonusPoints > 0 && (
         <span className="breakdown-loyalty">
-          {' + '}
-          {points.format(deposit.loyaltyBonusPoints)} loyalty
+          + {points.format(deposit.loyaltyBonusPoints)} loyalty
         </span>
       )}
     </span>
@@ -1592,10 +1597,12 @@ function NextAnniversary({ deposit }: { deposit: RecordedDeposit }) {
   if (worth === 0) {
     return (
       <span className="anniversary none">
-        {/* The date travels with the words in front of it, the way the expiry deadline's does: a
-            date alone at the start of a wrapped line reads as a heading rather than as the end of
-            this sentence. */}
-        <span className="anniversary-when">Nothing due on {asADay(on)}</span>
+        {/* Only "due on <date>" is kept whole, the way the expiry deadline's is and the way the
+            paid branch below keeps its own: a date alone at the start of a wrapped line reads as a
+            heading rather than as the end of this sentence. "Nothing" is left outside it so the
+            line can break after the word — the state that is meant to say less must not be the
+            widest unbreakable string in the table. */}
+        Nothing <span className="anniversary-when">due on {asADay(on)}</span>
       </span>
     )
   }

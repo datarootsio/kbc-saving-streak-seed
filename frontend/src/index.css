@@ -1371,10 +1371,27 @@ button::after {
 /* ---------------------------------------------------------------- vouchers */
 
 /* The two lists that account for the points balance, side by side where there is room: what came in,
-   and what went out. */
+   and what went out.
+
+   "Where there is room" has to mean the room a list actually needs, and 20rem was not it. A column
+   of 20rem hands a list 17rem of content once .history's padding is taken out, and neither list has
+   ever fitted that: the widest deposit row needs 340px and a withdrawal's destination is an IBAN,
+   one unbreakable sixteen-character word, at 322px. So the two lists went side by side from about
+   700px of window, each in a column narrower than its own contents, and ran over the rule between
+   them — the deposits list since this branch gave it a third line, the withdrawals list since it
+   was written. Raising the minimum to the width a list needs is the whole fix: 28rem is 448px, or
+   400px of content, which clears the widest row with room to spare and is still under half of the
+   958px this panel comes to at its widest, so the two columns still appear on a desktop exactly as
+   they did. Between the two the lists stack, which is the layout they already had at every width
+   below 700px.
+
+   min(28rem, 100%) rather than 28rem, because a hard minimum wider than the panel is a column that
+   cannot fit its own frame: at 320px of window the 20rem one drew a 320px column inside a 286px
+   panel and .account's overflow: hidden cut the ends off the rows. Below 28rem the column is simply
+   as wide as there is, and the 36rem fold in the deposits section takes it from there. */
 .ledger {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
 }
 
 .ledger .history + .history {
