@@ -1,6 +1,6 @@
 # 04: A deposit says what it has earned in loyalty and when it next pays
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -155,3 +155,61 @@ log alone.
 - The page still renders "500 base + 0 bonus at 1,00×" under a total of 600, and
   `frontend/src/api.ts` does not yet carry the three new fields. That is ticket 05's job and is
   expected in this branch.
+
+## Attempt 2 — what was done about the feedback
+
+Both points are addressed. The reported fields were not rebuilt, as the feedback said they need not
+be; the nine criteria above are still driven and still hold.
+
+### 1. The `@Transactional` on the history GET — it was already taking effect
+
+This one turns out not to be a defect, and the modifier is unchanged. The public-methods-only rule
+the feedback rests on is no longer Spring's: since Spring Framework 6.0 the attribute source is
+built as `AnnotationTransactionAttributeSource(false)` by
+`AbstractTransactionManagementConfiguration.transactionAttributeSource()` — `publicMethodsOnly =
+false` — because a CGLIB proxy *can* override a package-private method of a class in its own
+package. Verified in the bytecode of spring-tx 6.2.19 (`iconst_0` into the one-arg constructor) and
+then at runtime: with `depositsInto` package-private exactly as it was,
+`org.springframework.orm.jpa` at DEBUG logs
+
+    Creating new transaction with name [io.dataroots.savingstreak.web.SavingsAccountController.depositsInto]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT,readOnly
+
+and both halves of the row then report `Participating in existing transaction` —
+`DepositsService.depositsInto` and `LoyaltyService.whenTheDepositsInAnAccountNextPay` alike. The
+javadoc paragraph was therefore true as written; a withdrawal cannot commit between the two reads.
+The same log shows `savingsAccount`, `CustomerController.accountsOf` and `moneyMovementsOf` are
+advised too, so the annotation the feedback calls dead on those three is live as well.
+
+What did need fixing is that a reader had no way to know this, with two comments in the repository
+asserting the opposite. The paragraph on `depositsInto` now says the annotation is honoured on a
+package-private method, why, and which log line proves it. The comments on
+`LoyaltyService.payLoyaltyBonuses` and `PointsService` are the ones that are now wrong, and the two
+methods are public for a reason that expired in Spring 6.0 — left alone as out of this ticket's
+scope, and worth their own change.
+
+### 2. `theAnniversaryComingNextFor` reported the calendar's next, not the next that pays
+
+Fixed by the first of the two options offered, so the field means what the ticket's title says.
+
+- `LoyaltyAnniversary.theAnniversaryComingNextFor` is renamed
+  `theAnniversaryAfterTheOnesThatHaveArrived` and its javadoc no longer claims to be what the sweep
+  would pay next. It is the calendar reading and says so.
+- `LoyaltyService.whenTheDepositsInAnAccountNextPay` now crosses that with the record of what has
+  been paid — the same `whatHasAlreadyBeenPaidFor` set the sweep uses, so the promise and the payment
+  are one rule — and reports the earliest anniversary the deposit is owed and has not been paid.
+- The two rules are combined as the feedback warned they must be: the unpaid-rows walk runs only when
+  the deposit is worth something, so a EUR 9 deposit, whose anniversaries are never written down, is
+  promised the calendar's next date rather than being pinned in its first year.
+
+Driven over HTTP on a throwaway database. A EUR 500 deposit a year and a fortnight old with the sweep
+not yet run reports `loyaltyBonusPoints:0, nextAnniversaryOn:"2027-09-09",
+nextAnniversaryPoints:50` — the anniversary that is about to pay, which used to read `2028-09-09`.
+The sweep then moves it to `2028-09-09`. Three years on and unswept it reports its *first*
+anniversary, `2027-09-09`, and after the sweep `loyaltyBonusPoints:150` with the next on
+`2030-09-09`. The EUR 9 deposit three years on and unswept reports `2030-09-09` worth `0`, not
+`2027-09-09`. The window is asserted in
+`TheHistorySaysWhatEachDepositHasBeenPaidAndWhenItNextPaysApiTest`, which now reads the history
+between `daysPass` and the sweep.
+
+The read's DEBUG line gained `depositsOwedAnAnniversaryTheSweepHasNotPaid=`, so a date in the past on
+the page is explainable from the log rather than looking like an off-by-a-year.
