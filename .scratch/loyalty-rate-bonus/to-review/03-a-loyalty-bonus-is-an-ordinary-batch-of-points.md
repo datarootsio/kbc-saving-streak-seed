@@ -1,6 +1,6 @@
 # 03: A loyalty bonus is an ordinary batch of points
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -21,11 +21,11 @@ Like 02, this is expected to need no new production code: the bonus is credited 
 batch and the ledger already treats every batch the same way. The work is the tests that say the
 ledger has no special case here, and would fail the day somebody added one.
 
-- [ ] A loyalty bonus can be spent on a reward.
-- [ ] A loyalty bonus is spent in oldest-first order alongside base points and streak bonus, with no regard to which reason earned it.
-- [ ] A loyalty bonus counts towards the points balance from the moment it is paid.
-- [ ] A loyalty bonus expires twelve months after the anniversary that paid it, and a sweep before that leaves it alone.
-- [ ] A loyalty bonus appears in the points the customer is told expire next, on the day its own twelve months are up.
-- [ ] A deposit whose base points have already expired still pays its second anniversary.
-- [ ] A bonus paid for an anniversary already more than twelve months past is credited and then expires, and both events are readable in the log.
-- [ ] A claim refused for want of points quotes a balance that includes whatever loyalty bonus the customer holds.
+- [x] A loyalty bonus can be spent on a reward.
+- [x] A loyalty bonus is spent in oldest-first order alongside base points and streak bonus, with no regard to which reason earned it.
+- [x] A loyalty bonus counts towards the points balance from the moment it is paid.
+- [x] A loyalty bonus expires twelve months after the anniversary that paid it, and a sweep before that leaves it alone.
+- [x] A loyalty bonus appears in the points the customer is told expire next, on the day its own twelve months are up.
+- [x] A deposit whose base points have already expired still pays its second anniversary.
+- [x] A bonus paid for an anniversary already more than twelve months past is credited and then expires, and both events are readable in the log.
+- [x] A claim refused for want of points quotes a balance that includes whatever loyalty bonus the customer holds.
