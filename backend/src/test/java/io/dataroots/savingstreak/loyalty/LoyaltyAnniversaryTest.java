@@ -234,35 +234,43 @@ class LoyaltyAnniversaryTest {
     }
 
     /**
-     * Which anniversary a deposit has coming — the figure the history reports a date and a value
-     * for, and the one the sweep would pay next if the money stayed where it is.
+     * Which anniversary the calendar has coming for a deposit — the one after the last that has
+     * arrived, counted off the same walk that says how many have arrived.
      *
-     * <p>The two have to be the same anniversary. A deposit whose first anniversary arrived this
-     * morning has been paid it and is counting towards its second, so an off-by-one here would show
-     * a customer a date that has already passed and a bonus they have already had.
+     * <p>A calendar reading, and only that. It moves on the instant an anniversary falls, which is
+     * hours before the overnight sweep pays it, so it is not on its own the anniversary that pays
+     * next: crossing it with the record of what has been paid is
+     * {@code LoyaltyService.whenTheDepositsInAnAccountNextPay}'s job, and
+     * {@code TheHistorySaysWhatEachDepositHasBeenPaidAndWhenItNextPaysApiTest} is where that gap is
+     * asserted. What is asserted here is that the two halves of the walk agree: the ordinal coming is
+     * one more than the ordinal passed, at the minute either side of an anniversary.
      */
     @Test
-    void the_anniversary_coming_next_is_the_one_after_the_last_that_arrived() {
+    void the_anniversary_the_calendar_has_coming_is_the_one_after_the_last_that_arrived() {
         Instant landed = brussels(2026, 1, 15, 9, 30);
 
-        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, landed))
+        assertThat(LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(landed, landed))
                 .as("a deposit made a moment ago is counting towards its first")
                 .isEqualTo(1);
-        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 1, 15, 9, 29)))
+        assertThat(LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(
+                landed, brussels(2027, 1, 15, 9, 29)))
                 .as("and still is, a minute short of it")
                 .isEqualTo(1);
-        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 1, 15, 9, 30)))
-                .as("the first has arrived, so the promise is now about the second")
+        assertThat(LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(
+                landed, brussels(2027, 1, 15, 9, 30)))
+                .as("the first has arrived, so the calendar has moved on to the second — whether the "
+                        + "first has been paid is a question this function does not ask")
                 .isEqualTo(2);
-        assertThat(LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2036, 1, 15, 12, 0)))
+        assertThat(LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(
+                landed, brussels(2036, 1, 15, 12, 0)))
                 .as("ten years in, a deposit is not out of anniversaries: it is one year from its "
                         + "eleventh")
                 .isEqualTo(11);
 
         // And the date that comes back is the one a calendar gives, which is the whole point of
         // asking this rather than adding a year to today.
-        assertThat(dayOfAnniversary(landed,
-                LoyaltyAnniversary.theAnniversaryComingNextFor(landed, brussels(2027, 6, 1, 0, 0))))
+        assertThat(dayOfAnniversary(landed, LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(
+                landed, brussels(2027, 6, 1, 0, 0))))
                 .isEqualTo(LocalDate.of(2028, 1, 15));
     }
 

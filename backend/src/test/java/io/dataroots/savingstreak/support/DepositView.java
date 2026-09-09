@@ -21,6 +21,8 @@ import java.time.LocalDate;
  * what the deposit holds now. Both are null together for a deposit that has been emptied, because
  * there is no anniversary left for money that has gone to reach; a deposit holding under ten euros
  * has a date with nothing to be earned on it, which is a different statement and is said as one.
+ * The day can be one just gone: an anniversary that has fallen and is waiting on the overnight sweep
+ * is the one still reported as next, because it is the one that pays next.
  */
 public record DepositView(Long id, BigDecimal amount, long pointsEarned, long basePoints,
                           long streakBonusPoints, long loyaltyBonusPoints,

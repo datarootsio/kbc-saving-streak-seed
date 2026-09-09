@@ -16,6 +16,14 @@ import java.time.LocalDate;
  * than a date with nothing on it: the money has gone, and there is no anniversary left for it to
  * reach. That is the caller's reading of an absence, not a field in here.
  *
+ * <p>The anniversary that pays next, which is usually but not always the next one on the calendar.
+ * An anniversary arrives at whatever time of day the money landed and the sweep that pays it runs at
+ * half past three the following morning, so for those few hours the deposit is owed a bonus nobody
+ * has paid it — and this reports that anniversary, with the day just gone, rather than skipping to
+ * next year and showing a customer nothing earned beside a date twelve months out. The date is
+ * therefore in the past exactly while a payment is outstanding, which is the honest reading of "when
+ * does it next pay".
+ *
  * <p>Points of nothing is a different statement and is said out loud. A deposit holding nine euros
  * has an anniversary coming and will be paid nothing on it, because a tenth of nine euros rounds
  * down — so the rounding is a rule the customer can see rather than a bug they suspect.

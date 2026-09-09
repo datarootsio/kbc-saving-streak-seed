@@ -27,6 +27,11 @@ import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
  * of a withdrawal legible after they make one, and it is nothing at all for a deposit holding under
  * ten euros — a tenth of nine euros rounds down, and the rule is shown rather than hidden.
  *
+ * <p>The day is the one the deposit next pays on rather than the next one its calendar reaches, and
+ * the two differ for the hours between an anniversary falling and the overnight sweep paying it. A
+ * deposit whose anniversary was this lunchtime reports that day, still to be paid, rather than the
+ * same day next year: a date in the past here means a bonus is owed and coming.
+ *
  * <p>Both are null for a deposit that has been emptied, and both together. There is no anniversary
  * left for money that has gone to reach, so "no next anniversary" and "an anniversary worth nothing"
  * are different statements — the same distinction the account's overview draws between having

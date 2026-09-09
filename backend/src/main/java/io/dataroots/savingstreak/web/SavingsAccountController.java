@@ -108,6 +108,17 @@ class SavingsAccountController {
      * withdrawal committing between the two would have a row reporting a bonus worked out on euros
      * that had already left. One transaction, and the two halves of every row describe the same
      * instant of the ledger.
+     *
+     * <p>Package-private like the rest of this class, and the annotation above is honoured all the
+     * same. It is worth saying so, because {@link LoyaltyService#payLoyaltyBonuses} and
+     * {@code PointsService} both carry a comment claiming a proxy cannot advise a method that is not
+     * public and are declared public on the strength of it. That was true of older Spring: the
+     * transaction attribute source used to read public methods only. Since Spring Framework 6.0 the
+     * one this application runs on is built as {@code AnnotationTransactionAttributeSource(false)}
+     * by {@code AbstractTransactionManagementConfiguration}, so that a CGLIB proxy — which can
+     * override a package-private method of a class in its own package — advises this handler exactly
+     * as it advises the overview above it. A DEBUG log from {@code JpaTransactionManager} names the
+     * transaction after this method, which is how to check the claim rather than take it on trust.
      */
     @Transactional(readOnly = true)
     @GetMapping("/{savingsAccountId}/deposits")

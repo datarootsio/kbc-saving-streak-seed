@@ -111,19 +111,26 @@ final class LoyaltyAnniversary {
     }
 
     /**
-     * Which of this deposit's anniversaries is the next one to fall — the one after the last that
+     * Which of this deposit's anniversaries the calendar has coming — the one after the last that
      * has arrived, and the first for a deposit still inside its first year.
      *
-     * <p>Asked of {@link #anniversariesPassedBy} rather than counted again, so that "when does it
-     * next pay" and "what has it passed" cannot disagree: the anniversary reported as coming is
-     * exactly the one the sweep would pay next if the money stayed where it is.
+     * <p>Asked of {@link #anniversariesPassedBy} rather than counted again, so that "which is next"
+     * and "what has it passed" cannot disagree.
+     *
+     * <p>A calendar reading and nothing more, which is why the name says arrived rather than paid.
+     * It is <em>not</em> always the anniversary that pays next: an anniversary counts as arrived the
+     * moment it falls, and the sweep that pays it runs overnight, so between an anniversary falling
+     * and the next sweep this function has already moved on to the following year while the customer
+     * is still owed the one just past. Which anniversary actually pays next is that question crossed
+     * with the record of what has been paid, and it is answered where that record lives:
+     * {@link LoyaltyService#whenTheDepositsInAnAccountNextPay}.
      *
      * <p>There is always a next one. The clock recurs for as long as the money is there, so a
      * deposit ten years old is not out of anniversaries — it is one year from its eleventh. Whether
      * a deposit has a promise left to make is a question about the money still in it, and the
      * caller that asks that is the one holding the amount.
      */
-    static int theAnniversaryComingNextFor(Instant landedAt, Instant now) {
+    static int theAnniversaryAfterTheOnesThatHaveArrived(Instant landedAt, Instant now) {
         return anniversariesPassedBy(landedAt, now) + 1;
     }
 

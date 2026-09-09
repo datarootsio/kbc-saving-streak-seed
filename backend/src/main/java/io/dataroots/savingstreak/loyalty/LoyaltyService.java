@@ -37,8 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>It answers two things and they are the same rule read in two directions: the sweep pays the
  * anniversaries that have arrived, and the read below says when a deposit next pays and what that
  * anniversary is worth at what the deposit holds today. Both work the figure out the same way, from
- * the euros still in the deposit, so what a customer is promised on a Tuesday is what the sweep
- * pays them if the money is still there on the Wednesday.
+ * the euros still in the deposit, and both ask the same record which anniversaries have been paid —
+ * so what a customer is promised on a Tuesday is what the sweep pays them if the money is still
+ * there on the Wednesday, and an anniversary the sweep has not got to yet is one the customer is
+ * still shown as coming rather than one that quietly disappears for a night.
  *
  * <p>There is no rule of its own for forfeiting. What an anniversary pays is worked out from what is
  * still in the deposit <em>at that moment</em>, so a deposit drawn down to nothing is worth nothing
@@ -154,10 +156,26 @@ public class LoyaltyService {
      * account's history rows and has to be able to find the one belonging to a row — and to find
      * that there is none, which is the answer for every deposit that has been emptied.
      *
-     * <p>What each deposit has already been paid is not here and is not asked for. Those are points
-     * in the customer's pot, the ledger reports them against the deposit like every other reason a
-     * deposit has earned under, and reading them a second way here would be a second answer to
-     * disagree with the first.
+     * <p>What each deposit has already been paid is not reported here and is not asked for. Those
+     * are points in the customer's pot, the ledger reports them against the deposit like every other
+     * reason a deposit has earned under, and reading them a second way here would be a second answer
+     * to disagree with the first. The record of <em>which</em> anniversaries have been paid is read,
+     * though, because the next payment cannot be worked out without it — see below.
+     *
+     * <p>The anniversary that pays next, not the next one on the calendar. An anniversary counts as
+     * arrived the moment it falls and the sweep that pays it runs at half past three the following
+     * morning, so a deposit whose anniversary fell this lunchtime is owed a bonus that has not been
+     * paid — and a calendar reading would have skipped straight to next year, showing the customer
+     * nothing earned beside a date twelve months out and then appearing to pay a year late. So the
+     * ordinal reported is the earliest one this deposit is owed and has not been paid, and the
+     * calendar's next only when it is owed nothing. The date can therefore be a day just gone, which
+     * is the honest answer while a payment is outstanding.
+     *
+     * <p>Crossed with what the deposit is worth, because an anniversary that pays nothing writes no
+     * row to have been paid. A deposit holding nine euros is worth nothing on any anniversary, so
+     * every anniversary it has ever passed is for ever unrecorded, and an earliest-unpaid rule on its
+     * own would pin such a deposit's date in the first year of its life. Worth nothing, and the
+     * calendar's next anniversary is the promise — which is also the only one it can keep.
      *
      * <p>This one reads the clock, unlike the sweep above, which is told what time it is. The sweep
      * has a caller that already knows the moment and one transaction in which every anniversary must
@@ -169,35 +187,81 @@ public class LoyaltyService {
     public Map<Long, NextAnniversaryOfADeposit> whenTheDepositsInAnAccountNextPay(long savingsAccountId) {
         Instant now = clock.instant();
         List<DepositStillHoldingMoney> holding = deposits.depositsStillHoldingMoneyIn(savingsAccountId);
+        Set<AnAnniversary> alreadyPaid = whatHasAlreadyBeenPaidFor(holding);
         Map<Long, NextAnniversaryOfADeposit> next = new LinkedHashMap<>();
         long worthAltogether = 0;
         long worthNothing = 0;
+        long owedAnAnniversaryAlready = 0;
         for (DepositStillHoldingMoney deposit : holding) {
-            int ordinal = LoyaltyAnniversary.theAnniversaryComingNextFor(deposit.depositedAt(), now);
-            Instant anniversary = LoyaltyAnniversary.anniversaryOf(deposit.depositedAt(), ordinal);
             long wholeEuros = LoyaltyRate.wholeEurosIn(deposit.remainingAmount());
             long worth = LoyaltyRate.pointsOn(wholeEuros);
+            int ordinal = theAnniversaryThatPaysNextFor(deposit, now, worth, alreadyPaid);
+            Instant anniversary = LoyaltyAnniversary.anniversaryOf(deposit.depositedAt(), ordinal);
             next.put(deposit.id(), new NextAnniversaryOfADeposit(
                     deposit.id(), LoyaltyAnniversary.dayOf(anniversary), worth));
             worthAltogether += worth;
             if (worth == 0) {
                 worthNothing++;
             }
+            if (!anniversary.isAfter(now)) {
+                owedAnAnniversaryAlready++;
+            }
         }
         // One line for the read, with the arithmetic behind it: the moment the anniversaries were
         // counted from, how many deposits still hold money and are therefore being promised
         // something, how many of them are promised nothing because a tenth of what they hold rounds
-        // away, and what the account's next anniversaries come to altogether. A customer asking why
-        // a figure fell after they withdrew is answered by this line either side of the withdrawal.
+        // away, how many are being promised an anniversary that has already fallen and is still
+        // waiting on the sweep, and what the account's next anniversaries come to altogether. A
+        // deposit is counted once there however many anniversaries it is owed, because the promise
+        // reported against it is one date. A customer asking why a figure fell after they withdrew
+        // is answered by this line either side of the withdrawal, and a date in the past on the page
+        // is explained by the count beside it rather than looking like an off-by-a-year.
         //
         // Counts and a total rather than a line per deposit, as the history read beside it does:
         // this runs on every read of an account's history, and a line per deposit would bury the
         // business events in a page load.
         log.debug("when each deposit in an account next pays savingsAccountId={} asAt={} "
                         + "depositsStillHoldingMoney={} worthNothingOnTheirNextAnniversary={} "
+                        + "depositsOwedAnAnniversaryTheSweepHasNotPaid={} "
                         + "nextAnniversariesWorthAltogether={}",
-                savingsAccountId, now, holding.size(), worthNothing, worthAltogether);
+                savingsAccountId, now, holding.size(), worthNothing, owedAnAnniversaryAlready,
+                worthAltogether);
         return next;
+    }
+
+    /**
+     * Which anniversary of this deposit the sweep would pay next if the money stayed where it is:
+     * the earliest one it is owed and has not been paid, and otherwise the next one the calendar has
+     * coming.
+     *
+     * <p>The same two facts the sweep itself decides on, read the other way round. The sweep walks a
+     * deposit's arrived anniversaries and pays each one that has no row and is worth something; this
+     * asks which one it would reach first. So what a customer is promised on the page and what the
+     * sweep pays them overnight are one rule rather than two that have to be kept in step.
+     *
+     * <p>Only when the deposit is worth something, because an anniversary worth nothing is never
+     * written down. The sweep passes such an anniversary over without a row, so there is nothing to
+     * distinguish "not paid yet" from "paid nothing, for ever" — and reading the absence as the
+     * former would pin a nine-euro deposit's promise on an anniversary in its first year and leave it
+     * there. A deposit worth nothing is promised the calendar's next anniversary, which is the only
+     * promise it can keep at what it holds.
+     *
+     * <p>Walks from the first anniversary rather than back from the last, so the earliest debt is the
+     * one reported: a deposit made before this scheme existed and never swept is owed its first
+     * anniversary, not its ninth. One step per year the deposit has been open, on a handful of rows.
+     */
+    private int theAnniversaryThatPaysNextFor(DepositStillHoldingMoney deposit, Instant now,
+                                              long worth, Set<AnAnniversary> alreadyPaid) {
+        int theCalendarsNext =
+                LoyaltyAnniversary.theAnniversaryAfterTheOnesThatHaveArrived(deposit.depositedAt(), now);
+        if (worth > 0) {
+            for (int ordinal = 1; ordinal < theCalendarsNext; ordinal++) {
+                if (!alreadyPaid.contains(new AnAnniversary(deposit.id(), ordinal))) {
+                    return ordinal;
+                }
+            }
+        }
+        return theCalendarsNext;
     }
 
     /**
@@ -251,14 +315,18 @@ public class LoyaltyService {
     }
 
     /**
-     * Which of these deposits' anniversaries have already been paid, as a set the sweep can ask
+     * Which of these deposits' anniversaries have already been paid, as a set that can be asked
      * about one anniversary at a time.
      *
-     * <p>One query for the whole sweep rather than one per anniversary considered: a deposit ten
-     * years old is ten questions, and the rows are the same rows either way.
+     * <p>What both of this module's answers turn on, and the reason they agree: the sweep asks it
+     * which anniversaries it may skip, and the read above asks it which one is owed next. Two
+     * readings of one set of rows cannot disagree the way two separate rules would.
      *
-     * <p>Nothing is asked at all when there is nothing to ask about, which is the ordinary case on a
-     * clock nobody has wound forward.
+     * <p>One query for every deposit rather than one per anniversary considered: a deposit ten years
+     * old is ten questions, and the rows are the same rows either way.
+     *
+     * <p>Nothing is asked at all when there is nothing to ask about — an account whose deposits have
+     * all been emptied, or a clock nobody has wound forward.
      */
     private Set<AnAnniversary> whatHasAlreadyBeenPaidFor(List<DepositStillHoldingMoney> holding) {
         if (holding.isEmpty()) {
@@ -270,7 +338,7 @@ public class LoyaltyService {
         for (AnniversaryAlreadyPaid row : rows) {
             alreadyPaid.add(new AnAnniversary(row.getDepositId(), row.getAnniversaryOrdinal()));
         }
-        log.debug("anniversaries already paid for the deposits in this sweep deposits={} "
+        log.debug("anniversaries already paid for these deposits deposits={} "
                 + "anniversariesAlreadyPaid={}", holding.size(), alreadyPaid.size());
         return alreadyPaid;
     }

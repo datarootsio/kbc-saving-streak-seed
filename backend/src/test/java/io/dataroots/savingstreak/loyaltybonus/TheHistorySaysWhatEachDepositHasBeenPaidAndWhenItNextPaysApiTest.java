@@ -30,6 +30,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * deposit too small to be worth a point, and the whole of the contract is read off the histories at
  * the end.
  *
+ * <p>The clock is read either side of the sweep, because "when it next pays" is a promise about a
+ * payment rather than about a calendar. An anniversary counts as arrived the moment it falls and the
+ * sweep runs overnight, so a deposit spends hours owed a bonus nobody has paid it; through that
+ * window the anniversary reported as coming is the one outstanding, and only once it is paid does
+ * the promise move on to the year after.
+ *
  * <p>What the deposit earned <em>when it landed</em> is asserted throughout as well, unchanged: the
  * base points and the streak bonus of a deposit made two years ago are the same figures they were on
  * the day, and only the total moves. That is the invariant this ticket is easiest to break.
@@ -93,8 +99,25 @@ class TheHistorySaysWhatEachDepositHasBeenPaidAndWhenItNextPaysApiTest extends A
         DepositView toBeEmptied = app.deposit(emptied, ANKE, "500.00");
         assertThat(app.pointsBalanceOf(ANKE)).isEqualTo(1000);
 
-        // A year and a fortnight on, both deposits are paid their first anniversary.
+        // A year and a fortnight on, and before the sweep has run. The first anniversary has arrived
+        // and nobody has paid it, so it is the anniversary the deposit reports as coming: the
+        // customer is owed it, and a page that had skipped to the second would have shown them
+        // nothing earned beside a date twelve months out and then paid them a year late.
         app.daysPass(DAYS_WELL_PAST_A_YEAR);
+
+        assertThat(theEntryFor(leftAlone, paidIn)).satisfies(entry -> {
+            assertThat(entry.loyaltyBonusPoints())
+                    .as("the sweep has not run, so nothing has been paid yet")
+                    .isZero();
+            assertThat(entry.nextAnniversaryOn())
+                    .as("the anniversary that pays next is the one already owed, not next year's")
+                    .isEqualTo(anniversaryOf(paidIn, 1));
+            assertThat(entry.nextAnniversaryPoints())
+                    .as("worth the tenth it is about to pay")
+                    .isEqualTo(50);
+        });
+
+        // And now the sweep pays both deposits their first anniversary.
         app.runJob(THE_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE)).isEqualTo(1000 + 50 + 50);
 
