@@ -1,6 +1,6 @@
 # 02: A withdrawal forfeits only the anniversary it did not reach
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
