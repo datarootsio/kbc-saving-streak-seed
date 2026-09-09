@@ -1,6 +1,6 @@
 # 02: A gift is refused in words and changes nothing
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -32,12 +32,12 @@ the deposit, withdrawal, clock, job and reward refusals, so the reason lands in 
 error shape this application answers in. WARN on every refusal with its kind, the sender, the
 recipient as given, and the reason.
 
-- [ ] A gift to an email address nobody banks under is refused with 404 and says so.
-- [ ] A gift to yourself is refused with 400 and says so.
-- [ ] A gift of zero, of a negative number, and of a fraction are each refused with 400 and each say what was wrong.
-- [ ] A gift of more points than the sender holds is refused with 400, and the refusal quotes the balance they actually have.
-- [ ] A gift from a customer who does not exist is refused with 404.
-- [ ] After any refusal both balances are unchanged, no gift row exists, and neither customer's gift list has grown.
-- [ ] Many gifts in a row from the same customer all go through: there is no cooldown and no daily total.
-- [ ] One gift of the sender's entire balance goes through, leaving them at zero.
-- [ ] Every refusal is one WARN line carrying its kind and its reason.
+- [x] A gift to an email address nobody banks under is refused with 404 and says so.
+- [x] A gift to yourself is refused with 400 and says so.
+- [x] A gift of zero, of a negative number, and of a fraction are each refused with 400 and each say what was wrong.
+- [x] A gift of more points than the sender holds is refused with 400, and the refusal quotes the balance they actually have.
+- [x] A gift from a customer who does not exist is refused with 404.
+- [x] After any refusal both balances are unchanged, no gift row exists, and neither customer's gift list has grown.
+- [x] Many gifts in a row from the same customer all go through: there is no cooldown and no daily total.
+- [x] One gift of the sender's entire balance goes through, leaving them at zero.
+- [x] Every refusal is one WARN line carrying its kind and its reason.
