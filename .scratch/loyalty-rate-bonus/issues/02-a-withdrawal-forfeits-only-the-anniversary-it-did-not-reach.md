@@ -1,6 +1,6 @@
 # 02: A withdrawal forfeits only the anniversary it did not reach
 
-Status: needs-review
+Status: needs-info
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -213,4 +213,197 @@ history both render fully styled, showing €250,00 / €9,00 / €2.221,00, "1.
 the two `ERR_ABORTED` request-failures are React StrictMode's double-mount and appear identically in
 attempt 1's review of ticket 01. Separately, the deposit rows still read "500 base + 0 bonus at
 1,00×" beside a total of 525 — that is ticket 05's job and not this ticket's, noted only so the next
+reader does not think it is new.
+
+## Review feedback - attempt 2
+
+All four points from attempt 1 are fixed, and I proved each of them rather than taking the implement
+log's word for it. The behaviour is right and I drove all seven criteria over HTTP against a running
+application on a throwaway database; the numbers are in "What I ran" below and every checkbox above
+is left ticked on that evidence. Nothing a customer sees is wrong.
+
+It is going back for one thing only: three statements in the new tests that are not true. This is
+the same defect class attempt 1 sent it back for (its point 2), and all three sentences were already
+in the file at that point — attempt 1 simply did not catch them, and attempt 2 did not touch them.
+That makes this a three-sentence edit and nothing else. No production code needs to change, no
+assertion needs to move, and the behaviour needs no further work.
+
+Why it matters here rather than being waved through: the previous round's point 2 was one wrong
+sentence in an assertion description, and the reason given for sending it back was that this is "a
+repository whose tests carry their reasoning in prose and are reviewed on whether they explain
+themselves". Two of the three below tell a future reader that a test detects something it
+demonstrably does not, which is exactly how a load-bearing assertion gets deleted by someone who
+trusted the comment above it.
+
+### 1. `EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest:130-134`
+
+The comment reads:
+
+    // Nor does a sweep run after the withdrawal reconsider an anniversary it has already paid.
+
+and the assertion under it is described as "a sweep run after the money left neither pays again nor
+claws anything back".
+
+The outcome is true and it is criterion 7's second half, so the box stays ticked. The stated
+mechanism is not: by that line both of Anke's deposits hold €0, so
+`DepositRepository.stillHoldingMoneyThatLandedBefore` excludes them and the sweep never looks at
+either anniversary. It cannot "reconsider" one. I saw this directly in the running application's
+log — the second sweep of my session, run immediately after the withdrawal:
+
+    loyalty bonuses paid asAt=2027-09-23T08:26:01.623483Z landedBefore=2026-09-25T08:26:01.623483Z
+      depositsConsidered=0 anniversariesPaid=0 points=0
+
+`depositsConsidered=0`. Nothing was passed over for having been paid, because nothing was considered
+at all — there is no `reason=this anniversary has already been paid` line anywhere in that sweep.
+
+Mutation, to show what the assertion is and is not sensitive to. Replace the guard at
+`LoyaltyService:137` with `if (false)`:
+
+    - if (alreadyPaid.contains(new AnAnniversary(deposit.id(), ordinal))) {
+    + if (false) {
+
+then `./mvnw test`. All three of this ticket's classes stay green. The only classes that go red are
+ticket 01's `AnAnniversaryPaysATenthOfTheDepositsEurosApiTest` and
+`EachAnniversaryPaysAgainFromTheDayTheMoneyLandedApiTest`, both with `expected: 200 OK but was: 500
+INTERNAL_SERVER_ERROR` (the unique constraint firing). So idempotence is genuinely covered — by
+ticket 01, not here.
+
+Fix: say what this sweep actually shows. Something like "a deposit holding nothing is outside the
+sweep's query, so the sweep run after the money left has nothing to pay and nothing to take back;
+that an anniversary already paid is not paid a second time is ticket 01's, asserted there." Do not
+leave a comment claiming this class guards the already-paid guard.
+
+### 2. `EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest:35-36` (class javadoc)
+
+    one balance is then the whole of the arithmetic: a sweep that wrongly paid the
+    emptied deposit would show up as 100 where the test expects 50.
+
+A sweep that wrongly *considered* the emptied deposit would pay a tenth of what it holds, which is a
+tenth of nothing, so the balance would still read 1050 and the test would still pass. Reaching 100
+needs the sweep to read the deposit's original amount as well, which is a second, unrelated fault.
+
+Verified both halves by mutation, each on its own:
+
+- drop `deposit.remainingAmount > 0` from the query at `DepositRepository:108` → all three of this
+  ticket's classes stay green (`Tests run: 3, Failures: 0`, `BUILD SUCCESS`);
+- `getRemainingAmount()` → `getAmount()` at `DepositsService:422` → this class stays green, while
+  `PartlyDrawingADepositDownPaysOnWhatIsLeftInItApiTest` fails with `expected: 1025L but was: 1100L`.
+
+Fix: either name the fault the arrangement really catches (a sweep paying an emptied deposit *on
+what it originally held* would read 1100), or drop the "would show up as 100" clause and justify the
+one-customer arrangement on its own terms.
+
+### 3. `PartlyDrawingADepositDownPaysOnWhatIsLeftInItApiTest:32-33` (class javadoc)
+
+    One balance is then the whole of the arithmetic — a deposit paid on what it started
+    with rather than on what is left in it would show up as 75 where this test expects 25.
+
+75 is wrong. Both deposits started at €500, so paying on what they started with is 50 + 50 = 100
+points of bonus, and the balance reads 1100 against the 1025 the test expects. 75 is the difference
+between 1100 and 1025, not a figure anything reports.
+
+Reproduced: `getRemainingAmount()` → `getAmount()` at `DepositsService:422`, then
+`./mvnw test -Dtest=PartlyDrawingADepositDownPaysOnWhatIsLeftInItApiTest`:
+
+    PartlyDrawingADepositDownPaysOnWhatIsLeftInItApiTest
+      .a_deposit_half_drawn_down_pays_half_and_one_drawn_under_ten_euros_pays_nothing:98
+    expected: 1025L
+     but was: 1100L
+
+Fix: 100 where this test expects 25, or 1100 where it expects 1025 — whichever reads better beside
+the surrounding prose.
+
+### What I confirmed is fixed, so nobody redoes it
+
+- **Attempt 1 point 1 (criterion 7).** Reworded to the reviewer's first option and now genuinely
+  observed. After `expireOldPoints` at day 379 the API reported `pointsBalance=50`,
+  `pointsExpiringNext=50`, `pointsExpiringNextOn=2028-09-09` — twelve months after the 2027-09-09
+  anniversary, i.e. two years after the money landed on 2026-09-09. Across six withdrawals in my
+  session the backend log holds two `insert into loyalty_bonus_paid` statements and **zero** `update
+  loyalty_bonus_paid` and **zero** `delete from loyalty_bonus_paid`. Nothing rewrites the record.
+- **Attempt 1 point 2 (the false newest-first claim).** Fixed, and the replacement assertion really
+  does discriminate. Reversing the allocation (`Collections.reverse(oldestFirst)` in
+  `WithdrawalsService`) fails the class at line 118, `expected: 600L but was: 610L`. Setting that
+  first assertion to 610 as well, so execution reaches the new one, fails at line 134 with
+  `expected: 50L but was: 40L` and the description that names newest-first. Two independent
+  assertions now rule the allocation out, and the class javadoc says out loud that the end total
+  cannot.
+- **Attempt 1 point 3 ("two-thirds of a year").** Gone; the file now says "a little over half a
+  year" and "over six months", which is right for 200 days.
+- **Attempt 1 point 4 (the unguarded DEBUG line).** Guarded, and I checked it at both levels on
+  separate throwaway databases. At DEBUG the line renders, including across two deposits:
+
+      withdrawal drew the oldest deposits down first savingsAccountId=3 withdrawalId=6
+        drawnDown=[depositId=4 landedAt=2027-03-28T08:25:42.635Z took=500.00 leftInIt=0.00]
+                  [depositId=7 landedAt=2028-04-11T08:27:49.329Z took=50.00 leftInIt=50.00]
+
+  At INFO on a second instance, after the same two-deposit withdrawal,
+  `grep -c "drew the oldest deposits down first"` is **0** while `withdrawal accepted` is still
+  there and the not-enough-money refusal still WARNs with its reason. Nothing is rendered for a log
+  nobody is reading.
+- **The non-blocking midnight note.** `paidInOn` now comes off `stays.depositedAt()` in
+  `SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN`, which is the same zone `PointsExpiry:75` derives the
+  reported expiry date in, so the two cannot straddle a Brussels midnight. Referencing that constant
+  from a test is established here (`PointsExpiryTest:35`, `LoyaltyAnniversaryTest:35`, and four
+  `weeklysavings` and `clock` classes).
+
+### What I ran, so you can reproduce it
+
+Checks, both clean on the committed tree: `cd backend && ./mvnw test` → `Tests run: 209, Failures: 0,
+Errors: 0`, `BUILD SUCCESS`; `cd frontend && npm run typecheck` → clean, no output.
+
+Application on a throwaway database with `io.dataroots.savingstreak` at DEBUG, driven with curl.
+Seeded Anke: current account 1, savings 1 and 2. Bram: current account 2, savings 3. Day numbers are
+`POST /api/dev/clock/advance`; the sweeps are `POST /api/dev/jobs/{payLoyaltyBonuses,expireOldPoints}/run`.
+
+| day | what I did | what came back |
+|---|---|---|
+| 0 | €500 → S1, €500 → S2 (Anke); €100 → S3 (Bram) | Anke 1000 pts, Bram 100 pts |
+| 30 | withdraw €500 from S2 | S2 €0, Anke still 1000 — nothing clawed back |
+| 200 | €500 → S3 (Bram) | Bram 600 pts, S3 €600 |
+| 210 | withdraw €100 from S3 | allocated to `depositId=3`, the **oldest**; S3 €500 |
+| 379 | sweep | Anke 1000 → **1050** (S1 only); Bram **600, unchanged** |
+| 379 | withdraw €500 from S1; sweep again | Anke **1050** both times — no clawback, no second payment |
+| 379 | `expireOldPoints` | Anke **50**, `expiringNext=50 on=2028-09-09` |
+| 379 | fresh €500 → S1, €500 → S2 | Anke 1050 |
+| 409 | withdraw €250 from S1, €491 from S2 | S1 €250, S2 €9, Anke still 1050 |
+| 580 | sweep | this sweep paid Bram **50** — a tenth of the whole 500 the untouched newer deposit holds |
+| 580 | €100 → S3, then withdraw €550 | drained `depositId=4` in full, then €50 of `depositId=7`; the paid 50 untouched |
+| 758 | sweep | Anke 1050 → **1075**: +25 on the €250, nothing on the €9, nothing on either emptied deposit's second anniversary |
+
+Criterion 4's discriminating fact is the pair of sweeps, not the end total: **600 at day 379** (had
+the €100 come out of the newer deposit, `depositId=3` would still hold it and would have paid 10) and
+**50 paid by the day-580 sweep** (under newest-first the newer deposit would hold 400 and pay 40).
+
+Log lines behind the numbers, all from `io.dataroots.savingstreak` in the backend log:
+
+    withdrawal drew the oldest deposits down first savingsAccountId=3 withdrawalId=2
+      drawnDown=[depositId=3 landedAt=2026-09-09T08:25:32.678Z took=100.00 leftInIt=0.00]
+
+    loyalty bonus paid depositId=1 customerId=1 anniversary=2027-09-09T08:25:32.624Z ordinal=1
+      remainingAmount=500.00 wholeEuros=500 rate=0.10 points=50 recordId=1
+
+    loyalty bonus paid depositId=4 customerId=2 anniversary=2028-03-28T08:25:42.635Z ordinal=1
+      remainingAmount=500.00 wholeEuros=500 rate=0.10 points=50 recordId=2
+
+    loyalty bonus paid depositId=5 customerId=1 anniversary=2028-09-23T08:26:42.755Z ordinal=1
+      remainingAmount=250.00 wholeEuros=250 rate=0.10 points=25 recordId=3
+
+    deposit passed over for a loyalty bonus depositId=6 customerId=1
+      reason=a tenth of what it still holds rounds down to no points
+      anniversary=2028-09-23T08:26:42.807Z ordinal=1 remainingAmount=9.00 wholeEuros=9
+      theLeastABonusIsPaidOn=10
+
+Refusals, all WARN with their reason and none of them leaving a `drawnDown` line behind: more than
+the account holds ("There is not enough in that savings account to move EUR 9999.00. It holds EUR
+250.00."), zero, negative, another customer's current account, no such savings account, a missing
+amount, and "10,00". Zero ` ERROR ` lines and zero stack traces in the whole run.
+
+Page, for completeness — this ticket changes nothing on it. Signed in as Anke in Chromium with
+Playwright and read the screenshots. The overview and the savings-account-1 history both render
+fully styled, showing € 250,00 / € 9,00, "1.075 points to spend" and "50 points expire on 9
+september 2028", and deposit totals of 525 and 550 that include the loyalty bonuses. Zero
+`pageerror` and zero console errors; the `ERR_ABORTED` request-failures are React StrictMode's
+double-mount and appear identically in the earlier reviews. The deposit rows still read "500 base +
+0 bonus at 1,00×" beside those totals — that is ticket 04's and 05's job, noted only so the next
 reader does not think it is new.
