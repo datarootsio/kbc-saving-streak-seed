@@ -1,6 +1,6 @@
 # 01: A customer can give points to another customer
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** None (can start immediately).
 
@@ -38,7 +38,7 @@ single line and **guarded by `isDebugEnabled`**, because rendering a batch is wo
 thrown away at INFO. That guard is not optional: a previous review made it blocking on
 character-for-character this shape of code in `spend`.
 
-- [ ] `POST /api/customers/{customerId}/gifts`, naming the recipient by the contact details they bank under and the points to give, answers 201 with the gift: its id, a direction of `SENT`, both parties by id and name, the points, and the moment off the application's clock.
+- [x] `POST /api/customers/{customerId}/gifts`, naming the recipient by the contact details they bank under and the points to give, answers 201 with the gift: its id, a direction of `SENT`, both parties by id and name, the points, and the moment off the application's clock.
 - [x] The recipient is found by contact details the way sign-in finds them: trimmed, matched case-insensitively.
 - [x] The sender's points balance falls by exactly the gift and the recipient's rises by exactly the gift.
 - [x] A gift is drawn from the sender's oldest points first.
