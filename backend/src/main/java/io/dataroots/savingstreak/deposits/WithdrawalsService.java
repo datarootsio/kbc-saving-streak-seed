@@ -65,6 +65,10 @@ public class WithdrawalsService {
         Withdrawal withdrawal = withdrawals.save(new Withdrawal(savingsAccountId, toCurrentAccountId, amount, now));
         BigDecimal stillToAllocate = amount;
         List<WithdrawalAllocation> made = new ArrayList<>();
+        // Asked once, before the loop, so that the gathering and the line that says it can never
+        // disagree about whether anybody is listening — a level changed mid-withdrawal would
+        // otherwise print a list missing its first deposits.
+        boolean sayWhichDepositsItCameOutOf = log.isDebugEnabled();
         List<String> drawnDown = new ArrayList<>();
         for (Deposit deposit : oldestFirst) {
             if (stillToAllocate.signum() == 0) {
@@ -76,10 +80,16 @@ public class WithdrawalsService {
                 made.add(new WithdrawalAllocation(withdrawal.getId(), deposit.getId(), taken));
                 stillToAllocate = stillToAllocate.subtract(taken);
                 // Gathered rather than logged here, so that a withdrawal spread over a long list of
-                // deposits is still one line in the log.
-                drawnDown.add("[depositId=" + deposit.getId() + " landedAt=" + deposit.getDepositedAt()
-                        + " took=" + asMoney(taken) + " leftInIt=" + asMoney(deposit.getRemainingAmount())
-                        + "]");
+                // deposits is still one line in the log. Guarded, because rendering a deposit is
+                // work — five values and two amounts formatted per deposit the withdrawal reaches —
+                // and the string is thrown away when the application runs at INFO. The same
+                // reasoning as the streak walk's derivation line, and the opposite of the points
+                // sweep's per-batch line, which passes getters and renders nothing.
+                if (sayWhichDepositsItCameOutOf) {
+                    drawnDown.add("[depositId=" + deposit.getId() + " landedAt=" + deposit.getDepositedAt()
+                            + " took=" + asMoney(taken) + " leftInIt=" + asMoney(deposit.getRemainingAmount())
+                            + "]");
+                }
             }
         }
         allocations.saveAll(made);
@@ -92,8 +102,10 @@ public class WithdrawalsService {
         // loyalty anniversary falls, since what an anniversary pays is worked out from what is left
         // in that deposit. Said out loud at the moment it is decided, because the alternative is
         // inferring it a year later from what an anniversary did or did not pay.
-        log.debug("withdrawal drew the oldest deposits down first savingsAccountId={} withdrawalId={} "
-                + "drawnDown={}", savingsAccountId, withdrawal.getId(), String.join(" ", drawnDown));
+        if (sayWhichDepositsItCameOutOf) {
+            log.debug("withdrawal drew the oldest deposits down first savingsAccountId={} withdrawalId={} "
+                    + "drawnDown={}", savingsAccountId, withdrawal.getId(), String.join(" ", drawnDown));
+        }
         log.info("withdrawal accepted withdrawalId={} savingsAccountId={} toCurrentAccountId={} amount={} "
                         + "withdrawnAt={}", withdrawal.getId(), savingsAccountId, toCurrentAccountId,
                 asMoney(amount), withdrawal.getWithdrawnAt());

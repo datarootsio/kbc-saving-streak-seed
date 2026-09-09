@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.loyaltybonus;
 
 import java.time.LocalDate;
 
+import io.dataroots.savingstreak.streaks.SavingsWeek;
 import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
 import io.dataroots.savingstreak.support.DepositView;
@@ -84,9 +85,14 @@ class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends Api
 
         // Two deposits alike in everything but what happens to them next, so that the only thing
         // this test can be measuring is when the money left.
-        LocalDate paidInOn = app.theDateTheClockReads();
         DepositView stays = app.deposit(leftAlone, ANKE, "500.00");
         DepositView goes = app.deposit(emptiedEarly, ANKE, "500.00");
+        // Read off the deposit's own moment rather than off the clock beside it: the expiry date
+        // asserted at the end of this test is derived from exactly this instant, and a clock read
+        // taken separately can fall on the other side of a Brussels midnight from the deposit and
+        // put the expected day out by one for a reason that has nothing to do with loyalty.
+        LocalDate paidInOn = stays.depositedAt()
+                .atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate();
         assertThat(stays.pointsEarned()).isEqualTo(500);
         assertThat(goes.pointsEarned()).isEqualTo(500);
         assertThat(app.pointsBalanceOf(ANKE)).isEqualTo(1000);
@@ -127,12 +133,14 @@ class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends Api
                 .as("a sweep run after the money left neither pays again nor claws anything back")
                 .isEqualTo(1000 + 50);
 
-        // What that past anniversary was worked out from is still there to be read, after the
-        // deposit it was worked out from has been emptied. The batch it credited is dated at the
-        // anniversary itself, so ending the two year-old batches the deposits earned on the day they
-        // landed leaves exactly the bonus behind, running to twelve months after the anniversary
-        // that paid it — 50 points, which is a tenth of the 500 euros that were in the deposit then
-        // and are not in it now.
+        // The batch that past anniversary paid survives the withdrawal untouched — at the figure it
+        // was paid and at the moment it was earned. Both are read here through the expiry report,
+        // which is the only place this seam says either out loud: ending the two year-old batches
+        // the deposits earned on the day they landed leaves exactly the bonus behind, and what is
+        // then reported as going next is its own 50 points, dated twelve months after the
+        // anniversary rather than twelve months after the withdrawal. The euros the anniversary was
+        // worked out from are recorded too, but nothing serves them yet; the deposit's own loyalty
+        // figures arrive in ticket 04, and asserting on them belongs there.
         app.runJob(THE_EXPIRY_SWEEP);
         assertThat(app.pointsBalanceOf(ANKE))
                 .as("the points the deposits earned when they landed have reached twelve months; the "
