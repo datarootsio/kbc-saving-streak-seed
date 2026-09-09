@@ -1,6 +1,6 @@
 # 02: A withdrawal forfeits only the anniversary it did not reach
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (an anniversary pays a tenth of the euros a deposit still holds).
 
@@ -31,7 +31,16 @@ widen it.
 - [x] A withdrawal that only partly covers the savings comes out of the oldest deposit, and the newer deposits' anniversaries pay in full.
 - [x] A withdrawal after an anniversary has been paid takes back none of those points, and the customer's balance is unchanged by it.
 - [x] A deposit drawn below €10 earns nothing on its anniversary while the remaining euros stay in the account.
-- [ ] Withdrawing changes no earlier bonus record: what a past anniversary was worked out from is still readable afterwards.
+- [x] Withdrawing rewrites no earlier bonus record: the batch a past anniversary paid is still there afterwards at the figure it was paid and dated at the moment it was earned, and a sweep run after the money left neither pays it again nor claws it back.
+
+Criterion 7 was reworded on the reviewer's first option. As first written it asked that "what a past
+anniversary was worked out from is still readable afterwards", and what it was worked out from is
+the euros that were in the deposit — a figure this seam serves through nothing, since the paid
+record and its repository are the Loyalty module's own. Deriving €500 back out of "50 points" is not
+reading the record, so the criterion is now worded as what this seam can observe: the batch survives
+the withdrawal at its figure and its earned-at moment, and nothing rewrites it. **The read itself is
+carried by ticket 04**, which puts a deposit's loyalty figures on the API; asserting on the euros
+belongs there.
 
 ## Review feedback - attempt 1
 
