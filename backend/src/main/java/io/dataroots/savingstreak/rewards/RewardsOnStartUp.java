@@ -25,9 +25,12 @@ import org.springframework.stereotype.Component;
  * same release. Who holds an account is asked of Accounts rather than joined to in SQL: the mapping
  * is that module's answer.
  *
- * <p>Then the old column goes, because it was written {@code not null} and a claim made from now on
- * has no savings account to put in it — the first claim after the upgrade would be refused by the
- * database.
+ * <p>Then whatever the table still demands and a claim cannot supply is taken away, which is what
+ * makes the claim after the upgrade possible at all: the savings account column was written
+ * {@code not null} and a claim has no account to put in it. That step belongs to
+ * {@link RedemptionTable} rather than here, because the same thing is true of any column left
+ * behind by any earlier shape of this table — including one written by an application that is not
+ * this one — and none of those have a backfill worth writing.
  *
  * <p>Runs on every start, and is written so that all but the first do nothing.
  */
@@ -37,10 +40,13 @@ class RewardsOnStartUp implements SmartInitializingSingleton {
     private static final Logger log = LoggerFactory.getLogger(RewardsOnStartUp.class);
 
     private final RedemptionRepository redemptions;
+    private final RedemptionTable table;
     private final AccountsService accounts;
 
-    RewardsOnStartUp(RedemptionRepository redemptions, AccountsService accounts) {
+    RewardsOnStartUp(RedemptionRepository redemptions, RedemptionTable table,
+                     AccountsService accounts) {
         this.redemptions = redemptions;
+        this.table = table;
         this.accounts = accounts;
     }
 
@@ -50,6 +56,19 @@ class RewardsOnStartUp implements SmartInitializingSingleton {
      */
     @Override
     public void afterSingletonsInstantiated() {
+        giveOldClaimsToTheCustomersWhoMadeThem();
+        // Last, and never skipped: the backfill above reads the savings account column and this is
+        // what drops it, so a start that found nothing to hand over still has to clear whatever the
+        // table is holding out for. This is the step that decides whether the next claim can be
+        // written at all.
+        table.takeAwayColumnsNoClaimCanFill();
+    }
+
+    /**
+     * Hands every claim recorded against a savings account to the customer who holds it, so that the
+     * voucher shows up on the page of the person who is carrying it.
+     */
+    private void giveOldClaimsToTheCustomersWhoMadeThem() {
         if (redemptions.claimsStillNameASavingsAccount() == 0) {
             // The ordinary case, and worth a line all the same: it says the question was asked, so
             // that a list that looks short after a restart is not blamed on a step nobody can see.
@@ -75,9 +94,5 @@ class RewardsOnStartUp implements SmartInitializingSingleton {
         log.info("claims recorded before this release given to the customers who hold the accounts "
                         + "they were made from claims={} savingsAccounts={} accountsWithoutAHolder={}",
                 given, savingsAccounts.size(), leftAlone);
-        // Taken away whatever the pass found: a claim left un-owned is one voucher missing from a
-        // page, a column that cannot be written is every claim from here on refused.
-        redemptions.stopNamingTheSavingsAccountClaimsWereMadeFrom();
-        log.info("claims no longer name a savings account column=savings_account_id");
     }
 }

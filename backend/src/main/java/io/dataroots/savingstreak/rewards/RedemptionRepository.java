@@ -54,15 +54,4 @@ interface RedemptionRepository extends JpaRepository<Redemption, Long> {
             nativeQuery = true)
     int giveClaimsMadeFrom(@Param("savingsAccountId") long savingsAccountId,
                            @Param("customerId") long customerId);
-
-    /**
-     * Takes the old column away, once nothing in it is needed any more.
-     *
-     * <p>Dropped rather than left behind: it was written {@code not null}, so a claim made from now
-     * on — which names a customer and no account — could not be inserted beside it at all.
-     */
-    @Transactional
-    @Modifying
-    @Query(value = "alter table redemption drop column savings_account_id", nativeQuery = true)
-    void stopNamingTheSavingsAccountClaimsWereMadeFrom();
 }
