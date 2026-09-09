@@ -1,6 +1,6 @@
 # 01: A customer can give points to another customer
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** None (can start immediately).
 
@@ -38,12 +38,12 @@ single line and **guarded by `isDebugEnabled`**, because rendering a batch is wo
 thrown away at INFO. That guard is not optional: a previous review made it blocking on
 character-for-character this shape of code in `spend`.
 
-- [ ] `POST /api/customers/{customerId}/gifts`, naming the recipient by the contact details they bank under and the points to give, answers 201 with the gift: its id, a direction of `SENT`, both parties by id and name, the points, and the moment off the application's clock.
-- [ ] The recipient is found by contact details the way sign-in finds them: trimmed, matched case-insensitively.
-- [ ] The sender's points balance falls by exactly the gift and the recipient's rises by exactly the gift.
-- [ ] A gift is drawn from the sender's oldest points first.
-- [ ] A gift larger than any one of the sender's batches is drawn from as many as it needs.
-- [ ] Each slice drawn arrives as a batch of the recipient's dated at the moment the original batch was earned, so a gift drawn from batches of different ages arrives as batches of different ages.
-- [ ] Gifted batches are credited under a reason of their own, and that reason does not appear in any deposit's breakdown of what it earned.
-- [ ] One gift row is written per gift, carrying both customers, the points and the moment.
-- [ ] INFO says what went where; the slices drawn are readable at DEBUG; the DEBUG gathering is guarded by `isDebugEnabled`.
+- [x] `POST /api/customers/{customerId}/gifts`, naming the recipient by the contact details they bank under and the points to give, answers 201 with the gift: its id, a direction of `SENT`, both parties by id and name, the points, and the moment off the application's clock.
+- [x] The recipient is found by contact details the way sign-in finds them: trimmed, matched case-insensitively.
+- [x] The sender's points balance falls by exactly the gift and the recipient's rises by exactly the gift.
+- [x] A gift is drawn from the sender's oldest points first.
+- [x] A gift larger than any one of the sender's batches is drawn from as many as it needs.
+- [x] Each slice drawn arrives as a batch of the recipient's dated at the moment the original batch was earned, so a gift drawn from batches of different ages arrives as batches of different ages.
+- [x] Gifted batches are credited under a reason of their own, and that reason does not appear in any deposit's breakdown of what it earned.
+- [x] One gift row is written per gift, carrying both customers, the points and the moment.
+- [x] INFO says what went where; the slices drawn are readable at DEBUG; the DEBUG gathering is guarded by `isDebugEnabled`.
