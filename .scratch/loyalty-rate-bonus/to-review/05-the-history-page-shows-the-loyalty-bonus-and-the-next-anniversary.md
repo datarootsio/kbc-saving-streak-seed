@@ -1,6 +1,6 @@
 # 05: The history page shows the loyalty bonus and the next anniversary
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 04 (a deposit says what it has earned in loyalty and when it next pays).
 
@@ -23,7 +23,7 @@ readable at the narrow widths the history was already built for, in both themes.
 - [x] A deposit shows when it next pays and what that anniversary is worth.
 - [x] A deposit that has never been paid a loyalty bonus shows no loyalty figure rather than a zero.
 - [x] A deposit that has been emptied shows no next anniversary.
-- [ ] The page holds up at the narrow widths the history is already checked at, in light and dark.
+- [x] The page holds up at the narrow widths the history is already checked at, in light and dark.
 - [x] The types the page reads the deposit through carry the three new fields, and the typecheck passes.
 
 ## Review feedback - attempt 1
