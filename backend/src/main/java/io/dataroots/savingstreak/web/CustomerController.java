@@ -224,18 +224,55 @@ class CustomerController {
     GiftResponse give(@PathVariable long customerId, @RequestBody GiftRequest request) {
         if (request == null || request.recipientContactDetails() == null
                 || request.recipientContactDetails().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+            throw refusingTheGift(customerId,
                     "A gift needs the email address of the customer it is going to.");
         }
         if (request.points() == null || request.points().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A gift needs a number of points to give.");
+            throw refusingTheGift(customerId, "A gift needs a number of points to give.");
         }
         return GiftResponse.of(
                 gifting.give(customerId, request.recipientContactDetails(), request.points()));
     }
 
-    /** Worded for whoever reads it: a refusal reaches the screen with its reason unchanged. */
+    /**
+     * Every gift this customer was part of, sent and received together, newest first, each row marked
+     * with the direction it reads in for them.
+     *
+     * <p>One list rather than two endpoints, because a customer's gifting reads chronologically and
+     * which end of a gift they were on is a property of who is asking — the idiom the money-movement
+     * ledger already set with its own direction.
+     *
+     * <p>Asked before the gifts are, so that a customer nobody has heard of is refused rather than
+     * answered with the empty list of somebody who has simply never given or received anything. The
+     * same line every other per-customer read here draws.
+     */
+    @GetMapping("/{customerId}/gifts")
+    List<GiftResponse> giftsOf(@PathVariable long customerId) {
+        if (!accounts.customerExists(customerId)) {
+            throw noSuchCustomer(customerId);
+        }
+        return gifting.giftsOf(customerId).stream().map(GiftResponse::of).toList();
+    }
+
+    /**
+     * A gift refused before the domain ever sees it, because the body did not carry the two things a
+     * gift is made of. Said out loud as well as answered, for the reason every other refusal here is:
+     * the reason reaches whoever asked and nowhere else, and the log is the only copy a reviewer
+     * tracing somebody's complaint can read.
+     *
+     * <p>Kept alongside Gifting's own WARN so that {@code grep "gift rejected"} finds every refused
+     * gift, whichever side of the domain boundary turned it down — a refusal that left no line saying
+     * why would be indistinguishable in the log from a gift nobody ever tried to make.
+     *
+     * <p>A bad request rather than one of Gifting's four, and the kind says which: a field that was
+     * never filled in is a malformed request, where an address that is filled in and belongs to
+     * nobody is a 404. That is the line signing in already draws for itself.
+     */
+    private ResponseStatusException refusingTheGift(long customerId, String reason) {
+        log.warn("gift rejected senderCustomerId={} kind=NOT_A_GIFT reason={}", customerId, reason);
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
+    }
+
     /**
      * The refusal every endpoint here gives for somebody who does not bank at this application, said
      * out loud as well as answered.
