@@ -550,13 +550,18 @@ public class PointsService {
                     fromCustomerId, toCustomerId, points, available, oldestFirst.size(), moved.size(),
                     String.join(" ", drawnOn));
         }
-        // The same line a deposit's own credit and a loyalty bonus write, in the same words, because
+        // Under the same words a deposit's own credit and a loyalty bonus are logged under, because
         // it is the same event: points arriving in somebody's pot. A reviewer greps "points credited"
         // and sees every way this ledger has ever grown, with the reason saying which of them this
-        // was. One line for the move rather than one per slice, because the arrival is one event and
-        // the slices are already in the DEBUG line above.
-        log.info("points credited customerId={} sourceReferenceId={} reason={} points={} batches={}",
-                toCustomerId, sourceReferenceId, PointsReason.GIFT_RECEIVED, points, moved.size());
+        // was. The keys after it differ, as they do between those two — each says what decided its
+        // own credit, and what decided this one is the batches it was sliced out of. One line for the
+        // move rather than one per slice, because the arrival is one event and the slices are already
+        // in the DEBUG line above; the oldest slice's earned-at is on it because the inherited dating
+        // is the whole of this move's rule and a reader at INFO would otherwise not see it at all.
+        log.info("points credited customerId={} sourceReferenceId={} reason={} points={} batches={} "
+                        + "oldestEarnedAt={}",
+                toCustomerId, sourceReferenceId, PointsReason.GIFT_RECEIVED, points, moved.size(),
+                moved.get(0).earnedAt());
         return Optional.of(List.copyOf(moved));
     }
 

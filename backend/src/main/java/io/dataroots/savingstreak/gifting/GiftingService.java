@@ -47,6 +47,29 @@ public class GiftingService {
 
     private static final Logger log = LoggerFactory.getLogger(GiftingService.class);
 
+    /**
+     * How long the typed figure is allowed to be before it is refused on its length alone, without
+     * being read as a number at all.
+     *
+     * <p>It exists because reading a figure is not free the way reading a short one is. Both
+     * {@code new BigDecimal(String)} and {@code stripTrailingZeros()} are quadratic in the number of
+     * digits handed to them, and nothing upstream of here limits how many arrive — the body of a
+     * request is not capped, so a megabyte of digits is a megabyte of digits. Measured, that is
+     * seconds of a core at a hundred thousand digits and minutes at a million, spent before the
+     * request has so much as looked at the database, for an answer that could only ever have been a
+     * shortfall. A few of those at once are the application unusable. The bound is what makes the
+     * cost of reading the figure constant instead of unbounded.
+     *
+     * <p>Sixty-four characters, which is generous on purpose. A number of points anybody could hold
+     * fits in nineteen — {@code Long.MAX_VALUE} is 9223372036854775807 and a pot counts points in a
+     * {@code long} — so the bound is more than three times the longest figure that could ever be
+     * meant, and further still past the longest a person types by hand. That is the point: sixty-four
+     * digits cost nothing at all to read, so being liberal here buys a real figure and a plain typo
+     * alike the answer they deserve, quoting every character of what was typed, and only something
+     * nobody could have typed on purpose is turned away unread.
+     */
+    private static final int MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED = 64;
+
     private final GiftRepository gifts;
     private final AccountsService accounts;
     private final PointsService points;
@@ -70,12 +93,14 @@ public class GiftingService {
      * {@link PointsService#movePoints} carries the reasoning where the dating happens.
      *
      * <p>Five things are refused and nothing else: a sender nobody has heard of, a recipient nobody
-     * banks under, a gift to yourself, a figure that is not a positive whole number of points, and a
-     * gift larger than the sender's balance. The first four are settled before anything at all is
-     * written. The fifth is not: how many points somebody holds needs no gift identifier and could
-     * have been asked before the row was saved, but it is the ledger's answer to the move rather
-     * than a question asked ahead of it, so it comes back after the save. That is what the
-     * save-before-move order below concedes, and the rollback is what makes it safe.
+     * banks under — including no recipient given at all — a gift to yourself, a figure that is not a
+     * positive whole number of points, and a gift larger than the sender's balance. A figure so long
+     * that reading it would cost more than the request is worth is refused as a shortfall, unread.
+     * The first four are settled before anything at all is written. The fifth is not: how many
+     * points somebody holds needs no gift identifier and could have been asked before the row was
+     * saved, but it is the ledger's answer to the move rather than a question asked ahead of it, so
+     * it comes back after the save. That is what the save-before-move order below concedes, and the
+     * rollback is what makes it safe.
      *
      * <p>The gift row is saved <em>before</em> the points move, which is the opposite order to a
      * reward claim — that spends the points and then saves the redemption. It has to be this way
@@ -97,6 +122,15 @@ public class GiftingService {
         Customer sender = accounts.customerWith(senderCustomerId)
                 .orElseThrow(() -> refusing(senderCustomerId, recipientContactDetails, NO_SUCH_CUSTOMER,
                         AccountsService.noSuchCustomer(senderCustomerId)));
+        // No address at all is nobody banking under it, which is the refusal it already has. Said
+        // here rather than left to Accounts because looking somebody up trims the address first and
+        // would throw on nothing at all — a fault rather than one of the five refusals this method
+        // promises. The endpoint asks for the address before it gets this far, in its own words; this
+        // is for every caller that is not the endpoint.
+        if (recipientContactDetails == null || recipientContactDetails.isBlank()) {
+            throw refusing(senderCustomerId, recipientContactDetails, NO_SUCH_RECIPIENT,
+                    AccountsService.noCustomerBanksUnderThoseContactDetails());
+        }
         // Found the way signing in finds somebody: trimmed, matched without regard to case. A
         // customer names their recipient by the address that person banks under, and it should not
         // matter that they capitalised it.
@@ -170,6 +204,19 @@ public class GiftingService {
     private long wholePositivePointsIn(long senderCustomerId, String recipientContactDetails,
                                        String pointsAsTyped) {
         String typed = pointsAsTyped == null ? "" : pointsAsTyped.trim();
+        // Refused on the length of the characters, before BigDecimal is handed them, because reading
+        // them is what costs: see MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED for how much and why.
+        // Answered as a shortfall rather than as a typo, and in the sentence a shortfall already has,
+        // because a figure this long is one: nobody holds that many points, and the person is told
+        // how many they do hold, which is what they need in order to correct it. The quote is cut to
+        // the same bound — a refusal that hands a megabyte of digits back to whoever sent them is the
+        // other half of the same waste, and the first sixty-four characters are more than enough for
+        // anybody to recognise what they typed.
+        if (typed.length() > MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED) {
+            throw refusing(senderCustomerId, recipientContactDetails, NOT_ENOUGH_POINTS,
+                    "That gift costs " + typed.substring(0, MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED)
+                            + "... points, and you have " + points.balanceOf(senderCustomerId) + ".");
+        }
         BigDecimal figure;
         try {
             figure = new BigDecimal(typed);

@@ -1,5 +1,7 @@
 package io.dataroots.savingstreak.giftingpoints;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
 import io.dataroots.savingstreak.support.SeededAccounts;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
@@ -28,6 +31,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code toBigInteger} that throws out of the middle of the refusal it was being built for. The
  * figures below are exactly those, and each of them once escaped this endpoint as a 500 or an
  * {@code OutOfMemoryError} with no refusal logged at all.
+ *
+ * <p>There are two hazards here and they are not the same one. A short string with a ruinous
+ * exponent is dear to <em>write out</em>, and that is the parameterised test below. A long string of
+ * ordinary digits is dear to <em>read in</em>, because parsing is quadratic in the digit count, and
+ * that is the test after it. Both end in the same place — a refusal in words, promptly, with a WARN
+ * behind it — and neither costs the application anything on the way.
  *
  * <p>Asserted from outside over HTTP, because the point is what the endpoint answers: a status a
  * page can act on, a sentence a person can read, and both pots exactly as they were. The refusal
@@ -70,6 +79,47 @@ class APointsFigureIsAnsweredInWordsApiTest extends ApiIntegrationTest {
                 .as("and it comes back as words, quoting what was typed rather than what it parsed to")
                 .isNotBlank()
                 .contains(typed);
+        assertThat(seeded.pointsBalanceOf(ANKE)).isEqualTo(ankeHeld);
+        assertThat(seeded.pointsBalanceOf(BRAM)).isEqualTo(bramHeld);
+    }
+
+    /**
+     * A figure with more digits in it than anybody could read cheaply. This is the other way the
+     * same hazard is reached: not a short string with a ruinous exponent, but a string so long that
+     * simply reading it as a number costs more than the whole request is worth. Both {@code new
+     * BigDecimal(String)} and {@code stripTrailingZeros()} are quadratic in the digit count, so
+     * before this bound existed a two-hundred-thousand-digit figure took ten seconds of a core, a
+     * megabyte of digits took minutes, and the only thing to show for it was a shortfall arriving
+     * long after whoever asked had given up.
+     *
+     * <p>Asserted on three properties and no wording. It comes back a bad request; it comes back
+     * quickly, which is the property the bound exists for; and the sentence is short, because a
+     * refusal that echoes the whole megabyte back is the same waste at the other end. Two hundred
+     * thousand digits rather than a million: it is far past any figure a person could mean, and it
+     * keeps the failure quick to see if this ever regresses.
+     */
+    @Test
+    void a_figure_longer_than_any_number_of_points_is_refused_without_being_read() {
+        String farMoreDigitsThanAnyPotCouldHold = "1" + "0".repeat(200_000);
+        long ankeHeld = seeded.pointsBalanceOf(ANKE);
+        long bramHeld = seeded.pointsBalanceOf(BRAM);
+
+        Instant asked = Instant.now();
+        ResponseEntity<JsonNode> response =
+                give(ANKE, seeded.contactDetailsOf(BRAM), farMoreDigitsThanAnyPotCouldHold);
+        Duration tookToAnswer = Duration.between(asked, Instant.now());
+
+        assertThat(response.getStatusCode())
+                .as("a figure a customer typed is a bad request, never a fault in the application")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(tookToAnswer)
+                .as("and it is refused on its length rather than read as a number, so it answers at "
+                        + "once instead of spending a core on it")
+                .isLessThan(Duration.ofSeconds(5));
+        assertThat(reasonGivenBy(response))
+                .as("in words short enough to read, rather than the whole figure handed back")
+                .isNotBlank()
+                .hasSizeLessThan(200);
         assertThat(seeded.pointsBalanceOf(ANKE)).isEqualTo(ankeHeld);
         assertThat(seeded.pointsBalanceOf(BRAM)).isEqualTo(bramHeld);
     }
