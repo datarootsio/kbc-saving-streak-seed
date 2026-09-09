@@ -1,6 +1,6 @@
 # 03: Gifted points keep the age they were earned at
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -30,11 +30,11 @@ is the tests that say there is no special case here, and that would fail the day
 The clock-moving harness is the seam; a fresh application per class, since these tests wind the clock
 a year forward.
 
-- [ ] Gifted points expire twelve months after they were originally earned, not twelve months after they were given, and the expiry sweep run before that date leaves them alone.
-- [ ] Points given back and forth between two customers do not outlive their twelve months.
-- [ ] Gifted points near the end of their twelve months appear in the points the recipient is told expire next, on the day their own twelve months are up.
-- [ ] Gifted points count towards the recipient's balance from the moment the gift goes through.
-- [ ] Gifted points can be spent on a reward, and are spent oldest-first alongside the recipient's own points.
-- [ ] Received points can be given onward to a third customer, and carry their original age when they go.
-- [ ] A gift of points whose anniversary has already passed is credited and then swept away, and both events are readable in the log.
-- [ ] A claim refused for want of points quotes a balance that includes whatever gifted points the customer holds.
+- [x] Gifted points expire twelve months after they were originally earned, not twelve months after they were given, and the expiry sweep run before that date leaves them alone.
+- [x] Points given back and forth between two customers do not outlive their twelve months.
+- [x] Gifted points near the end of their twelve months appear in the points the recipient is told expire next, on the day their own twelve months are up.
+- [x] Gifted points count towards the recipient's balance from the moment the gift goes through.
+- [x] Gifted points can be spent on a reward, and are spent oldest-first alongside the recipient's own points.
+- [x] Received points can be given onward to a third customer, and carry their original age when they go.
+- [x] A gift of points whose anniversary has already passed is credited and then swept away, and both events are readable in the log.
+- [x] A claim refused for want of points quotes a balance that includes whatever gifted points the customer holds.
