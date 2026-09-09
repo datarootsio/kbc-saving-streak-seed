@@ -268,6 +268,15 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
                 seeded.customerIdOf(senderName));
     }
 
+    /**
+     * Every gift the customer was part of, sent and received together, newest first — the record
+     * both parties read, and the only way from outside to say whether a gift was written down.
+     */
+    public GiftView[] giftsOf(String customerName) {
+        return http.getForObject("/api/customers/{id}/gifts", GiftView[].class,
+                seeded.customerIdOf(customerName));
+    }
+
     /** Which customer this is, for a test asserting on who a gift names. */
     public long customerIdOf(String customerName) {
         return seeded.customerIdOf(customerName);

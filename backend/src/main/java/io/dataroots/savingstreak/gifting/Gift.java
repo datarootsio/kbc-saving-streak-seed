@@ -93,6 +93,14 @@ class Gift {
         return id;
     }
 
+    long getSenderCustomerId() {
+        return senderCustomerId;
+    }
+
+    long getRecipientCustomerId() {
+        return recipientCustomerId;
+    }
+
     long getPoints() {
         return points;
     }

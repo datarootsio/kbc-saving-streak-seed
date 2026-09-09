@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import io.dataroots.savingstreak.accounts.AccountsService;
@@ -192,6 +194,61 @@ public class GiftingService {
     }
 
     /**
+     * Every gift this customer was part of, newest first, each one read from where they stand: the
+     * ones they sent marked {@link GiftDirection#SENT} and the ones they received marked
+     * {@link GiftDirection#RECEIVED}.
+     *
+     * <p>One list rather than two, because the whole story of somebody's gifting reads
+     * chronologically and direction is a property of who is reading a row rather than of the row —
+     * the idiom the money-movement ledger already set. One row per gift is what makes that possible:
+     * there is no second row on the sender's side to reconcile.
+     *
+     * <p>It is asked here rather than derived, and that is why the figure is stored: this list
+     * outlives the points. A gift stays in it after its points have been spent, given onward or
+     * expired, because what somebody did is not undone by what later happened to the points they did
+     * it with.
+     *
+     * <p>Whether the customer exists is not asked. A customer who has been part of no gifts has an
+     * empty list, and one who does not exist is a mistake about who — a distinction the endpoint
+     * draws, in the words and the status every other per-customer read of this application uses.
+     */
+    @Transactional(readOnly = true)
+    public List<GiftGiven> giftsOf(long customerId) {
+        List<Gift> partOf = gifts
+                .findBySenderCustomerIdOrRecipientCustomerIdOrderByGivenAtDescIdDesc(customerId, customerId);
+        // Names are asked of Accounts per customer appearing in the list rather than per row, because
+        // a list of gifts between the same two people would otherwise ask the same question once a
+        // row. Nothing about a name is stored on a gift, so somebody renamed is renamed in every gift
+        // they were ever part of.
+        Map<Long, String> namesById = new HashMap<>();
+        List<GiftGiven> listed = partOf.stream()
+                .map(gift -> new GiftGiven(gift.getId(),
+                        gift.getSenderCustomerId() == customerId
+                                ? GiftDirection.SENT : GiftDirection.RECEIVED,
+                        gift.getSenderCustomerId(), nameOf(gift.getSenderCustomerId(), namesById),
+                        gift.getRecipientCustomerId(), nameOf(gift.getRecipientCustomerId(), namesById),
+                        gift.getPoints(), gift.getGivenAt()))
+                .toList();
+        log.debug("gifts listed customerId={} gifts={} people={}",
+                customerId, listed.size(), namesById.size());
+        return listed;
+    }
+
+    /**
+     * What one of the two customers on a gift is called, asked once however many rows name them.
+     *
+     * <p>A gift can only have been made between two customers who existed, so one this application
+     * has never heard of is not a refusal anybody can act on — it is the record having gone wrong,
+     * and it says so rather than reporting a gift with a blank beside it.
+     */
+    private String nameOf(long customerId, Map<Long, String> namesById) {
+        return namesById.computeIfAbsent(customerId, id -> accounts.customerWith(id)
+                .map(Customer::getName)
+                .orElseThrow(() -> new IllegalStateException("a gift names customer " + id
+                        + ", which this application has never heard of")));
+    }
+
+    /**
      * The whole positive number of points the customer typed, or a refusal saying what was wrong
      * with what they typed.
      *
@@ -213,9 +270,22 @@ public class GiftingService {
         // other half of the same waste, and the first sixty-four characters are more than enough for
         // anybody to recognise what they typed.
         if (typed.length() > MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED) {
+            String asMuchOfItAsIsWorthQuoting =
+                    typed.substring(0, MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED) + "...";
+            // Which of the two refusals it is, decided without parsing: a single pass over the
+            // characters says whether this could be a number at all, and that pass is linear where
+            // reading it as one is quadratic. It matters because the two answers tell the person
+            // different things to do next — a wall of letters is a typo to retype, and a wall of
+            // digits is a figure to reduce — and a shortfall is the wrong sentence for text that was
+            // never a number. A previous review left this wording to be settled here.
+            if (containsSomethingNoNumberContains(typed)) {
+                throw refusing(senderCustomerId, recipientContactDetails, NOT_A_NUMBER_OF_POINTS,
+                        "A gift is a whole number of points, and \"" + asMuchOfItAsIsWorthQuoting
+                                + "\" is not a number.");
+            }
             throw refusing(senderCustomerId, recipientContactDetails, NOT_ENOUGH_POINTS,
-                    "That gift costs " + typed.substring(0, MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED)
-                            + "... points, and you have " + points.balanceOf(senderCustomerId) + ".");
+                    "That gift costs " + asMuchOfItAsIsWorthQuoting + " points, and you have "
+                            + points.balanceOf(senderCustomerId) + ".");
         }
         BigDecimal figure;
         try {
@@ -263,6 +333,27 @@ public class GiftingService {
         } catch (ArithmeticException tooLargeToCountInPoints) {
             throw moreThanAnybodyCouldEverHold(senderCustomerId, recipientContactDetails, typed);
         }
+    }
+
+    /**
+     * Whether the text holds a character that appears in no number at all, in one pass and without
+     * reading any of it as a figure.
+     *
+     * <p>Deliberately only that much. It says "this is certainly not a number", never "this is a
+     * number": text made only of these characters can still be nonsense ("1e2e3"), and an over-long
+     * figure that is number-shaped is answered as the shortfall it almost certainly is. Telling those
+     * apart exactly would mean parsing the figure, which is the cost {@link
+     * #MOST_CHARACTERS_A_NUMBER_OF_POINTS_CAN_NEED} exists to avoid — and it is only ever asked about
+     * text far longer than anybody types on purpose.
+     */
+    private static boolean containsSomethingNoNumberContains(String typed) {
+        for (int at = 0; at < typed.length(); at++) {
+            char character = typed.charAt(at);
+            if ((character < '0' || character > '9') && "+-.eE".indexOf(character) < 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
