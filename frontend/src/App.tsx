@@ -15,12 +15,14 @@ import {
   fetchDeposits,
   fetchGifts,
   fetchMoneyMovements,
+  fetchNotifications,
   fetchWithdrawals,
   fetchRewards,
   fetchSavingsAccount,
   giveGift,
   makeDeposit,
   makeWithdrawal,
+  markNotificationsRead,
   signIn,
   SignInFailed,
   type ClaimedReward,
@@ -29,6 +31,8 @@ import {
   type CustomerAccounts,
   type Gift,
   type MoneyMovement,
+  type Notification,
+  type NotificationReason,
   type RecordedDeposit,
   type RecordedWithdrawal,
   type Reward,
@@ -316,6 +320,11 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
   // account.
   const [claimed, setClaimed] = useState<ClaimedReward[] | null>(null)
   const [claimedError, setClaimedError] = useState<string | null>(null)
+  // Everything the rules have said to this customer, read and unread together. Held here rather
+  // than in the bell that shows it, because it is read on every screen and because the savings
+  // account page carries the notice that concerns it: one list, loaded once, shown twice.
+  const [notifications, setNotifications] = useState<Notification[] | null>(null)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
   // Which of the three screens is showing. A union rather than a pair of nullable fields, so that
   // "an account is open and so is the history" is not a state this component can get into.
   const [screen, setScreen] = useState<Screen>({ at: 'home' })
@@ -350,11 +359,57 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
       })
   }, [customer.id])
 
+  const loadNotifications = useCallback((signal?: AbortSignal) => {
+    fetchNotifications(customer.id, signal)
+      .then((said) => {
+        if (signal?.aborted !== true) {
+          setNotifications(said)
+          setNotificationsError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (signal?.aborted !== true) {
+          setNotificationsError(problem.message)
+        }
+      })
+  }, [customer.id])
+
   useEffect(() => {
     const request = new AbortController()
     loadAccounts(request.signal)
     return () => request.abort()
   }, [loadAccounts])
+
+  useEffect(() => {
+    const request = new AbortController()
+    loadNotifications(request.signal)
+    return () => request.abort()
+  }, [loadNotifications])
+
+  /**
+   * Reads them again when the page is looked at again, and that is the whole of the refreshing this
+   * feature does. There is no interval anywhere in this application and this does not add the
+   * first: nothing is asked for while nobody is looking, and coming back to the tab asks once.
+   *
+   * <p>It is here for the trainer. Every other thing that raises a notification is something done
+   * on this page — a deposit, a withdrawal, a claim, a gift — and each of those already says so
+   * through the callbacks below. A wound-forward clock and a job run are not: they are done against
+   * the API from a terminal, and without this the bell would still be showing last night's count
+   * when the trainer turned back to the browser to demonstrate what the sweep had just raised.
+   */
+  useEffect(() => {
+    const lookedAtAgain = () => {
+      if (document.visibilityState === 'visible') {
+        loadNotifications()
+      }
+    }
+    document.addEventListener('visibilitychange', lookedAtAgain)
+    window.addEventListener('focus', lookedAtAgain)
+    return () => {
+      document.removeEventListener('visibilitychange', lookedAtAgain)
+      window.removeEventListener('focus', lookedAtAgain)
+    }
+  }, [loadNotifications])
 
   useEffect(() => {
     const request = new AbortController()
@@ -381,6 +436,19 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
         // One level deep is as deep as this application goes, so the way back is always the
         // overview — from an open account and from the history alike.
         onBack={screen.at === 'home' ? null : () => setScreen({ at: 'home' })}
+        notifications={notifications}
+        notificationsError={notificationsError}
+        // Opening the panel is the customer having looked, so everything in it is marked read in
+        // one call — and that call answers with the list as it now stands, which is what the
+        // panel then shows. One round trip: the count drops and the rows stay, dimmed.
+        onOpened={() =>
+          markNotificationsRead(customer.id)
+            .then((said) => {
+              setNotifications(said)
+              setNotificationsError(null)
+            })
+            .catch((problem: Error) => setNotificationsError(problem.message))
+        }
       />
 
       <div className="shell">
@@ -398,6 +466,7 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               // list beside them, so both are read again.
               loadAccounts()
               loadClaimed()
+              loadNotifications()
             }}
             onOpen={(savingsAccountId) => setScreen({ at: 'savings-account', savingsAccountId })}
             onOpenHistory={() => setScreen({ at: 'history' })}
@@ -414,8 +483,13 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               savingsAccountId={screen.savingsAccountId}
               currentAccounts={accounts?.currentAccounts ?? []}
               // Every figure on the overview is behind whatever just happened here: the money in
-              // both accounts, and the points the deposit earned.
-              onChanged={loadAccounts}
+              // both accounts, and the points the deposit earned. The notifications too: a rung
+              // this deposit has just passed, or a bonus the withdrawal has just exposed, is
+              // raised by the overnight sweep against balances this has just moved.
+              onChanged={() => {
+                loadAccounts()
+                loadNotifications()
+              }}
             />
           </main>
         )}
@@ -440,7 +514,10 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               pointsToSpend={accounts?.pointsBalance ?? null}
               // The points that paid for the gift are the overview's headline figure, so the
               // accounts are read again — the same thing a claim does with the points it spent.
-              onGiven={loadAccounts}
+              onGiven={() => {
+                loadAccounts()
+                loadNotifications()
+              }}
             />
           </main>
         )}
@@ -454,15 +531,21 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
   )
 }
 
-/** Who is signed in, the way back, and the way out. */
+/** Who is signed in, what has been said to them, the way back, and the way out. */
 function TopBar({
   customer,
   onSignOut,
   onBack,
+  notifications,
+  notificationsError,
+  onOpened,
 }: {
   customer: Customer
   onSignOut: () => void
   onBack: (() => void) | null
+  notifications: Notification[] | null
+  notificationsError: string | null
+  onOpened: () => void
 }) {
   return (
     <header className="topbar">
@@ -482,6 +565,14 @@ function TopBar({
           )}
         </div>
         <div className="who">
+          {/* In the bar rather than on the overview, because it is the one thing here that is
+              about something the customer has not been to look at. It stays on screen wherever
+              they are, which is the whole reason a bell is a bell. */}
+          <Bell
+            notifications={notifications}
+            notificationsError={notificationsError}
+            onOpened={onOpened}
+          />
           <span className="avatar" aria-hidden="true">{initialsOf(customer.name)}</span>
           <button type="button" className="quiet" onClick={onSignOut}>
             Sign out
@@ -490,6 +581,241 @@ function TopBar({
       </div>
     </header>
   )
+}
+
+/**
+ * The bell: how many notifications have not been read, and the panel behind it.
+ *
+ * <p>The count is a badge only when there is one to show. A 0 in a circle is a figure somebody has
+ * to read before they can find out that nothing happened, and the absence of the badge says the
+ * same thing faster. The badge is decoration for anything that cannot see it — the button's own
+ * label carries the count in words, so a screen reader is told "3 unread" rather than being handed
+ * a bare number next to a picture of a bell.
+ *
+ * <p>Opening it is the customer having looked, so it marks everything read in one call. The rows do
+ * not go anywhere: they dim, and stay. Nothing is ever deleted here and there is no dismissing —
+ * this is a record of what the rules decided, and a training application should not let you throw
+ * away the evidence that one fired.
+ */
+function Bell({
+  notifications,
+  notificationsError,
+  onOpened,
+}: {
+  notifications: Notification[] | null
+  notificationsError: string | null
+  onOpened: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  // The bell and its panel together, so that a press inside the panel is not a press outside it.
+  const holding = useRef<HTMLDivElement>(null)
+
+  const unread =
+    notifications === null ? 0 : notifications.filter((said) => said.readAt === null).length
+
+  // A panel that hangs over the page closes the two ways anything hanging over a page closes:
+  // Escape, and a press anywhere else. Listened for only while it is open, so a closed bell adds
+  // nothing to the page's handling of a key or a click.
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const elsewhere = (pressed: MouseEvent) => {
+      if (holding.current !== null && !holding.current.contains(pressed.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const escaped = (key: KeyboardEvent) => {
+      if (key.key === 'Escape') {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', elsewhere)
+    document.addEventListener('keydown', escaped)
+    return () => {
+      document.removeEventListener('mousedown', elsewhere)
+      document.removeEventListener('keydown', escaped)
+    }
+  }, [open])
+
+  return (
+    <div className="bell-holder" ref={holding}>
+      <button
+        type="button"
+        className="quiet bell"
+        aria-expanded={open}
+        aria-controls="notifications"
+        aria-label={
+          unread === 0
+            ? 'Notifications, none unread'
+            : `Notifications, ${points.format(unread)} unread`
+        }
+        onClick={() => {
+          const opening = !open
+          setOpen(opening)
+          if (opening) {
+            // Once per opening, and it is also the read: the call answers with the list as it now
+            // stands, so the panel about to be drawn is showing what the backend has this moment
+            // rather than what it had when the page was last loaded.
+            onOpened()
+          }
+        }}
+      >
+        <BellIcon />
+        {unread > 0 && (
+          <span className="bell-count" aria-hidden="true">
+            {points.format(unread)}
+          </span>
+        )}
+      </button>
+
+      {open && <NotificationsPanel notifications={notifications} error={notificationsError} />}
+    </div>
+  )
+}
+
+/**
+ * Everything that has been said to this customer, newest first, read and unread together.
+ *
+ * <p>Read rows are dimmed rather than dropped. The panel is a record and not an inbox that empties:
+ * a customer who has seen that their balance passed EUR 1.000 should still be able to find the
+ * night it did.
+ *
+ * <p>The order is the backend's — newest first, as it sends them — and nothing here sorts. A row
+ * says which pot it is about, because a customer holding two savings accounts cannot tell from
+ * "your savings" alone which one crossed the rung.
+ */
+function NotificationsPanel({
+  notifications,
+  error,
+}: {
+  notifications: Notification[] | null
+  error: string | null
+}) {
+  return (
+    <div className="notifications" id="notifications" aria-label="Notifications" role="group">
+      <h2>Notifications</h2>
+
+      {error !== null && <Refusal reason={error} />}
+
+      {notifications === null && error === null && (
+        <Waiting label="Loading your notifications…" bars={['100%', '70%']} />
+      )}
+
+      {notifications !== null && notifications.length === 0 && (
+        <p className="nothing">Nothing has happened yet.</p>
+      )}
+
+      {notifications !== null && notifications.length > 0 && (
+        <ul className="said">
+          {notifications.map((said) => (
+            // Three things in the class: the row, whether it is the one warning of the four,
+            // and whether it has been read. Read last, because dimming is the modifier that
+            // applies to any of them.
+            <li key={said.id} className={rowFor(said)}>
+              <span className="notification-icon" aria-hidden="true">
+                <WhatHappenedIcon reason={said.reason} />
+              </span>
+              <div className="notification-words">
+                <p className="notification-what">
+                  <WhatHappened notification={said} />
+                </p>
+                <span className="when">
+                  {dateAndTime.format(new Date(said.raisedAt))} · Savings account{' '}
+                  {said.savingsAccountId}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A notification row's classes: what it is, whether it is the warning, and whether it has been
+ * read. Worked out here rather than inline, because three conditions strung through a template
+ * literal in the middle of the markup is a sentence nobody can read.
+ */
+function rowFor(said: Notification): string {
+  const warning = said.reason === 'LOYALTY_BONUS_AT_RISK' ? ' at-risk' : ''
+  const dimmed = said.readAt === null ? '' : ' read'
+  return `notification${warning}${dimmed}`
+}
+
+/**
+ * What a rule decided was worth saying, as a sentence, out of the reason and the figures behind it.
+ *
+ * <p>The sentence is written here and not in Java, which is the same bargain {@link WhatItEarned}
+ * strikes with "7 base + 2 bonus at 1,30× + 30 loyalty": every euro and every date in this
+ * application is written Dutch-style in the browser, and a sentence composed on the backend would
+ * fork that formatting into a second place that will drift. Both figures go through the formatters
+ * this page already has — {@link asADay} for the day, so an anniversary is written the way the
+ * expiry deadline and the deposits table write theirs.
+ *
+ * <p>The four sentences say four different things and are deliberately not one sentence with a
+ * word swapped:
+ *
+ * - a rung reached is a plain statement of something good, and says nothing else;
+ * - a rung lost is the same statement in the other direction, and does not scold;
+ * - an anniversary coming is a promise: what arrives, and when;
+ * - an anniversary at risk is that promise plus the one thing the customer can act on — that a
+ *   withdrawal now comes out of this deposit before any other, which is `WithdrawalsService`'s
+ *   oldest-deposit-first rule said out loud to the person it protects.
+ *
+ * <p>A figure the reason says should be there and is not draws nothing at all. Which fields are
+ * filled in is decided by the reason and the backend keeps that total, so this is unreachable in
+ * practice; drawing "Your savings passed" with a gap where the money goes would be worse than
+ * drawing nothing.
+ */
+function WhatHappened({ notification }: { notification: Notification }) {
+  const { amount, occursOn, points: worth, reason } = notification
+  switch (reason) {
+    case 'BALANCE_THRESHOLD_REACHED':
+      return amount === null ? null : <>Your savings passed {euros.format(amount)}</>
+    case 'BALANCE_THRESHOLD_LOST':
+      return amount === null ? null : <>Your savings fell below {euros.format(amount)}</>
+    case 'LOYALTY_BONUS_ABOUT_TO_PAY':
+    case 'LOYALTY_BONUS_AT_RISK':
+      if (worth === null || occursOn === null) {
+        return null
+      }
+      return (
+        <>
+          {points.format(worth)} {worth === 1 ? 'point arrives' : 'points arrive'} on{' '}
+          {asADay(occursOn)}
+          {reason === 'LOYALTY_BONUS_AT_RISK' && (
+            <span className="notification-warning">
+              {' '}
+              — money taken out now comes out of this deposit first
+            </span>
+          )}
+        </>
+      )
+  }
+}
+
+/**
+ * The picture beside the sentence: which way a balance went, or that points are coming and whether
+ * anything stands between them and the next withdrawal.
+ *
+ * <p>The one warning of the four gets the warning icon the refusals already use, and the two
+ * anniversaries share the spark that means points everywhere else on these screens. A reason is a
+ * rule rather than a severity, so the reading of it — calm or not — is made here, on the page,
+ * which is the only place it belongs.
+ */
+function WhatHappenedIcon({ reason }: { reason: NotificationReason }) {
+  switch (reason) {
+    case 'BALANCE_THRESHOLD_REACHED':
+      return <RisingIcon />
+    case 'BALANCE_THRESHOLD_LOST':
+      return <FallingIcon />
+    case 'LOYALTY_BONUS_ABOUT_TO_PAY':
+      return <SparkIcon />
+    case 'LOYALTY_BONUS_AT_RISK':
+      return <WarningIcon />
+  }
 }
 
 /**
@@ -2611,6 +2937,68 @@ function GivingIcon() {
       {/* The points, on their way there. */}
       <path
         d="M2.5 12.5h6.2M5.8 9.6l2.9 2.9-2.9 2.9"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * A bell, and nothing hanging off it. The count is a badge drawn beside it in the markup rather
+ * than a dot inside the picture, so that the number is text a browser can size and read out.
+ */
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 9a6 6 0 0 1 12 0c0 4 1.2 5.4 2 6.4H4c.8-1 2-2.4 2-6.4Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M10 18.5a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** A balance that has climbed past something: the line it stood on, and an arrow off the top. */
+function RisingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 16h16"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 13V4m0 0L8 8m4-4 4 4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** The same picture the other way up: a balance that no longer reaches the line it did. */
+function FallingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 8h16"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 11v9m0 0 4-4m-4 4-4-4"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
