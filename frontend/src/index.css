@@ -2158,11 +2158,71 @@ button.quiet.back svg {
   letter-spacing: 0;
 }
 
+/* -------------------------------------------------- giving points away */
+
+/* The people who bank here are one question with one answer, and a fieldset is what says so to
+   anything reading the page out. Its own frame is taken off: the cards inside already draw one
+   each, and a box around a grid of boxes is a second border saying nothing. */
+.who-for {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Dressed as the panel's own h3, because that is what it is doing here — naming the part of the
+   form underneath it. A legend rather than a heading so the naming reaches the radios themselves. */
+.who-for legend {
+  padding: 0;
+  color: var(--brand-deep);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* The figure and the button that sends it, under the people it is going to. The deposit form's
+   row without its padding: that one sits in a panel with none of its own, and this one does not. */
+.give-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.give-line label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Figures line up under each other, the way an amount in the deposit box does. */
+.give-line input {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Which way the gift went and what it was worth, together in the stub's last column: two facts
+   about one gift, and the chip is the one a reader scans the list for. */
+.gift-outcome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 30rem) {
   .transfer-area {
     grid-template-columns: 1fr;
+  }
+
+  /* The chip and the badge stack rather than squeezing the name beside them off the stub: at this
+     width the last column of a gift is wider than the words it sits next to. */
+  .gift-outcome {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
   }
 
   .withdrawal {
