@@ -1,6 +1,6 @@
 # 02: An anniversary coming soon says whether it is first in line
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (Crossing a balance rung raises a notification).
 
@@ -37,20 +37,20 @@ dialect writes composite unique clauses nowhere under `ddl-auto=update`. The ind
 balance rows from ticket 01 stay outside it — they cannot use an index, because a rung crossed twice
 must be announced twice.
 
-- [ ] A deposit within thirty days of its anniversary is announced, carrying the day and what that
+- [x] A deposit within thirty days of its anniversary is announced, carrying the day and what that
       day is worth at what the deposit holds now
-- [ ] A deposit further off than thirty days is not announced
-- [ ] A deposit whose anniversary rounds down to no points is not announced
-- [ ] A deposit holding no money is not announced
-- [ ] The oldest deposit still holding money in an account is announced as `LOYALTY_BONUS_AT_RISK`
-- [ ] A deposit standing behind an older one is announced as `LOYALTY_BONUS_ABOUT_TO_PAY`
-- [ ] A deposit that becomes the oldest still holding money is announced again, as at risk, for the
+- [x] A deposit further off than thirty days is not announced
+- [x] A deposit whose anniversary rounds down to no points is not announced
+- [x] A deposit holding no money is not announced
+- [x] The oldest deposit still holding money in an account is announced as `LOYALTY_BONUS_AT_RISK`
+- [x] A deposit standing behind an older one is announced as `LOYALTY_BONUS_ABOUT_TO_PAY`
+- [x] A deposit that becomes the oldest still holding money is announced again, as at risk, for the
       same anniversary
-- [ ] A second sweep does not announce an anniversary already announced under the same reason
-- [ ] An anniversary paid by the loyalty sweep earlier the same night is not announced as still
+- [x] A second sweep does not announce an anniversary already announced under the same reason
+- [x] An anniversary paid by the loyalty sweep earlier the same night is not announced as still
       coming
-- [ ] The unique index exists in the database and holds when it is written to directly
-- [ ] Nothing in this module multiplies by the loyalty rate; the figures come from
+- [x] The unique index exists in the database and holds when it is written to directly
+- [x] Nothing in this module multiplies by the loyalty rate; the figures come from
       `NextAnniversaryOfADeposit`
-- [ ] Each deposit passed over is one DEBUG line carrying the deposit and the reason it was passed
+- [x] Each deposit passed over is one DEBUG line carrying the deposit and the reason it was passed
       over
