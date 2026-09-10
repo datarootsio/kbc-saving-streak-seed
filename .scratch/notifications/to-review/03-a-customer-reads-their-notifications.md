@@ -1,6 +1,6 @@
 # 03: A customer reads their notifications
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 02 (An anniversary coming soon says whether it is first in line).
 
@@ -29,11 +29,11 @@ Both endpoints are customer-scoped, matching money-movements, redemptions and gi
 customer is refused with the sentence `AccountsService.noSuchCustomer` already owns, mapped to 404
 in `RefusalsAsHttp` alongside the others.
 
-- [ ] A customer's notifications come back newest first, read and unread together
-- [ ] A customer with nothing comes back as an empty list rather than an error
-- [ ] Marking read sets a moment on every unread notification and returns the updated list
-- [ ] Marking read twice leaves the first moment alone and changes nothing
-- [ ] A notification's figures match the sweep that raised it, field for field
-- [ ] Naming a customer who does not exist is refused with a readable reason and a 404
-- [ ] One INFO line when a customer marks read, carrying the customer and how many were marked
-- [ ] Every refusal is one WARN line carrying its kind and its reason
+- [x] A customer's notifications come back newest first, read and unread together
+- [x] A customer with nothing comes back as an empty list rather than an error
+- [x] Marking read sets a moment on every unread notification and returns the updated list
+- [x] Marking read twice leaves the first moment alone and changes nothing
+- [x] A notification's figures match the sweep that raised it, field for field
+- [x] Naming a customer who does not exist is refused with a readable reason and a 404
+- [x] One INFO line when a customer marks read, carrying the customer and how many were marked
+- [x] Every refusal is one WARN line carrying its kind and its reason
