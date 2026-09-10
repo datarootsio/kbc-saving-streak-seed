@@ -1,6 +1,6 @@
 # 05: Each customer's list of the gifts they were part of
 
-Status: needs-review
+Status: done
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -170,3 +170,73 @@ moved.
   margin.
 - The `AGiftListIsOnlyReadForACustomerWhoExistsApiTest` note is left as it stands, as the reviewer
   intended.
+
+## Verified
+
+Reviewed on attempt 2 against `agentic_engineered..ticket/05-each-customers-list-of-the-gifts-they-were-part-of`.
+The whole of that range is three new API test classes (391 lines, no production code): the endpoint,
+`GiftingService.giftsOf`, the repository ordering and the `GiftView` harness record all landed under
+ticket 01 (`f0b0cfe`) and are on the base branch already. So what this ticket adds is the proof of
+the seven criteria, and that is what was judged.
+
+**Checks, run myself.** `cd backend && ./mvnw test` → `Tests run: 256, Failures: 0, Errors: 0`,
+BUILD SUCCESS. `cd frontend && npm run typecheck` → exit 0. The three new classes were then re-run
+three more times in a row, all green, because the attempt-1 blocker was a timing assertion.
+
+**The attempt-1 blocker is genuinely fixed, not merely answered.**
+`BothPartiesReadTheSameGiftFromTheirOwnEndApiTest:103-110` now reads
+`.isAfterOrEqualTo(beforeSheGave.truncatedTo(ChronoUnit.MILLIS)).isBeforeOrEqualTo(afterSheGave)`.
+That is the exact promise: `GiftingService:159-160` records
+`clock.instant().truncatedTo(ChronoUnit.MILLIS)`, truncation is monotone, so
+`truncate(gift) >= truncate(beforeSheGave)` always holds while the untruncated bound could sort
+above it. The running application prints both halves on one line —
+`gift takes its moment from the application clock senderCustomerId=1 clockReads=2027-09-12T07:03:53.494154Z recordedMoment=2027-09-12T07:03:53.494Z`
+— so the mismatch the previous reviewer reasoned about is visible in the log. The two-sided check is
+kept. The two non-blocking notes are addressed too: the end-of-sweep balance claim is narrowed to
+Bram's pot with the reasoning in the javadoc, and the wind-forward target is pinned by
+`assertThat(app.pointsExpiringNextOnOf(ANKE)).isEqualTo(sheEarnedThemOn.plusYears(1))` right after
+the deposit.
+
+**Driven by hand over HTTP** against the running application on a throwaway database (backend-only
+ticket: the frontend has no gifting screen yet — the only `gift` in `frontend/src` is the
+unknown-reward fallback icon). Full transcript in
+`.scratch/peer-to-peer-gifting/logs/05-each-customers-list-of-the-gifts-they-were-part-of.review.2.curl.log`.
+
+- Empty, not a 404: `GET /api/customers/1/gifts` and `/2/gifts` on the fresh database → `200 []`.
+- Unknown customer: `/999/gifts`, `/0/gifts`, `/-1/gifts` and `/9223372036854775807/gifts` each →
+  `404 {"detail":"There is no customer 999."}` (and so on). `/abc/gifts` → Spring's `400`, as every
+  other per-customer read answers it.
+- Anke deposited EUR 60,00 and gave Bram 40. Her row:
+  `{"id":1,"direction":"SENT","senderId":1,"senderName":"Anke Peeters","recipientId":2,"recipientName":"Bram De Vos","points":40,"givenAt":"2026-09-10T07:02:45.095Z"}`;
+  his: the same `id":1` as `"direction":"RECEIVED"`. Both parties by id and name, the points and the
+  moment on both rows.
+- Clock +1 day, Bram gave 10 back. Her list read `RECEIVED`(2) over `SENT`(1); his read `SENT`(2)
+  over `RECEIVED`(1) — the same two records, direction decided by the reader, newest first.
+- Bram spent all 30 points he held on three charity donations (balance 0) — both gifts still in both
+  lists, unchanged.
+- Clock +366 days and `POST /api/dev/jobs/expireOldPoints/run` → both balances 0,
+  `pointsExpiringNext` null, both gifts still in both lists with their figures, names and directions
+  intact.
+- Two gifts 15 ms apart sorted id-desc within the same reading (4 above 3), so the tie-break holds.
+
+**Logs read, not just response bodies** (`...05-....app.2.backend.log`). Every read left
+`DEBUG i.d.savingstreak.gifting.GiftingService : gifts listed customerId=1 gifts=4 people=2`
+(the count rising 0 → 1 → 2 → 4 across the session); every gift left
+`INFO ... : gift given giftId=4 senderCustomerId=1 recipientCustomerId=2 points=2 givenAt=2027-09-12T07:03:53.509Z`;
+every 404 left `WARN i.d.savingstreak.web.CustomerController : request rejected customerId=999 reason=There is no customer 999.`
+The sweep explained itself over inherited dates —
+`points batch expired batchId=3 customerId=1 reason=GIFT_RECEIVED earnedAt=2026-09-10T07:02:45.051Z anniversary=2027-09-10T07:02:45.051Z pointsExpired=10`.
+No ERROR-level line, no stack trace and no 5xx anywhere in the log; the Vite log holds only its
+start-up banner.
+
+**The new tests were checked for bite, not only for green.** Two mutations applied to production
+code locally and reverted (nothing committed):
+`OrderByGivenAtDescIdDesc` → `...AscIdAsc` turns both list tests red (`expected: 2L but was: 1L` on
+the top-of-list identifiers), and flipping the `SENT`/`RECEIVED` ternary in
+`GiftingService.giftsOf` turns them red on `expected: "SENT" but was: "RECEIVED"`. `git status` is
+clean and the three classes are green again after the revert.
+
+Note for whoever reads this next: the repository's `/code-review` skill was launched over the range
+and never reported back (it appears to have attached to the same agent that stalled on attempt 1),
+so as the orchestrator allowed, the diff review here was done by reading all 391 added lines
+directly against the ticket and the sibling tests in `giftingpoints/`.
