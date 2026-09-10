@@ -1,6 +1,6 @@
 # 06: The gift page
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer), 02 (a gift is refused in words
 and changes nothing), 05 (each customer's list of the gifts they were part of).
@@ -40,7 +40,7 @@ page in the lab as both demo customers — give points as one, sign in as the ot
 - [x] The gift appears in the list on the page immediately after it is sent.
 - [x] The list shows sent and received gifts together, newest first, naming the other person, the direction and the points.
 - [x] A refused gift shows the backend's reason verbatim and nothing on the page changes.
-- [ ] Typing something that is not a whole number of points produces the backend's refusal in words rather than a silently coerced gift.
+- [x] Typing something that is not a whole number of points produces the backend's refusal in words rather than a silently coerced gift.
 - [x] The send button is disabled while a gift is in flight and while no recipient or no points are chosen.
 - [x] `npm run typecheck` passes, and the page has been driven end to end as both demo customers with a clean browser console.
 
