@@ -1,6 +1,6 @@
 # 05: Each customer's list of the gifts they were part of
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -150,3 +150,23 @@ none of it needs redoing; only the assertion above needs changing.
   `INFO ... GiftingService : gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 points=40 givenAt=...`.
   Zero `ERROR` lines and no stack traces in the backend log. This matches the repository's own
   listing idiom (`MoneyMovementsService` logs `money movements listed ...` at DEBUG).
+
+### Response - attempt 2
+
+All three points above are addressed in `3cfa310`, which changes tests only; no production code
+moved.
+
+- **Blocking, `givenAt`:** the lower bound is now
+  `.isAfterOrEqualTo(beforeSheGave.truncatedTo(ChronoUnit.MILLIS)).isBeforeOrEqualTo(afterSheGave)`
+  — the exact promise the service makes — with a comment saying why the two sides are read at
+  different precisions. The two-sided check is kept.
+- **Global-zero balances:** the end-of-sweep assertions are narrowed to his pot, which both gifts
+  passed through and nothing else ever did, so "his pot is empty" *is* "no batch either gift
+  created survives". Her global zero is gone; the class javadoc is updated to match.
+- **Wind-forward computed before the deposit:** an
+  `assertThat(app.pointsExpiringNextOnOf(ANKE)).isEqualTo(sheEarnedThemOn.plusYears(1))` now sits
+  straight after the deposit, as `GiftedPointsExpireTwelveMonths...` does, so a Brussels date
+  rolling over between the read and the deposit fails there rather than silently shrinking the
+  margin.
+- The `AGiftListIsOnlyReadForACustomerWhoExistsApiTest` note is left as it stands, as the reviewer
+  intended.
