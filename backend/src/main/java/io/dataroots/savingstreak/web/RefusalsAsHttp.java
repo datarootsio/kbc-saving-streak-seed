@@ -6,6 +6,7 @@ import io.dataroots.savingstreak.deposits.WithdrawalRefused;
 import io.dataroots.savingstreak.gifting.GiftRefused;
 import io.dataroots.savingstreak.jobs.JobFailed;
 import io.dataroots.savingstreak.jobs.JobRefused;
+import io.dataroots.savingstreak.notifications.NotificationRefused;
 import io.dataroots.savingstreak.rewards.RewardRefused;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -103,6 +104,24 @@ class RefusalsAsHttp {
         HttpStatus status = switch (refusal.kind()) {
             case NO_SUCH_CUSTOMER -> HttpStatus.NOT_FOUND;
             case NOT_ENOUGH_POINTS -> HttpStatus.BAD_REQUEST;
+        };
+        return ResponseEntity.status(status)
+                .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));
+    }
+
+    /**
+     * A read of somebody's notifications the application will not answer. One reason so far, and it
+     * is about somebody who is not there, which is what a 404 says.
+     *
+     * <p>A switch over the kind even with one value in it, like every other refusal here: the next
+     * reason a notification read can be refused for arrives as a value in
+     * {@link NotificationRefused.Kind} and the compiler then asks this method what status it
+     * deserves, rather than letting it quietly inherit the 404 that only fits an absence.
+     */
+    @ExceptionHandler(NotificationRefused.class)
+    ResponseEntity<ProblemDetail> notificationRefused(NotificationRefused refusal) {
+        HttpStatus status = switch (refusal.kind()) {
+            case NO_SUCH_CUSTOMER -> HttpStatus.NOT_FOUND;
         };
         return ResponseEntity.status(status)
                 .body(ProblemDetail.forStatusAndDetail(status, refusal.getMessage()));

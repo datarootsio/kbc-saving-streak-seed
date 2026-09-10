@@ -8,6 +8,7 @@ import io.dataroots.savingstreak.accounts.SavingsAccount;
 import io.dataroots.savingstreak.deposits.DepositsService;
 import io.dataroots.savingstreak.deposits.MoneyMovementsService;
 import io.dataroots.savingstreak.gifting.GiftingService;
+import io.dataroots.savingstreak.notifications.NotificationsService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
@@ -37,17 +38,19 @@ class CustomerController {
     private final DepositsService deposits;
     private final GiftingService gifting;
     private final MoneyMovementsService movements;
+    private final NotificationsService notifications;
     private final PointsService points;
     private final RewardsService rewards;
     private final StreaksService streaks;
 
     CustomerController(AccountsService accounts, DepositsService deposits, GiftingService gifting,
-                       MoneyMovementsService movements, PointsService points,
-                       RewardsService rewards, StreaksService streaks) {
+                       MoneyMovementsService movements, NotificationsService notifications,
+                       PointsService points, RewardsService rewards, StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.gifting = gifting;
         this.movements = movements;
+        this.notifications = notifications;
         this.points = points;
         this.rewards = rewards;
         this.streaks = streaks;
@@ -252,6 +255,54 @@ class CustomerController {
             throw noSuchCustomer(customerId);
         }
         return gifting.giftsOf(customerId).stream().map(GiftResponse::of).toList();
+    }
+
+    /**
+     * Everything the rules have decided was worth saying to this customer, newest first, read and
+     * unread together.
+     *
+     * <p>Customer-scoped, matching the money-movement ledger, the claimed rewards and the gifts. A
+     * notification is addressed to the person who reads it: balance rungs and coming anniversaries
+     * have exactly one person they concern, and somebody holding two savings accounts has one panel
+     * and not two. Which pot each row is about travels in it, so the panel can name it and an
+     * account's own page can pick out the notice that concerns it.
+     *
+     * <p>Read and unread together, because the panel is a record rather than an inbox that empties.
+     *
+     * <p>Nothing is judged here. Whether the customer exists is a rule and it belongs to
+     * Notifications, which refuses on its own and is reported by {@code RefusalsAsHttp} — this
+     * endpoint turns the module's answer into the shape the API sends and decides nothing else.
+     */
+    @GetMapping("/{customerId}/notifications")
+    List<NotificationResponse> notificationsOf(@PathVariable long customerId) {
+        return notifications.notificationsOf(customerId).stream()
+                .map(NotificationResponse::of)
+                .toList();
+    }
+
+    /**
+     * Marks everything this customer has not yet looked at as looked at, and answers the same list
+     * back.
+     *
+     * <p>No body. There is nothing to say: the request is "I have looked at my notifications", the
+     * customer is in the path, and when they looked is the application's own clock rather than
+     * anything a browser can claim.
+     *
+     * <p>The list comes back so that the caller needs one round trip rather than two — opening the
+     * panel is one action, and a page that had to read again afterwards would go on showing the
+     * count it just cleared for as long as the second request took.
+     *
+     * <p>A plain 200 and not a 201: nothing was created. A moment was written onto rows that already
+     * existed, and the answer is the record as it now reads.
+     *
+     * <p>Safe to send twice, because the rule underneath is: a notification keeps the moment it was
+     * first read at, so a second call marks nothing and answers the same list.
+     */
+    @PostMapping("/{customerId}/notifications/read")
+    List<NotificationResponse> markNotificationsRead(@PathVariable long customerId) {
+        return notifications.markEverythingReadFor(customerId).stream()
+                .map(NotificationResponse::of)
+                .toList();
     }
 
     /**

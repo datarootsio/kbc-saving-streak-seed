@@ -198,4 +198,27 @@ class Notification {
     Instant getReadAt() {
         return readAt;
     }
+
+    /**
+     * Marks this notification as looked at, as at the given moment, and answers whether that moment
+     * is the one it now carries.
+     *
+     * <p>The notification decides, so that nothing outside can read one twice: one that has already
+     * been read answers {@code false} and keeps the moment it was originally read at, which is what
+     * makes a second call to mark a customer's notifications read a call that changes nothing. The
+     * same shape {@code PointsCredit.expire} has, and for the same reason — a moment set once is a
+     * record of when something happened, and overwriting it would turn it into a record of when it
+     * was last asked about.
+     *
+     * <p>Answering whether it changed rather than answering nothing, because the count of what was
+     * actually marked is what the caller logs: a line saying nine were marked when eight of them had
+     * been read yesterday would be a line a reviewer could not check.
+     */
+    boolean read(Instant readAt) {
+        if (this.readAt != null) {
+            return false;
+        }
+        this.readAt = readAt;
+        return true;
+    }
 }

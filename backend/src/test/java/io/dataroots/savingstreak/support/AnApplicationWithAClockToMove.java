@@ -374,6 +374,45 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
                 seeded.customerIdOf(customerName));
     }
 
+    /**
+     * Everything that has been said to the customer as the API reports it, newest first, read and
+     * unread together — the read the panel makes.
+     *
+     * <p>Read over HTTP rather than out of the module, now that there is an endpoint in front of it:
+     * a test that says a sweep raised something is then also saying the customer can see it.
+     *
+     * <p>The status is insisted on for the reason {@link #deposit} gives, and it matters as much
+     * here: {@code getForObject} hands back the error body rather than throwing, so a read that had
+     * quietly become a refusal would satisfy every "nothing has been said yet" assertion ever
+     * written against it.
+     */
+    public NotificationView[] notificationsOf(String customerName) {
+        ResponseEntity<NotificationView[]> read = http.getForEntity(
+                "/api/customers/{id}/notifications", NotificationView[].class,
+                seeded.customerIdOf(customerName));
+        assertThat(read.getStatusCode())
+                .describedAs("a read of somebody's notifications this test needs to have succeeded")
+                .isEqualTo(HttpStatus.OK);
+        return read.getBody();
+    }
+
+    /**
+     * The customer looks at their notifications, which marks every unread one read and answers the
+     * whole list back — one round trip, as the panel makes it.
+     *
+     * <p>Insisted on the same way: a call that was refused would leave a test asserting that
+     * notifications nobody marked are still unread — and passing.
+     */
+    public NotificationView[] marksTheirNotificationsRead(String customerName) {
+        ResponseEntity<NotificationView[]> marked = http.postForEntity(
+                "/api/customers/{id}/notifications/read", null, NotificationView[].class,
+                seeded.customerIdOf(customerName));
+        assertThat(marked.getStatusCode())
+                .describedAs("a marking-read this test needs in order to have read anything")
+                .isEqualTo(HttpStatus.OK);
+        return marked.getBody();
+    }
+
     /** Which customer this is, for a test asserting on who a gift names. */
     public long customerIdOf(String customerName) {
         return seeded.customerIdOf(customerName);
