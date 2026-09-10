@@ -13,10 +13,12 @@ import {
   fetchClaimed,
   fetchCustomers,
   fetchDeposits,
+  fetchGifts,
   fetchMoneyMovements,
   fetchWithdrawals,
   fetchRewards,
   fetchSavingsAccount,
+  giveGift,
   makeDeposit,
   makeWithdrawal,
   signIn,
@@ -25,6 +27,7 @@ import {
   type CurrentAccount,
   type Customer,
   type CustomerAccounts,
+  type Gift,
   type MoneyMovement,
   type RecordedDeposit,
   type RecordedWithdrawal,
@@ -289,6 +292,7 @@ function SignIn({
 type Screen =
   | { at: 'home' }
   | { at: 'history' }
+  | { at: 'gifts' }
   | { at: 'savings-account'; savingsAccountId: number }
 
 /**
@@ -397,6 +401,7 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
             }}
             onOpen={(savingsAccountId) => setScreen({ at: 'savings-account', savingsAccountId })}
             onOpenHistory={() => setScreen({ at: 'history' })}
+            onOpenGifts={() => setScreen({ at: 'gifts' })}
           />
         )}
 
@@ -420,6 +425,22 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
             <MoneyHistory
               customerId={customer.id}
               currentAccounts={accounts?.currentAccounts ?? []}
+            />
+          </main>
+        )}
+
+        {screen.at === 'gifts' && (
+          <main>
+            <GiftPage
+              customerId={customer.id}
+              // The balance the page greys its button against, and the figure that has to fall the
+              // moment a gift goes through. It is this component's read of the accounts rather than
+              // a figure the gift page keeps for itself, which is what makes the fall real: the
+              // gift asks for the accounts again below, and the new figure arrives as a prop.
+              pointsToSpend={accounts?.pointsBalance ?? null}
+              // The points that paid for the gift are the overview's headline figure, so the
+              // accounts are read again — the same thing a claim does with the points it spent.
+              onGiven={loadAccounts}
             />
           </main>
         )}
@@ -491,6 +512,7 @@ function Home({
   onClaimed,
   onOpen,
   onOpenHistory,
+  onOpenGifts,
 }: {
   customerId: number
   accounts: CustomerAccounts | null
@@ -502,6 +524,7 @@ function Home({
   onClaimed: () => void
   onOpen: (savingsAccountId: number) => void
   onOpenHistory: () => void
+  onOpenGifts: () => void
 }) {
   return (
     <main>
@@ -551,6 +574,27 @@ function Home({
                 <span className="way-through-name">Money history</span>
                 <span className="way-through-note">
                   Every euro in and out, across all your savings, newest first
+                </span>
+              </span>
+              <span className="card-go" aria-hidden="true">
+                <ForwardIcon />
+              </span>
+            </button>
+
+            {/* Beside Money history rather than under Rewards, because the two are the same kind
+                of thing: a screen of its own holding a form and the ledger it writes into, which
+                is what earned the money history a way-through here instead of a panel. Gifting is
+                about points and the rewards catalogue is about points too, but the catalogue is a
+                catalogue and fits in a panel; a page you fill in and then read back does not.
+
+                Second, because a customer's own money comes before what they hand to somebody
+                else. */}
+            <button type="button" className="way-through" onClick={onOpenGifts}>
+              <span className="way-through-words">
+                <span className="way-through-name">Give points</span>
+                <span className="way-through-note">
+                  Hand some of your points to somebody else who banks here, and see every gift
+                  you have been part of
                 </span>
               </span>
               <span className="card-go" aria-hidden="true">
@@ -1505,6 +1549,335 @@ function Movement({
 }
 
 /**
+ * Giving points away: who they go to, how many, and every gift this customer has been part of.
+ *
+ * <p>A screen of its own rather than a panel on the overview, and the money history is the shape it
+ * borrows: a form *and* the ledger the form writes into. The rewards catalogue is a panel because a
+ * catalogue is only a catalogue — there is nothing to fill in and nothing to read back.
+ *
+ * <p>Nothing here decides whether a gift is a gift. The recipient travels as the address they bank
+ * under and the points travel as the text that was typed, so every one of the four refusals is the
+ * backend's and arrives here already worded. The two things this page does work out for itself are
+ * both conveniences over that contract and neither is a ruling:
+ *
+ * - the picker leaves the signed-in customer out, so the one refusal a customer could stumble into
+ *   is unreachable rather than merely explained;
+ * - a whole number of points larger than the balance greys the button, the way a reward out of
+ *   reach greys its own. Anything that is not a plain whole number — "2.5", "-5", "abc" — is left
+ *   pressable on purpose whatever the balance is: the answer somebody needs there is about what a
+ *   number of points is, and only the backend gets to give it.
+ *
+ * <p>The gifts are read here, like the money history's rows, because this is the only screen that
+ * wants them. The points balance is not: it is the overview's read, handed down, so that the figure
+ * falling after a gift is the backend's new answer rather than this page's subtraction.
+ */
+function GiftPage({
+  customerId,
+  pointsToSpend,
+  onGiven,
+}: {
+  customerId: number
+  pointsToSpend: number | null
+  onGiven: () => void
+}) {
+  // Everybody else who banks here. The customers endpoint is the only way this frontend ever
+  // learns of another customer, and this is the first thing behind the sign-in gate to call it.
+  const [others, setOthers] = useState<Customer[] | null>(null)
+  const [othersError, setOthersError] = useState<string | null>(null)
+  const [gifts, setGifts] = useState<Gift[] | null>(null)
+  const [giftsError, setGiftsError] = useState<string | null>(null)
+  // The recipient as the address they bank under rather than as an identifier, because that is
+  // what the request carries: the picker is a convenience over the contract, not a way around it.
+  const [recipient, setRecipient] = useState<string | null>(null)
+  const [howMany, setHowMany] = useState('')
+  const [giving, setGiving] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  // The gift just made, kept only long enough to say so. It is the backend's own answer to the
+  // request, so the confirmation cannot congratulate somebody for points that did not move.
+  const [celebrated, setCelebrated] = useState<Gift | null>(null)
+
+  const loadGifts = useCallback((signal?: AbortSignal) => {
+    fetchGifts(customerId, signal)
+      .then((theirs) => {
+        if (signal?.aborted !== true) {
+          setGifts(theirs)
+          setGiftsError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (signal?.aborted !== true) {
+          setGiftsError(problem.message)
+        }
+      })
+  }, [customerId])
+
+  useEffect(() => {
+    const request = new AbortController()
+    loadGifts(request.signal)
+    return () => request.abort()
+  }, [loadGifts])
+
+  useEffect(() => {
+    const request = new AbortController()
+    fetchCustomers(request.signal)
+      .then((everybody) => {
+        if (!request.signal.aborted) {
+          // The signed-in customer is not in the list, so a gift to yourself cannot be chosen. The
+          // backend still refuses one; this is only about not offering somebody a mistake.
+          setOthers(everybody.filter((who) => who.id !== customerId))
+          setOthersError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (!request.signal.aborted) {
+          setOthersError(problem.message)
+        }
+      })
+    return () => request.abort()
+  }, [customerId])
+
+  useEffect(() => {
+    if (celebrated === null) {
+      return
+    }
+    const over = setTimeout(() => setCelebrated(null), 2600)
+    return () => clearTimeout(over)
+  }, [celebrated])
+
+  // Read only to grey the button, and only for a plain run of digits: a whole number of points is
+  // the one class of figure this page is allowed to have an opinion about, because it is the only
+  // one it can be sure the backend would read the same way. Anything else — "2.5", "-5", "abc",
+  // "1e3" — stays pressable so the answer comes back from the backend in words. Keeping the hint
+  // to whole numbers also keeps a half point out of the button's own label.
+  const typed = howMany.trim()
+  const asked = /^\d+$/.test(typed) ? Number(typed) : null
+  const short = asked !== null && pointsToSpend !== null ? asked - pointsToSpend : 0
+  const beyondTheBalance = short > 0
+
+  function give(event: FormEvent) {
+    event.preventDefault()
+    if (recipient === null) {
+      return
+    }
+    setGiving(true)
+    setRefusal(null)
+    // Sent exactly as typed. What was typed is cleared only once a gift has actually been made: a
+    // refusal leaves the form as it was, because the next thing the person does is correct it, and
+    // because nothing on this page may change on a gift that did not happen.
+    giveGift(customerId, recipient, howMany)
+      .then((given) => {
+        setHowMany('')
+        setCelebrated(given)
+        // Both, together, the way a claim reloads the accounts and the redemptions: the points
+        // that left are the overview's figure and the gift itself belongs in the list below.
+        loadGifts()
+        onGiven()
+      })
+      .catch((problem: Error) => setRefusal(problem.message))
+      .finally(() => setGiving(false))
+  }
+
+  return (
+    <section className="panel">
+      <h2>Give points</h2>
+      <p className="explanation">
+        Points you give are theirs straight away — there is nothing to accept and no way back. They
+        keep the age they were earned at, so a gift does not buy them another twelve months.
+      </p>
+
+      <p className="points-to-spend">
+        <SparkIcon />
+        {pointsToSpend === null ? (
+          <span className="unit">Reading your points…</span>
+        ) : (
+          // The overview's figure, and it falls here the moment a gift goes through because the
+          // gift asks for the accounts again. Nothing is subtracted on this page.
+          <Rising
+            value={pointsToSpend}
+            format={(shown) => (
+              <>
+                {points.format(Math.round(shown))}
+                <span className="unit">points to give</span>
+              </>
+            )}
+          />
+        )}
+      </p>
+
+      {othersError !== null && <Refusal reason={othersError} />}
+      {others === null && othersError === null && (
+        <Waiting label="Loading the people who bank here…" bars={['100%', '100%']} />
+      )}
+
+      {others !== null &&
+        (others.length === 0 ? (
+          <p className="nothing">Nobody else banks here, so there is nobody to give points to.</p>
+        ) : (
+          // The frame the confirmation is thrown up out of, exactly as the catalogue's is.
+          <div className="spend-area">
+            {celebrated !== null && <Given gift={celebrated} />}
+            <form onSubmit={give}>
+              <fieldset className="who-for">
+                <legend>Who is it for?</legend>
+                <ul className="choices">
+                  {others.map((who) => (
+                    <li className="choice" key={who.id}>
+                      {/* The card is the control and the radio underneath it is what the keyboard
+                          and a screen reader get, which is the pattern the stylesheet was written
+                          for. Named out loud because the words beside it are drawn, not labelled. */}
+                      <input
+                        type="radio"
+                        name="recipient"
+                        value={who.contactDetails}
+                        aria-label={`${who.name}, ${who.contactDetails}`}
+                        checked={recipient === who.contactDetails}
+                        onChange={() => setRecipient(who.contactDetails)}
+                      />
+                      <span className="avatar" aria-hidden="true">{initialsOf(who.name)}</span>
+                      {/* Drawn, not read: the radio above already says the name and the address
+                          out loud, so leaving these audible would announce the person twice. */}
+                      <span className="choice-name" aria-hidden="true">
+                        {who.name}
+                        {/* The address the gift will actually name, shown rather than hidden
+                            behind the picker: it is the whole of the request underneath. */}
+                        <span className="choice-note">{who.contactDetails}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+
+              <div className="give-line">
+                <div className="field">
+                  <label htmlFor="giftPoints">How many points</label>
+                  <input
+                    id="giftPoints"
+                    name="giftPoints"
+                    inputMode="numeric"
+                    placeholder="25"
+                    autoComplete="off"
+                    value={howMany}
+                    onChange={(event) => setHowMany(event.target.value)}
+                  />
+                </div>
+                {/* Unavailable while a gift is in flight, so one press cannot become two gifts —
+                    the shape the reward claim already uses. Unavailable too with nobody chosen or
+                    nothing typed, which are not refusals but a form that has not been filled in,
+                    and greyed for a figure beyond the balance, which is a hint and not the rule. */}
+                <button
+                  type="submit"
+                  disabled={giving || recipient === null || typed === '' || beyondTheBalance}
+                >
+                  {giving ? (
+                    <>
+                      <span className="spinner" />
+                      Giving…
+                    </>
+                  ) : beyondTheBalance ? (
+                    `${points.format(short)} to go`
+                  ) : (
+                    'Give points'
+                  )}
+                </button>
+              </div>
+              {refusal !== null && <Refusal reason={refusal} />}
+            </form>
+          </div>
+        ))}
+
+      <Gifts
+        gifts={gifts}
+        problem={giftsError}
+        landedId={celebrated === null ? null : celebrated.id}
+      />
+    </section>
+  )
+}
+
+/**
+ * Every gift this customer was part of, sent and received in one list, newest first.
+ *
+ * <p>One list rather than two, because which end of a gift they were on is a property of who is
+ * reading it: the whole story reads chronologically, and the direction is a chip on the row. Drawn
+ * as stubs rather than as table rows for the reason the claimed vouchers are — a gift is a small
+ * thing that happened between two people, not a figure in a column.
+ *
+ * <p>Each row names the other person, because the customer already knows which one they are.
+ */
+function Gifts({
+  gifts,
+  problem,
+  landedId,
+}: {
+  gifts: Gift[] | null
+  problem: string | null
+  landedId: number | null
+}) {
+  return (
+    <div className="history">
+      <h3>Gifts</h3>
+      {problem !== null && <Refusal reason={problem} />}
+      {gifts === null && problem === null && (
+        <Waiting label="Loading your gifts…" bars={['100%', '100%', '70%']} />
+      )}
+      {gifts !== null &&
+        (gifts.length === 0 ? (
+          <p className="nothing">No points given or received yet.</p>
+        ) : (
+          <ul className="vouchers">
+            {gifts.map((gift, place) => {
+              const sent = gift.direction === 'SENT'
+              return (
+                <li
+                  key={gift.id}
+                  className={gift.id === landedId ? 'voucher landed' : 'voucher'}
+                  style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+                >
+                  <span className="voucher-icon" aria-hidden="true">
+                    <GivingIcon />
+                  </span>
+                  <div className="voucher-words">
+                    <strong>
+                      {sent ? `To ${gift.recipientName}` : `From ${gift.senderName}`}
+                    </strong>
+                    <span className="when">{dateAndTime.format(new Date(gift.givenAt))}</span>
+                  </div>
+                  {/* The direction as a chip and the points as a badge, in the two dresses the
+                      money ledger and the deposits table already gave those two things. Points
+                      leaving are the quiet badge a claim's are, and points arriving are the warm
+                      one a deposit's are: the sign is a word here, not a minus on a figure. */}
+                  <span className="gift-outcome">
+                    <span className={sent ? 'movement out' : 'movement in'}>
+                      {sent ? 'Sent' : 'Received'}
+                    </span>
+                    <span className={sent ? 'earnings spent' : 'earnings'}>
+                      {sent ? '−' : '+'}
+                      {points.format(gift.points)}
+                    </span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        ))}
+    </div>
+  )
+}
+
+/** The gift, the moment it exists, said back in the backend's own figures. */
+function Given({ gift }: { gift: Gift }) {
+  return (
+    <>
+      <p className="reward voucher-flash">
+        <GivingIcon />
+        {points.format(gift.points)} points to {gift.recipientName}
+      </p>
+      <Confetti />
+    </>
+  )
+}
+
+/**
  * How a past deposit's points were arrived at: the euros, the uplift the run of weeks added, and the
  * rate it was paid at — under the total they add up to.
  *
@@ -2210,6 +2583,37 @@ function GiftIcon() {
         d="M12 9S10.5 4.5 8.5 4.5a2 2 0 0 0 0 4.5M12 9s1.5-4.5 3.5-4.5a2 2 0 0 1 0 4.5"
         stroke="currentColor"
         strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * Points on their way to somebody else: an arrow into a person.
+ *
+ * <p>Its own icon rather than the wrapped box above, which is already spoken for as the picture a
+ * reward gets when this page has never heard of its code. A gift here is not a parcel — it is a
+ * figure moving from one customer to another — and drawing it as one would have the same square
+ * mean two things on the same screen.
+ */
+function GivingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* The person it is going to. */}
+      <circle cx="16" cy="7" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M10.4 20.5a5.6 5.6 0 0 1 11.2 0"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* The points, on their way there. */}
+      <path
+        d="M2.5 12.5h6.2M5.8 9.6l2.9 2.9-2.9 2.9"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>

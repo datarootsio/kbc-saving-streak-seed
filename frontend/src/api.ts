@@ -131,8 +131,8 @@ export async function signIn(contactDetails: string): Promise<Customer> {
 }
 
 // All backend endpoints sit under /api, which the dev server proxies to the backend.
-export async function fetchCustomers(): Promise<Customer[]> {
-  const response = await fetch('/api/customers')
+export async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  const response = await fetch('/api/customers', { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load the customer list'))
   }
@@ -460,6 +460,80 @@ export async function fetchMoneyMovements(
   const response = await fetch(`/api/customers/${customerId}/money-movements`, { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load your money history'))
+  }
+  return response.json()
+}
+
+/**
+ * One gift of points, as either end of it reads.
+ *
+ * <p>One shape for a gift just made and for a gift read back out of a list, which is the same
+ * bargain {@link MoneyMovement} strikes: a gift is one event seen from two sides, and a customer
+ * reading back what they have given and been given reads one list rather than two they have to
+ * interleave by eye. What differs between the two ends is `direction` rather than the fields.
+ *
+ * <p>`direction` is the backend's own word rather than a sign on the points, for the reason the
+ * money ledger's is: points here are always a positive figure, and a list that carried the
+ * direction in the sign of the number would be the one place that stopped being true. A gift just
+ * created comes back `SENT`, because the person who made it is the person being answered.
+ *
+ * <p>Both people rather than only the other one, so a row says who it is about whoever fetched it.
+ * Which of the two is "the other person" follows from the direction and is the page's to decide.
+ *
+ * <p>`givenAt` is off the application's clock rather than the browser's, so a gift made against a
+ * clock a trainer has wound forward reads where they wound it to.
+ */
+export type Gift = {
+  id: number
+  direction: 'SENT' | 'RECEIVED'
+  senderId: number
+  senderName: string
+  recipientId: number
+  recipientName: string
+  points: number
+  givenAt: string
+}
+
+/**
+ * Every gift this customer was part of, sent and received together, newest first.
+ *
+ * <p>The customer's rather than one account's, because points are the person's: they are earned by
+ * paying into any savings account and given away by the person, so there is one list and it hangs
+ * off them.
+ */
+export async function fetchGifts(customerId: number, signal?: AbortSignal): Promise<Gift[]> {
+  const response = await fetch(`/api/customers/${customerId}/gifts`, { signal })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not load your gifts'))
+  }
+  return response.json()
+}
+
+/**
+ * Gives some of this customer's points to another customer, and there is no way back: the points
+ * are the recipient's the moment this succeeds.
+ *
+ * <p>The recipient travels as the address they bank under rather than as an identifier, because
+ * that is the contract — the same address they would type to sign in. A page may offer a picker
+ * over the people who bank here, and this is still the request underneath it.
+ *
+ * <p>The number of points travels as the text that was typed, the way a deposit's amount does. What
+ * counts as a number of points is the backend's decision — whole, positive, and no more than the
+ * sender holds — and reading "2.5" into something plausible on the way there would be this page
+ * taking a little of that decision. Sent as typed, and refused in words if it was not a gift.
+ */
+export async function giveGift(
+  customerId: number,
+  recipientContactDetails: string,
+  points: string,
+): Promise<Gift> {
+  const response = await fetch(`/api/customers/${customerId}/gifts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipientContactDetails, points }),
+  })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'The gift was not made'))
   }
   return response.json()
 }
