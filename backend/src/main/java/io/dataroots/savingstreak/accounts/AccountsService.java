@@ -70,6 +70,23 @@ public class AccountsService {
         return savingsAccounts.findHolderById(savingsAccountId);
     }
 
+    /**
+     * Every savings account there is, by identifier, in the order they were opened.
+     *
+     * <p>For a nightly sweep, which has nobody's account in front of it and has to walk them all.
+     * Identifiers rather than accounts or holders: whoever sweeps asks this module who holds each
+     * one as it gets to it, and a module that handed out its entities to be read elsewhere would
+     * have no boundary left to speak of.
+     *
+     * <p>All of them on every call. With the seeded customers that is three rows, and with a real
+     * population a sweep would want to be handed them a page at a time — which is a change to make
+     * when there is a population, not before.
+     */
+    @Transactional(readOnly = true)
+    public List<Long> everySavingsAccount() {
+        return savingsAccounts.findEveryId();
+    }
+
     /** Whether there is a customer with this identifier at all, for callers that only ask. */
     @Transactional(readOnly = true)
     public boolean customerExists(long customerId) {
