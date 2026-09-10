@@ -740,7 +740,8 @@ body {
   border-left: 1px solid rgb(var(--line) / 0.14);
 }
 
-.deposit label {
+.deposit label,
+.give-line label {
   display: block;
   margin-bottom: 0.35rem;
   color: var(--ink-soft);
@@ -2187,14 +2188,6 @@ button.quiet.back svg {
   align-items: flex-end;
   gap: 0.75rem;
   margin-top: 1.25rem;
-}
-
-.give-line label {
-  display: block;
-  margin-bottom: 0.35rem;
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  font-weight: 600;
 }
 
 /* Figures line up under each other, the way an amount in the deposit box does. */

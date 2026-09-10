@@ -432,7 +432,7 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
         {screen.at === 'gifts' && (
           <main>
             <GiftPage
-              customer={customer}
+              customerId={customer.id}
               // The balance the page greys its button against, and the figure that has to fall the
               // moment a gift goes through. It is this component's read of the accounts rather than
               // a figure the gift page keeps for itself, which is what makes the fall real: the
@@ -1562,20 +1562,21 @@ function Movement({
  *
  * - the picker leaves the signed-in customer out, so the one refusal a customer could stumble into
  *   is unreachable rather than merely explained;
- * - a figure larger than the balance greys the button, the way a reward out of reach greys its own.
- *   A figure this page cannot read at all — "2.5", "abc" — is left pressable on purpose: the answer
- *   somebody needs there is about points, and only the backend gets to give it.
+ * - a whole number of points larger than the balance greys the button, the way a reward out of
+ *   reach greys its own. Anything that is not a plain whole number — "2.5", "-5", "abc" — is left
+ *   pressable on purpose whatever the balance is: the answer somebody needs there is about what a
+ *   number of points is, and only the backend gets to give it.
  *
  * <p>The gifts are read here, like the money history's rows, because this is the only screen that
  * wants them. The points balance is not: it is the overview's read, handed down, so that the figure
  * falling after a gift is the backend's new answer rather than this page's subtraction.
  */
 function GiftPage({
-  customer,
+  customerId,
   pointsToSpend,
   onGiven,
 }: {
-  customer: Customer
+  customerId: number
   pointsToSpend: number | null
   onGiven: () => void
 }) {
@@ -1596,7 +1597,7 @@ function GiftPage({
   const [celebrated, setCelebrated] = useState<Gift | null>(null)
 
   const loadGifts = useCallback((signal?: AbortSignal) => {
-    fetchGifts(customer.id, signal)
+    fetchGifts(customerId, signal)
       .then((theirs) => {
         if (signal?.aborted !== true) {
           setGifts(theirs)
@@ -1608,7 +1609,7 @@ function GiftPage({
           setGiftsError(problem.message)
         }
       })
-  }, [customer.id])
+  }, [customerId])
 
   useEffect(() => {
     const request = new AbortController()
@@ -1623,7 +1624,7 @@ function GiftPage({
         if (!request.signal.aborted) {
           // The signed-in customer is not in the list, so a gift to yourself cannot be chosen. The
           // backend still refuses one; this is only about not offering somebody a mistake.
-          setOthers(everybody.filter((who) => who.id !== customer.id))
+          setOthers(everybody.filter((who) => who.id !== customerId))
           setOthersError(null)
         }
       })
@@ -1633,7 +1634,7 @@ function GiftPage({
         }
       })
     return () => request.abort()
-  }, [customer.id])
+  }, [customerId])
 
   useEffect(() => {
     if (celebrated === null) {
@@ -1643,14 +1644,14 @@ function GiftPage({
     return () => clearTimeout(over)
   }, [celebrated])
 
-  // Read only to grey the button, and only when it reads as a number at all. Anything else — a
-  // fraction, a word, an empty field once something has been typed into it — is left to the
-  // backend, which is the only place that knows what a number of points is.
-  const asked = Number(howMany.trim())
-  const short =
-    pointsToSpend !== null && howMany.trim() !== '' && Number.isFinite(asked)
-      ? asked - pointsToSpend
-      : 0
+  // Read only to grey the button, and only for a plain run of digits: a whole number of points is
+  // the one class of figure this page is allowed to have an opinion about, because it is the only
+  // one it can be sure the backend would read the same way. Anything else — "2.5", "-5", "abc",
+  // "1e3" — stays pressable so the answer comes back from the backend in words. Keeping the hint
+  // to whole numbers also keeps a half point out of the button's own label.
+  const typed = howMany.trim()
+  const asked = /^\d+$/.test(typed) ? Number(typed) : null
+  const short = asked !== null && pointsToSpend !== null ? asked - pointsToSpend : 0
   const beyondTheBalance = short > 0
 
   function give(event: FormEvent) {
@@ -1663,7 +1664,7 @@ function GiftPage({
     // Sent exactly as typed. What was typed is cleared only once a gift has actually been made: a
     // refusal leaves the form as it was, because the next thing the person does is correct it, and
     // because nothing on this page may change on a gift that did not happen.
-    giveGift(customer.id, recipient, howMany)
+    giveGift(customerId, recipient, howMany)
       .then((given) => {
         setHowMany('')
         setCelebrated(given)
@@ -1733,7 +1734,9 @@ function GiftPage({
                         onChange={() => setRecipient(who.contactDetails)}
                       />
                       <span className="avatar" aria-hidden="true">{initialsOf(who.name)}</span>
-                      <span className="choice-name">
+                      {/* Drawn, not read: the radio above already says the name and the address
+                          out loud, so leaving these audible would announce the person twice. */}
+                      <span className="choice-name" aria-hidden="true">
                         {who.name}
                         {/* The address the gift will actually name, shown rather than hidden
                             behind the picker: it is the whole of the request underneath. */}
@@ -1763,9 +1766,7 @@ function GiftPage({
                     and greyed for a figure beyond the balance, which is a hint and not the rule. */}
                 <button
                   type="submit"
-                  disabled={
-                    giving || recipient === null || howMany.trim() === '' || beyondTheBalance
-                  }
+                  disabled={giving || recipient === null || typed === '' || beyondTheBalance}
                 >
                   {giving ? (
                     <>
