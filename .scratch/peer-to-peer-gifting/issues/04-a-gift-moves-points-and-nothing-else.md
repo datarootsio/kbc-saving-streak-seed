@@ -21,19 +21,21 @@ production code if ticket 01 was built as specified; if any of these fail, the f
 code, not a new special case.
 
 - [x] Both customers' current-account and savings balances are unchanged by a gift.
-- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
 - [x] A gift does not appear in either customer's ledger of money that moved.
 - [ ] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
 - [x] Nothing new appears on the account overview.
 
 ## Review feedback - attempt 1
 
-Four of the five criteria genuinely hold, and I proved each of them by breaking the production rule
-on purpose and watching a named assertion go red (every mutation reverted; `git status --porcelain`
-is empty and no production file differs from `agentic_engineered`). One does not hold, and it is the
-one whose test javadoc claims out loud to cover exactly the case it does not.
+Three of the five criteria hold, and I proved each of them by breaking the production rule on
+purpose and watching a named assertion go red (every mutation reverted; `git status --porcelain` is
+empty and no production file differs from `agentic_engineered`). Two do not: criterion 4 is stated
+by a test whose javadoc claims out loud to cover exactly the case it does not cover, and criterion 2
+is stated only in the one direction. A third point, about the overview helpers, is not a criterion
+of its own but would let a broken front page pass.
 
-### The defect: a gift added to a deposit's breakdown as a *new field* is not caught
+### Defect 1: a gift added to a deposit's breakdown as a *new field* is not caught
 
 `a_gift_is_no_part_of_what_any_deposit_of_either_customers_earned` says of itself:
 
@@ -78,6 +80,43 @@ deposit history, lowercased, contains no "gift"/"given"/"received", alongside th
 whole-entry comparison. Then correct or delete the javadoc sentence quoted above, because it is
 currently telling the next reader something the test does not do.
 
+### Defect 2: the streak half of criterion 2 is only ever asserted from the floor
+
+`a_gift_secures_no_week_and_changes_neither_streak` deliberately arranges a fortnight with nothing
+paid in, so both customers reach the gift with `currentStreakWeeks == 0` and `currentMultiplier ==
+1.00`, and then asserts `after == before`. At zero and 1.00 that can only catch a run being
+*created*. The criterion says "leaves both customers' streaks and multipliers exactly as they were",
+which is a two-directional promise, and the other direction is untested.
+
+Reproduce it. In `StreaksService.weekAndStreakOf`, return
+`new StreakOfSecuredWeeks(0, derived.streak().bestWeeks())` for any customer who appears in the
+`gift` table — a gift now wipes the run of weeks and the rate of everybody it touches, at both ends.
+`./mvnw test` → 251 tests, 0 failures; all four tests in this class stay green. A customer losing a
+live streak because a friend sent them points is the more damaging half of this promise and nothing
+in the repository notices.
+
+This class owns its own clock, so the fix is cheap: build a real run first (deposit, `aWeekPasses`,
+deposit, `aWeekPasses`, deposit) so both customers arrive at the gift with `currentStreakWeeks >= 2`
+and a multiplier above 1.00, then make the gift and re-assert the same five figures. Keep the
+from-the-floor case as well — it is the one that catches a week being secured.
+
+### Defect 3: the overview helpers never insist the read succeeded
+
+`theOverviewMentionsNoGift` asserts only that three words are absent from a body, and neither
+`theCustomerOverviewAsItIsSent` (new, `AnApplicationWithAClockToMove:222`) nor the existing
+`theAccountOverviewAsItIsSent` checks the status. `TestRestTemplate.getForObject(..., String.class)`
+hands back the error body rather than throwing, and an RFC 9457 problem body contains none of
+"gift", "given" or "received":
+
+    $ curl -s http://localhost:8080/api/savings-accounts/999
+    {"type":"about:blank","title":"Not Found","status":404,"detail":"There is no savings account 999.",...}
+
+So if the overview endpoint started answering 404 or 500, the last two assertions of
+`nothing_about_a_gift_appears_on_either_customers_account_overview` would pass over a broken front
+page. Every other helper in this harness insists on its status for exactly this reason — see the
+javadoc on `deposit`, `withdraw`, `runJob` and `give`. Assert the status, or at minimum that the
+body contains `"pointsBalance"`, before asking what it does not contain.
+
 ### What I confirmed does hold (each mutation applied alone, then reverted)
 
 | Mutation (production code, gift-caused) | Result |
@@ -85,12 +124,13 @@ currently telling the next reader something the test does not do.
 | Gift debits the sender's current account by EUR 1 | RED — `a_gift_moves_no_euros_...:111` "nothing came out of the sender's current account to pay for it" expected 2359 but was 2358 |
 | Gift reduces a deposit's `remaining_amount` (savings balance) | RED — `...:105` "a gift is paid in points, so the sender's savings are untouched" expected 119 but was 118 |
 | A gift adds EUR 60 to the week (securing it) in `StreaksService` | RED — `a_gift_secures_no_week_...` "the sender paid nothing into this week" expected 0.00 but was 60.00 |
-| A gift bumps only `currentStreakWeeks`/`bestStreakWeeks` | RED — "the sender is on the same run of weeks as before, which is none" expected 0 but was 1 |
+| A gift bumps only `currentStreakWeeks`/`bestStreakWeeks` upwards | RED — "the sender is on the same run of weeks as before, which is none" expected 0 but was 1 |
 | Every gift appended to `/money-movements` as a EUR 0.00 entry | RED — "the sender's ledger is a record of euros that moved, and none did", the extra `SENT ... amount=0.00` entry named |
 | Gift points credited into the newest deposit's `loyaltyBonusPoints` and `pointsEarned` | RED — "and in none of his deposits, which say exactly what they said before" (60 vs 67) |
 | `pointsReceivedAsGifts` total added to `CustomerAccountsResponse` | RED — "no gift figure on the sender's own overview" |
 | `pointsGivenAway` total added to `SavingsAccountResponse` | RED — "no gift figure on the sender's savings account" |
-| **`giftedPoints` field added to `DepositResponse`** | **GREEN — nothing failed, in the whole suite** |
+| **`giftedPoints` field added to `DepositResponse`** | **GREEN — nothing failed, in the whole suite (defect 1)** |
+| **A gift wipes `currentStreakWeeks` for both parties (`StreaksService` returns `new StreakOfSecuredWeeks(0, best)`)** | **GREEN — nothing failed, in the whole suite (defect 2)** |
 
 ### What the running application showed (backend on 8080, throwaway DB, DEBUG)
 
@@ -121,6 +161,16 @@ no week secured yet", and neither overview carries any gift figure — screensho
 `logs/04-a-gift-moves-points-and-nothing-else.review.1.browser.log` (no `pageerror`, no console
 error; the two `ERR_ABORTED` lines per load are React StrictMode's double-invoked fetch and appear
 in every earlier review's browser log too).
+
+### Where these came from
+
+Defect 1 I found by mutation and the repository's `/code-review` agreed with it independently,
+adding the note that `application.properties` sets no Jackson property so
+`FAIL_ON_UNKNOWN_PROPERTIES` is Spring Boot's default `false`, and pointing at a second piece of
+prior art —
+`backend/src/test/java/io/dataroots/savingstreak/deposithistory/EachDepositInTheHistoryExplainsItselfApiTest.java:159`
+reads the same endpoint as a `JsonNode`. Defects 2 and 3 that review raised and I then reproduced;
+both mutations and the `curl` above are mine.
 
 ### Not blocking, for the record
 
