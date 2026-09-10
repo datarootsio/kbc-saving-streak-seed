@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -21,8 +21,8 @@ production code if ticket 01 was built as specified; if any of these fail, the f
 code, not a new special case.
 
 - [x] Both customers' current-account and savings balances are unchanged by a gift.
-- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
-- [ ] A gift does not appear in either customer's ledger of money that moved.
+- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [x] A gift does not appear in either customer's ledger of money that moved.
 - [x] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
 - [x] Nothing new appears on the account overview.
 
@@ -374,3 +374,53 @@ log.
 `cd backend && ./mvnw test` -> 252 tests, 0 failures. `cd frontend && npm run typecheck` -> clean
 (on Node v24.16.0). `git status --porcelain` is empty and `git diff agentic_engineered --
 backend/src/main frontend` is empty: every mutation above was reverted.
+
+## Attempt 3 — what was done about the feedback
+
+Test-only again; `git diff agentic_engineered -- backend/src/main frontend` is empty.
+
+- **Defect 4 (the applied rate).** `theRateTheyWerePromisedIsTheRateTheyArePaid` added, and
+  `a_gift_costs_neither_customer_the_run_of_weeks_they_are_on` now makes one more deposit for each
+  customer *after* the gift and holds the `multiplierApplied` it comes back with to the
+  `currentMultiplier` that customer was promised before it. That is the rate the Deposits module
+  works out for itself, so the two multipliers this application has are now both asserted.
+  `a_gift_secures_no_week_and_changes_neither_streak` gets the same question from the floor: a week
+  passes after the gift and each of them deposits into the next one, which is priced as the first
+  week of a run unless the gift secured the empty week the gift was made in.
+- **Defect 5 (the ledger as text).** `AnApplicationWithAClockToMove#theMoneyMovementLedgerAsItIsSent`
+  added beside the deposit-history helper and through the same `theBodyOfAReadThatHadToSucceed`, and
+  `a_gift_moves_no_euros_and_appears_in_neither_ledger_of_money` now asks both customers' ledgers,
+  as sent, whether they name a gift — alongside the whole-entry comparison, which is what catches a
+  gift added as an entry.
+- **The two "not blocking" notes, closed.** Anke's second savings account is read before and after
+  the gift, and all three savings accounts are given money to lose first, so "her savings are
+  untouched" is a sentence about both of them and about a figure that could fall. And
+  `theBodyOfAReadThatHadToSucceed` now insists the body is not blank as well as that the status was
+  200.
+- **The same class of hole, swept.** Every text read now names a field the body has to carry
+  (`pointsBalance`, `pointsEarned`, `direction`) before it is asked what it does not contain, because
+  "this text does not mention a gift" is true of an empty list and of a body that is not the thing
+  it was asked for. Proven load-bearing: with the ledger endpoint answering `[]`, the
+  whole-entry comparison passes (it compares empty against empty) and only the marker fails.
+
+Thirteen mutations applied one at a time and reverted, each one gift-caused, each watched go red at
+a named assertion:
+
+| Mutation | Assertion that went red |
+| --- | --- |
+| Gift debits the sender's current account by EUR 1.00 | "nothing came out of the sender's current account to pay for it", 2279 vs 2278 |
+| Gift withdraws EUR 1.00 from the sender's first savings account | "a gift is paid in points, so the sender's savings are untouched", 179 vs 178 |
+| Gift withdraws EUR 1.00 from the sender's *other* savings account | "including the savings account of hers nobody was looking at", 20 vs 19 |
+| `StreaksService` reports a run of 0 for anybody in the `gift` table | "the sender is on the same run of weeks as before, however long that was", 3 vs 0 |
+| `DepositsService` prices anybody in the `gift` table at 1.00 | "the sender is paid at the rate the sender was promised before the gift", 1.20 vs 1.00 |
+| `DepositsService` prices them a week further up the ladder | "the sender's next deposit is priced as the first week of a run", 1.00 vs 1.10, **and** the live-run one, 1.20 vs 1.30 |
+| `giftedPoints` component on `MoneyMovementResponse` | "no gift figure anywhere in the sender's ledger of money that moved" |
+| Every gift appended to the ledger as a EUR 0.00 entry | "the sender's ledger is a record of euros that moved, and none did" |
+| The ledger endpoint answers `[]` | the marker: "...with at least one entry in it to look through" |
+| `giftedPoints` component on `DepositResponse` | "no gift figure anywhere in the recipient's deposit history" |
+| Received gifts added into each deposit's total and loyalty bonus | "and in none of his deposits, which say exactly what they said before" |
+| `pointsReceivedAsGifts` on `CustomerAccountsResponse` | "no gift figure on the sender's own overview" |
+| `pointsGivenAway` on `SavingsAccountResponse` | "no gift figure on the sender's savings account" |
+
+`cd backend && ./mvnw test` -> 252 tests, 0 failures. `cd frontend && npm run typecheck` -> clean.
+
