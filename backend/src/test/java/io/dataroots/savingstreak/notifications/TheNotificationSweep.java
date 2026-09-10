@@ -14,8 +14,13 @@ import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
  *
  * <p>Run over HTTP, at the endpoint a trainer uses, so a test that says the sweep raised something
  * is also saying the job is reachable by name. Read through {@code NotificationsService}, which is
- * this module's only way in and has no endpoint in front of it yet — see
- * {@link AnApplicationWithAClockToMove#theApplicationsOwn}.
+ * this module's only way in — see {@link AnApplicationWithAClockToMove#theApplicationsOwn}.
+ *
+ * <p>Still read through the module now that {@code GET /api/customers/{customerId}/notifications}
+ * exists, and deliberately: what the module holds and what the endpoint sends are two things, and a
+ * test that the contract carries every figure the sweep wrote has to be able to hold one against the
+ * other. Tests whose subject is the customer's own read ask
+ * {@link AnApplicationWithAClockToMove#notificationsOf} instead, which goes over HTTP.
  */
 final class TheNotificationSweep {
 

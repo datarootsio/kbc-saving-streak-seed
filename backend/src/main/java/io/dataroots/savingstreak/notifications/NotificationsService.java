@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.notifications;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -33,6 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
  * from Accounts, and when those deposits next pay from Loyalty; it writes nothing but its own
  * record, and none of those modules learns that notifications exist. It moves no money, credits no
  * points and secures no week: this is a record addressed to a customer, not a rule that pays them.
+ *
+ * <p>Three things happen here: a sweep raises what the rules have to say, a customer reads what has
+ * been said to them ({@link #notificationsOf}), and a customer marks what they have read
+ * ({@link #markEverythingReadFor}). The two reads are addressed to a customer rather than to an
+ * account — a notification carries the account it is about so the panel can name the pot, but who it
+ * concerns is a person, and somebody saving towards two goals has one panel and not two.
  *
  * <p>Two rules, and the sweep runs both over every savings account. One is about where a balance
  * stands on a fixed ladder, argued out below; the other is about a deposit's coming anniversary and
@@ -82,12 +89,26 @@ public class NotificationsService {
     private final LoyaltyService loyalty;
     private final NotificationRepository notifications;
 
+    /**
+     * For the one moment this module stamps that nobody hands it: the moment a customer looked.
+     *
+     * <p>The sweep is told when, because its caller runs on a schedule and one moment has to be
+     * stamped on everything one run raises. A customer reading their notifications is not a sweep —
+     * it is a request arriving now, exactly like a deposit landing or a reward being claimed, and
+     * every one of those reads the clock in the service that owns the rule rather than being told
+     * the time by a controller. The application's clock, which a trainer can wind, so that a
+     * notification read on a wound-forward clock is marked at the moment the application thinks it
+     * is.
+     */
+    private final Clock clock;
+
     NotificationsService(AccountsService accounts, DepositsService deposits, LoyaltyService loyalty,
-                         NotificationRepository notifications) {
+                         NotificationRepository notifications, Clock clock) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.loyalty = loyalty;
         this.notifications = notifications;
+        this.clock = clock;
     }
 
     /**
@@ -168,17 +189,97 @@ public class NotificationsService {
     /**
      * Everything this customer has been told, newest first, read and unread together.
      *
-     * <p>Not annotated: a package-private method is invisible to the transactional proxy, so an
-     * annotation here would be a promise the container cannot keep. It is one query, which is
-     * atomic on its own.
+     * <p>Read and unread together because the panel is a record rather than an inbox that empties.
+     * A rule that fired is worth being able to look up after you have seen it once, and a training
+     * application whose whole point is showing a rule fire should not hide the evidence that it did
+     * the moment somebody glances at it.
+     *
+     * <p>Newest first, ordered by the moment each was raised and then by identifier, so that two
+     * notifications raised by the same sweep — one sweep stamps one moment on everything it raises —
+     * still come back in a settled order rather than in whatever order the rows are read in.
+     *
+     * <p>Whether the customer exists is asked first, so that somebody nobody has heard of is refused
+     * rather than answered with the empty list of somebody who has simply never been told anything.
+     * That is the line every per-customer read in this application draws.
+     *
+     * <p>One transaction over both reads, so the existence check and the list describe the same
+     * instant of the record.
+     *
+     * @throws NotificationRefused if there is no such customer
      */
-    List<RaisedNotification> notificationsOf(long customerId) {
+    @Transactional(readOnly = true)
+    public List<RaisedNotification> notificationsOf(long customerId) {
+        refuseUnlessTheCustomerExists(customerId);
         List<RaisedNotification> raised = notifications
                 .findByCustomerIdOrderByRaisedAtDescIdDesc(customerId).stream()
                 .map(RaisedNotification::of)
                 .toList();
-        log.debug("notifications read customerId={} notifications={}", customerId, raised.size());
+        log.debug("notifications read customerId={} notifications={} unread={}",
+                customerId, raised.size(),
+                raised.stream().filter(one -> one.readAt() == null).count());
         return raised;
+    }
+
+    /**
+     * Marks everything this customer has not yet looked at as looked at, now, and answers the whole
+     * list back exactly as {@link #notificationsOf} would.
+     *
+     * <p>The list comes back so that the caller needs one round trip rather than two. Opening the
+     * panel is one action, and a page that had to ask again afterwards to find out what it was
+     * showing would render the count it just cleared for as long as the second request took.
+     *
+     * <p>Idempotent, and the notification is what makes it so: {@link Notification#read} keeps the
+     * moment it was first read at, so a second call marks nothing, changes nothing and answers the
+     * same list. The count in the INFO line is what was actually marked and not how many the
+     * customer holds, which is what makes a second call's line say plainly that it did nothing.
+     *
+     * <p>Every unread notification of theirs, across every savings account they hold, because that
+     * is what the panel showed: it lists everything, so reading it is a statement about everything
+     * in it.
+     *
+     * <p>The whole list is loaded rather than only the unread ones, because both things this method
+     * does need it — the unread rows to mark, and all of them to answer with. Two queries would be
+     * two readings of a record that changed in between.
+     *
+     * @throws NotificationRefused if there is no such customer
+     */
+    @Transactional
+    public List<RaisedNotification> markEverythingReadFor(long customerId) {
+        refuseUnlessTheCustomerExists(customerId);
+        Instant now = clock.instant();
+        List<Notification> theirs =
+                notifications.findByCustomerIdOrderByRaisedAtDescIdDesc(customerId);
+        int marked = 0;
+        for (Notification notification : theirs) {
+            if (notification.read(now)) {
+                marked++;
+            }
+        }
+        // The business event, with the values that decided it: who looked, when they looked, how
+        // many were actually marked and how many they hold altogether. A count dropping to zero has
+        // this line behind it, and a second call over the same rows says marked=0 rather than going
+        // silent.
+        log.info("notifications marked read customerId={} notifications={} asAt={} held={}",
+                customerId, marked, now, theirs.size());
+        return theirs.stream().map(RaisedNotification::of).toList();
+    }
+
+    /**
+     * Refuses, in the words Accounts owns, unless this application has heard of the customer.
+     *
+     * <p>One place decides the words and one place says them out loud, which is why both reads call
+     * this rather than each asking and refusing for itself: a refusal's reason only reaches whoever
+     * asked, and the WARN line is the only copy anybody reviewing the application afterwards can
+     * read.
+     */
+    private void refuseUnlessTheCustomerExists(long customerId) {
+        if (accounts.customerExists(customerId)) {
+            return;
+        }
+        String reason = AccountsService.noSuchCustomer(customerId);
+        log.warn("notifications rejected customerId={} kind={} reason={}",
+                customerId, NotificationRefused.Kind.NO_SUCH_CUSTOMER, reason);
+        throw new NotificationRefused(NotificationRefused.Kind.NO_SUCH_CUSTOMER, reason);
     }
 
     /**
