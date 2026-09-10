@@ -46,6 +46,16 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
     /** A deposit comfortably over the weekly minimum, so that the week it lands in is secured. */
     private static final String A_DEPOSIT_THAT_SECURES_A_WEEK = "60.00";
 
+    /**
+     * How long a run has to be before "unchanged" is a claim with two sides. The ladder pays the
+     * ordinary rate for a run of one week and climbs from the second, so three weeks puts both the
+     * count and the rate visibly off the floor, with somewhere to fall to.
+     */
+    private static final int WEEKS_OF_A_RUN_WORTH_LOSING = 3;
+
+    /** What a euro earns with no run behind it, which is also the floor a broken run falls back to. */
+    private static final BigDecimal THE_ORDINARY_RATE = new BigDecimal("1.00");
+
     private static AnApplicationWithAClockToMove app;
 
     @BeforeAll
@@ -133,6 +143,11 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
      * <p>The recipient matters at least as much as the sender here. Receiving points is the side
      * that looks like income, and a run of weeks kept alive by being given points would be a streak
      * that no longer means what the front page says it means.
+     *
+     * <p>This is half of the promise — the half about a gift <em>adding</em> to a week or a run.
+     * The half about a gift taking one away is
+     * {@link #a_gift_costs_neither_customer_the_run_of_weeks_they_are_on}, which cannot be asserted
+     * from down here: at zero weeks and the ordinary rate, "unchanged" has only one direction.
      */
     @Test
     void a_gift_secures_no_week_and_changes_neither_streak() {
@@ -174,6 +189,66 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
     }
 
     /**
+     * The same promise from the other side: a gift takes nothing away from a run either. Both
+     * customers arrive at the gift on a live run of weeks paying above the ordinary rate, and both
+     * leave it on the same run at the same rate.
+     *
+     * <p>Both directions are needed and neither implies the other, which is the whole reason this
+     * test exists beside {@link #a_gift_secures_no_week_and_changes_neither_streak}. That one makes
+     * the gift with both figures at the floor — nothing paid in, no run, the ordinary rate — where
+     * "unchanged" can only catch a run being created or a week being secured, because there is
+     * nowhere below zero to fall to. Losing a live streak because a friend sent you points is the
+     * more damaging half of the promise and is only assertable from up here.
+     *
+     * <p>Three consecutive secured weeks each rather than the two a rate above the ordinary needs,
+     * so that the run and the rate are both plainly mid-ladder and something that clipped either
+     * has room to show. Both are checked to be up there before the gift is made, because "still
+     * three weeks at 1.20×" is only worth asserting where that was true to begin with.
+     *
+     * <p>On an application of its very own, which is the one thing this test cannot borrow from the
+     * class. Every other test here starts from wherever the last one left off, and that is fine for
+     * them because each compares against its own before-state. This one has to build a live run
+     * <em>first</em>, and a gift made by an earlier test would already have taken the run away
+     * before the building started if giving points cost a run at all. The failure would then land
+     * on the setup rather than on the promise, and the test would be reporting the wrong thing
+     * about the right bug. A database where no gift has ever been made is the only place the run
+     * this test builds is certainly there when its own gift is made.
+     */
+    @Test
+    void a_gift_costs_neither_customer_the_run_of_weeks_they_are_on() {
+        try (AnApplicationWithAClockToMove untouched = new AnApplicationWithAClockToMove(
+                aDatabaseFileThatDoesNotExistYet("saving-streak-a-gift-and-a-live-run"))) {
+            long ankesSavings = untouched.savingsAccountOf(ANKE);
+            long bramsSavings = untouched.savingsAccountOf(BRAM);
+            for (int week = 1; week <= WEEKS_OF_A_RUN_WORTH_LOSING; week++) {
+                if (week > 1) {
+                    untouched.aWeekPasses();
+                }
+                untouched.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK);
+                untouched.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK);
+            }
+
+            BalancesView ankeBefore = untouched.balancesOf(ankesSavings);
+            BalancesView bramBefore = untouched.balancesOf(bramsSavings);
+            theRunIsLiveAndPayingAboveTheOrdinaryRate("the sender", ankeBefore);
+            theRunIsLiveAndPayingAboveTheOrdinaryRate("the recipient", bramBefore);
+
+            untouched.give(ANKE, BRAM, "10");
+
+            BalancesView ankeAfter = untouched.balancesOf(ankesSavings);
+            BalancesView bramAfter = untouched.balancesOf(bramsSavings);
+
+            assertThat(ankeAfter.pointsBalance())
+                    .as("the gift went through, which is what makes the rest of this worth asserting")
+                    .isEqualTo(ankeBefore.pointsBalance() - 10);
+            assertThat(bramAfter.pointsBalance()).isEqualTo(bramBefore.pointsBalance() + 10);
+
+            theWeekAndTheRunAreExactlyWhatTheyWere("the sender", ankeBefore, ankeAfter);
+            theWeekAndTheRunAreExactlyWhatTheyWere("the recipient", bramBefore, bramAfter);
+        }
+    }
+
+    /**
      * No deposit of either customer's says anything different afterwards: not its total, not the
      * three parts the total is made of, not the rate it was paid at, and not what its next
      * anniversary is worth.
@@ -185,9 +260,14 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
      * got there. A deposit whose total fell when its owner was generous would make a customer's own
      * history depend on what they did with the proceeds.
      *
-     * <p>Every entry is compared whole rather than field by field, which is the assertion that keeps
-     * meaning something when the deposit view grows a field: a gift that showed up anywhere in one of
-     * these entries fails this test without anybody having to remember to look for it there.
+     * <p>Asserted twice over, because the two assertions fail at different things and neither one
+     * covers the other. Every entry is compared whole rather than field by field, which catches any
+     * figure the history already reports moving — a gift credited into a deposit's total, its base,
+     * its bonus or its rate. That comparison is blind to a field being <em>added</em>, though:
+     * {@link DepositView} is filled in by Jackson, which drops properties it has no component for,
+     * so a {@code giftedPoints} the API started sending would never reach the record being compared.
+     * So the history is also read as the text it is sent as and asked whether a gift is named
+     * anywhere in it, which is what catches the breakdown growing a field nobody here anticipated.
      */
     @Test
     void a_gift_is_no_part_of_what_any_deposit_of_either_customers_earned() {
@@ -211,6 +291,14 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
         assertThat(app.depositsInto(ankesSavings))
                 .as("and giving them away rewrote none of the sender's deposits either")
                 .containsExactly(hers);
+
+        // And the same question of the bodies themselves, which is the half the comparison above
+        // cannot answer: a field added to a deposit's breakdown never reaches the view it is
+        // compared through, so a gift figure inside an entry is only visible in the text.
+        theHistoryNamesNoGift("the recipient's deposit history",
+                app.theDepositHistoryAsItIsSent(bramsSavings));
+        theHistoryNamesNoGift("the sender's deposit history",
+                app.theDepositHistoryAsItIsSent(ankesSavings));
 
         // The invariant underneath all of it, stated once for every deposit either of them holds: a
         // total is its three parts and nothing else, so nothing was added to the breakdown and left
@@ -276,7 +364,7 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
                 .as(whose + " is exactly as far off securing the week as before")
                 .isEqualByComparingTo(before.stillNeededThisWeek());
         assertThat(after.currentStreakWeeks())
-                .as(whose + " is on the same run of weeks as before, which is none")
+                .as(whose + " is on the same run of weeks as before, however long that was")
                 .isEqualTo(before.currentStreakWeeks());
         assertThat(after.bestStreakWeeks())
                 .as(whose + " has the same best-ever run as before")
@@ -287,13 +375,42 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
     }
 
     /**
+     * A run that is actually running, and a rate that is actually above the floor. The precondition
+     * of the test above: without it, "the run is what it was" would be a sentence about zero.
+     */
+    private static void theRunIsLiveAndPayingAboveTheOrdinaryRate(String whose, BalancesView now) {
+        assertThat(now.currentStreakWeeks())
+                .as(whose + " reaches the gift on a run of weeks there is something to lose")
+                .isGreaterThanOrEqualTo(WEEKS_OF_A_RUN_WORTH_LOSING);
+        assertThat(now.currentMultiplier())
+                .as(whose + " reaches it earning above the ordinary rate, so a rate that fell back "
+                        + "to the floor would show")
+                .isGreaterThan(THE_ORDINARY_RATE);
+    }
+
+    /**
      * An overview with no gift-shaped figure anywhere in it, read as the text it is sent as. Lowered
      * in case first, so that a field named {@code pointsGifted} is caught as surely as one named
      * {@code gifts}, and asked about the two words a total of this kind would have to be named with.
      */
     private static void theOverviewMentionsNoGift(String which, String asItIsSent) {
+        nothingGiftShapedIn("no gift figure on " + which, asItIsSent);
+    }
+
+    /**
+     * A deposit history with no gift-shaped figure in any of its entries, read the same way and for
+     * the sharper version of the same reason: a breakdown that had grown a {@code giftedPoints}
+     * would be a gift figure inside a statement about one deposit, which is exactly what this
+     * ticket forbids, and no comparison made through a view can see a field the view has not got.
+     */
+    private static void theHistoryNamesNoGift(String which, String asItIsSent) {
+        nothingGiftShapedIn("no gift figure anywhere in " + which, asItIsSent);
+    }
+
+    /** The words a gift figure would have to be named with, asked of a body once. */
+    private static void nothingGiftShapedIn(String because, String asItIsSent) {
         assertThat(asItIsSent.toLowerCase())
-                .as("no gift figure on " + which)
+                .as(because)
                 .doesNotContain("gift")
                 .doesNotContain("given")
                 .doesNotContain("received");
