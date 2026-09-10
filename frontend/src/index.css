@@ -1938,6 +1938,25 @@ button.quiet.bell[aria-expanded='true'] {
   margin: 0.75rem 0 0;
 }
 
+/* ------------------------------------------- the notice on an account page */
+
+/* The newest unread thing said about one account, drawn on that account's page above the forms
+   that move its money. The panel it sits in has no padding of its own — its header, its balances
+   and its ledger all carry their own — so the notice carries the same gutter the read failure
+   above it wears. Both the calm dress and the alert dress come through this rule, so the two sit
+   in exactly the same place on the page. */
+.account > .notice {
+  margin: 1.25rem 1.5rem;
+}
+
+/* A standing notice is not news. A refusal shakes because it has just happened in answer to
+   something the customer did; this is drawn again every time the page is, and a page that shakes
+   on every load is noise rather than emphasis. The red left rule, the tinted ground and the colour
+   all stay: only the movement goes. */
+[role='alert'].standing {
+  animation: none;
+}
+
 /* ---------------------------------------------------------------- account cards */
 
 .cards {
