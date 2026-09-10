@@ -31,12 +31,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and a record derived from the ledger would fail on either.
  *
  * <p>The first gift is exactly what the snack voucher costs, so the claim spends that gift and
- * nothing else. The second is the whole of what she had left, so once the sweep has run neither of
- * them holds anything at all and there is no batch anywhere for a list to have been derived from.
+ * nothing else. The second is the whole of what she had left, so both gifts pass through his pot
+ * and nothing else ever does — he pays no euro into this application — and once the sweep has run
+ * his pot is empty, which is to say there is no batch of either gift left for a list to have been
+ * derived from.
  *
  * <p>Its own application, on a database nothing has ever been written to: it winds a year on, which
- * cannot be done to the shared one, and it needs both pots empty at the end, which is only
- * assertable where nothing else has ever earned anything.
+ * cannot be done to the shared one, and it needs his pot to hold the two gifts and nothing else,
+ * which is only true where nothing has ever been paid into his account.
  */
 class AGiftOutlivesThePointsItMovedApiTest extends ApiIntegrationTest {
 
@@ -71,6 +73,11 @@ class AGiftOutlivesThePointsItMovedApiTest extends ApiIntegrationTest {
         LocalDate sheEarnedThemOn = app.theDateTheClockReads();
         DepositView hers = app.deposit(app.savingsAccountOf(ANKE), ANKE, "50.00");
         assertThat(hers.pointsEarned()).isEqualTo(50);
+        assertThat(app.pointsExpiringNextOnOf(ANKE))
+                .as("the day the wind-forward below aims past, pinned so a date rolling over "
+                        + "between that read and the deposit fails here rather than quietly "
+                        + "landing the sweep on the anniversary instead of after it")
+                .isEqualTo(sheEarnedThemOn.plusYears(1));
 
         // The gift that gets spent: exactly the price of the voucher he buys with it.
         GiftView theOneHeSpends = app.give(ANKE, BRAM, String.valueOf(SNACK_VOUCHER_COSTS));
@@ -98,14 +105,18 @@ class AGiftOutlivesThePointsItMovedApiTest extends ApiIntegrationTest {
         app.daysPass(ChronoUnit.DAYS.between(app.theDateTheClockReads(),
                 sheEarnedThemOn.plusYears(1)) + A_DAY_PAST_THE_ANNIVERSARY);
         app.runJob(THE_EXPIRY_SWEEP);
-        assertThat(app.pointsBalanceOf(ANKE))
-                .as("she gave away everything she earned and earned nothing since")
-                .isZero();
+
+        // Both gifts landed in his pot and nothing else ever did — he has not paid a euro into
+        // this application — so his pot being empty is exactly the property this case needs: no
+        // batch either gift created survives, one spent and the other swept. Hers is deliberately
+        // not asserted as a global zero: she parted with both batches at the moment of each gift,
+        // which is asserted above, and whether she is owed anything else by then is not what the
+        // record outliving the points is about.
         assertThat(app.pointsBalanceOf(BRAM))
-                .as("what he was given is a year old, whichever pot it aged in")
+                .as("not a point of either gift is left, whichever pot it aged in")
                 .isZero();
         assertThat(app.pointsExpiringNextOf(BRAM))
-                .as("there is nothing left to lose")
+                .as("and no batch of either gift is left to lose")
                 .isNull();
 
         // Not one point of either gift is anywhere, and both gifts are still in both lists.

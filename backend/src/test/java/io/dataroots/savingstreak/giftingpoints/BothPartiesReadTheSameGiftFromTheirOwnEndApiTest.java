@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.giftingpoints;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
@@ -101,7 +102,12 @@ class BothPartiesReadTheSameGiftFromTheirOwnEndApiTest extends ApiIntegrationTes
         assertThat(asSheReadsIt.points()).isEqualTo(Long.parseLong(THE_FIRST_GIFT));
         assertThat(asSheReadsIt.givenAt())
                 .as("the moment it happened, off the application's clock")
-                .isBetween(beforeSheGave, afterSheGave);
+                // A gift keeps its moment to the millisecond, while the clock is read here at
+                // the sub-millisecond precision it reports, so the lower end of the window has
+                // to be brought down to the precision the gift is kept at: a gift made in the
+                // same millisecond as that read otherwise sorts just below it.
+                .isAfterOrEqualTo(beforeSheGave.truncatedTo(ChronoUnit.MILLIS))
+                .isBeforeOrEqualTo(afterSheGave);
 
         GiftView asHeReadsIt = theOnlyGiftOf(BRAM);
         assertThat(asHeReadsIt.id())
