@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -21,9 +21,9 @@ production code if ticket 01 was built as specified; if any of these fail, the f
 code, not a new special case.
 
 - [x] Both customers' current-account and savings balances are unchanged by a gift.
-- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
 - [x] A gift does not appear in either customer's ledger of money that moved.
-- [ ] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
+- [x] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
 - [x] Nothing new appears on the account overview.
 
 ## Review feedback - attempt 1
@@ -180,3 +180,29 @@ both mutations and the `curl` above are mine.
   not re-open it.
 - `cd backend && ./mvnw test` → 251 tests, 0 failures, twice on the clean tree.
   `cd frontend && npm run typecheck` → clean.
+
+## Attempt 2 — what was done about the feedback
+
+Test-only again; no production file differs from `agentic_engineered`.
+
+- **Defect 1.** `AnApplicationWithAClockToMove#theDepositHistoryAsItIsSent(long)` added beside the
+  two overview helpers, and `a_gift_is_no_part_of_what_any_deposit_of_either_customers_earned` now
+  asserts both customers' deposit history, lowercased, names no "gift"/"given"/"received" alongside
+  the whole-entry comparison. The javadoc sentence that claimed the comparison covered a new field
+  is replaced by one saying what each of the two assertions actually catches, and why neither
+  covers the other. Mutation re-applied (`giftedPoints` on `DepositResponse`, value `99L`): RED at
+  `theHistoryNamesNoGift` → "no gift figure anywhere in the recipient's deposit history".
+- **Defect 2.** New test `a_gift_costs_neither_customer_the_run_of_weeks_they_are_on`: three
+  consecutive secured weeks for both customers, both asserted to be on a run of >= 3 weeks at a
+  rate above 1.00 before the gift, then the same five figures re-asserted after it. It runs on an
+  application of its own, because an earlier test's gift would otherwise have taken the run away
+  before this one built it, and the failure would land on the setup rather than on the promise. The
+  from-the-floor test is kept. Mutation re-applied (`StreaksService` zeroes `currentWeeks` for any
+  customer in the `gift` table): RED at "the sender is on the same run of weeks as before, however
+  long that was", expected 3 but was 0.
+- **Defect 3.** Both overview helpers and the new history helper go through one private
+  `theBodyOfAReadThatHadToSucceed`, which asserts 200 before handing back the body. Checked by
+  reading a savings account that does not exist: AssertionError "a read of
+  /api/savings-accounts/{id} this test needs to have succeeded ...", expected 200 OK but was 404.
+
+`cd backend && ./mvnw test` → 252 tests, 0 failures. `cd frontend && npm run typecheck` → clean.
