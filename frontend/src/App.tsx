@@ -490,6 +490,10 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
                 loadAccounts()
                 loadNotifications()
               }}
+              // The whole list rather than the one notice, because which of them concerns this
+              // account is the page's own question and it is the page that knows which account it
+              // is. Read once in this component and shown twice — in the bell above, and here.
+              notifications={notifications ?? []}
             />
           </main>
         )}
@@ -816,6 +820,47 @@ function WhatHappenedIcon({ reason }: { reason: NotificationReason }) {
     case 'LOYALTY_BONUS_AT_RISK':
       return <WarningIcon />
   }
+}
+
+/**
+ * The newest thing a rule has said about one savings account that its holder has not read yet,
+ * drawn on that account's own page rather than left behind the bell.
+ *
+ * <p>The point of it being here is proximity. The warning worth having — a deposit whose
+ * anniversary is close and which the next withdrawal would empty first — belongs beside the
+ * withdrawal form that would cost the customer that bonus, not two clicks away behind an icon.
+ *
+ * <p>One of the four is a warning and three are remarks, and they are dressed as what they are.
+ * The three calm ones wear the {@code .explanation} idiom this application already uses for
+ * everything it says quietly beside a figure: muted, and capped at about sixty characters a line.
+ * {@code LOYALTY_BONUS_AT_RISK} wears the {@code [role='alert']} treatment {@link Refusal} has —
+ * the red left rule and the tinted ground — because it is the one of the four that warns.
+ *
+ * <p>It does not shake. A refusal shakes because it has just happened in answer to something the
+ * customer did; this is standing, and is drawn again every time the page is. Movement that arrives
+ * unasked on every load is noise, so the {@code standing} modifier opts out of the animation and
+ * keeps the colour.
+ *
+ * <p>There is no dismiss button, here or anywhere. The notice goes when the notification has been
+ * read, which happens when the panel is opened — two states is one state machine, and a training
+ * application should not let you throw away the evidence that a rule fired.
+ */
+function Notice({ notification }: { notification: Notification }) {
+  if (notification.reason === 'LOYALTY_BONUS_AT_RISK') {
+    return (
+      <p className="notice standing" role="alert">
+        <WarningIcon />
+        <span>
+          <WhatHappened notification={notification} />
+        </span>
+      </p>
+    )
+  }
+  return (
+    <p className="notice explanation">
+      <WhatHappened notification={notification} />
+    </p>
+  )
 }
 
 /**
@@ -1220,10 +1265,12 @@ function SavingsAccountPage({
   savingsAccountId,
   currentAccounts,
   onChanged,
+  notifications,
 }: {
   savingsAccountId: number
   currentAccounts: CurrentAccount[]
   onChanged: () => void
+  notifications: Notification[]
 }) {
   const [account, setAccount] = useState<SavingsAccountView | null>(null)
   const [accountError, setAccountError] = useState<string | null>(null)
@@ -1271,6 +1318,16 @@ function SavingsAccountPage({
     const over = setTimeout(() => setCelebrated(null), 2600)
     return () => clearTimeout(over)
   }, [celebrated])
+
+  // The one thing said about this account that its holder has not read. Nothing here sorts: the
+  // list arrives newest first, as the backend sends it, so the first one that matches is the newest
+  // one. Another pot's notification never matches, and neither does one already read — which is
+  // what makes the notice go away by itself once the panel has been opened and everything in it
+  // marked.
+  const notice =
+    notifications.find(
+      (said) => said.savingsAccountId === savingsAccountId && said.readAt === null,
+    ) ?? null
 
   return (
     <section className="panel account">
@@ -1371,6 +1428,10 @@ function SavingsAccountPage({
           </div>
         </dl>
       )}
+
+      {/* Above the forms rather than below them, because a warning about what a withdrawal would
+          cost has to be read before the amount is typed. */}
+      {notice !== null && <Notice notification={notice} />}
 
       {/* Outside the check above on purpose: a read that failed is no reason to stop someone
           depositing, and the deposit is what will read the account again. */}
