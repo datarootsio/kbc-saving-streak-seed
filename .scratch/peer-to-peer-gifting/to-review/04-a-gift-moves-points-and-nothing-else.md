@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -20,8 +20,8 @@ it is a thing a plausible implementation could get wrong by being helpful. Expec
 production code if ticket 01 was built as specified; if any of these fail, the fix is in ticket 01's
 code, not a new special case.
 
-- [ ] Both customers' current-account and savings balances are unchanged by a gift.
-- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
-- [ ] A gift does not appear in either customer's ledger of money that moved.
-- [ ] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
-- [ ] Nothing new appears on the account overview.
+- [x] Both customers' current-account and savings balances are unchanged by a gift.
+- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [x] A gift does not appear in either customer's ledger of money that moved.
+- [x] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
+- [x] Nothing new appears on the account overview.
