@@ -1,6 +1,6 @@
 # 01: Crossing a balance rung raises a notification
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** None (can start immediately).
 
@@ -35,19 +35,19 @@ The entity carries `id`, `customerId`, `reason`, `savingsAccountId`, `depositId`
 as the only ways to build one, so a balance row cannot be given a `depositId`. The two loyalty
 factories and the loyalty columns arrive in ticket 02; add the columns now and leave them null.
 
-- [ ] A savings account whose balance passes a rung raises one `BALANCE_THRESHOLD_REACHED` naming
+- [x] A savings account whose balance passes a rung raises one `BALANCE_THRESHOLD_REACHED` naming
       that rung
-- [ ] A deposit that vaults several rungs at once raises only the rung the balance landed on
-- [ ] A second sweep over an unchanged balance raises nothing
-- [ ] A withdrawal that drops the balance below a rung it had reached raises
+- [x] A deposit that vaults several rungs at once raises only the rung the balance landed on
+- [x] A second sweep over an unchanged balance raises nothing
+- [x] A withdrawal that drops the balance below a rung it had reached raises
       `BALANCE_THRESHOLD_LOST` naming that rung on the next sweep
-- [ ] A balance that crosses a rung, falls back and crosses it again raises all three notifications
-- [ ] An account that already stands on a rung and has never been notified is announced on the first
+- [x] A balance that crosses a rung, falls back and crosses it again raises all three notifications
+- [x] An account that already stands on a rung and has never been notified is announced on the first
       sweep, so the seeded demo data produces something
-- [ ] The rungs are written down in exactly one place and no rung literal appears anywhere else
-- [ ] `raiseNotifications` appears in `GET /api/dev/jobs` with its schedule and runs at
+- [x] The rungs are written down in exactly one place and no rung literal appears anywhere else
+- [x] `raiseNotifications` appears in `GET /api/dev/jobs` with its schedule and runs at
       `POST /api/dev/jobs/raiseNotifications/run`
-- [ ] The sweep moves no money, credits no points and secures no week
-- [ ] One INFO line per sweep carrying `asAt`, `accountsConsidered` and `raised`, one INFO line per
+- [x] The sweep moves no money, credits no points and secures no week
+- [x] One INFO line per sweep carrying `asAt`, `accountsConsidered` and `raised`, one INFO line per
       notification raised carrying its customer, reason, account, amount and id, and a DEBUG line
       per account passed over carrying the balance, the rung and the reason
