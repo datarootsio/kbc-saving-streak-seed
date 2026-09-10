@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: needs-info
+Status: needs-review
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -21,7 +21,7 @@ production code if ticket 01 was built as specified; if any of these fail, the f
 code, not a new special case.
 
 - [x] Both customers' current-account and savings balances are unchanged by a gift.
-- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
 - [x] A gift does not appear in either customer's ledger of money that moved.
 - [x] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
 - [x] Nothing new appears on the account overview.
@@ -556,3 +556,78 @@ not this branch — re-running was clean both times.
 
 `git status --porcelain` is empty and `git diff agentic_engineered -- backend/src/main frontend` is
 empty: every mutation above was reverted.
+
+## Attempt 4 — what was done about the feedback
+
+Test-only again; `git diff agentic_engineered -- backend/src/main frontend` is empty.
+
+- **Defect 6 (the label against the money).** `theRateTheyWerePromisedIsTheRateTheyArePaid` now takes
+  the identical pre-gift deposit as well as the pre-gift overview, and holds the post-gift deposit's
+  `pointsEarned`, `basePoints` and `streakBonusPoints` to it alongside `multiplierApplied`. That is
+  the reviewer's suggested fix: the label comes from `deposit.paidAt(multiplier)` and the points from
+  `creditPointsFor(..., multiplier, ...)` four lines later, so each has to be asserted separately.
+  The loop that builds the run was restructured so the week-3 deposits are held in hand
+  (`ankesLastBeforeTheGift`, `bramsLastBeforeTheGift`) — identical euros, same account, same week of
+  the same run as the post-gift pair. The reviewer's mutation now goes **RED**: "the sender earns
+  from the same euros exactly what they earned immediately before the gift", expected 72 but was 60.
+- **The same, from the floor.** `a_gift_secures_no_week_and_changes_neither_streak` has nothing to
+  compare against — every deposit in it is the first of a run — so `theDepositWasPricedAsTheFirstWeekOfARun`
+  asserts the points outright instead: EUR 60,00 at the ordinary rate earns exactly 60 and no streak
+  bonus. Both figures, not just the rate.
+- **The same shape, one layer down (the pot).** `pointsEarned` is a figure the API reports about a
+  deposit; the points a customer can spend are the credits standing in their name.
+  `thePotGrewByWhatTheDepositSaysItEarned` holds the customer's balance either side of each post-gift
+  deposit to what that deposit says it earned.
+- **The same shape, one layer sideways (the stored rate).** Found by mutation while sweeping: the
+  `DepositView` a deposit comes back with is built from the local `multiplier`, while the history is
+  built from the row `deposit.paidAt` wrote — two copies of one figure, and only the row lasts. A
+  gift that repriced the stored copy alone was invisible: with `deposit.paidAt` mutated to write 1.00
+  for anybody in the `gift` table, the whole class stayed **GREEN**.
+  `theHistoryRemembersTheDepositTheWayItWasMade` reads each post-gift deposit back out of the history
+  and holds its rate, total, base, bonus and amount to the answer the deposit came back with. The
+  same mutation is now **RED**. (The rate is compared with `isEqualByComparingTo`: the POST sends
+  `1.20` and the history sends `1.2`.)
+
+Four mutations, each applied alone to `DepositsService` and reverted:
+
+| Mutation | Result |
+| --- | --- |
+| The reviewer's: `creditPointsFor` priced at 1.00 for anybody in the `gift` table, `deposit.paidAt(multiplier)` left alone | **RED** — `theRateTheyWerePromisedIsTheRateTheyArePaid:526`, expected 72 but was 60 |
+| The pot layer: priced at 1.00 but the returned `PointsByReason` faked back up to 60 + 12 | **RED** at two — `thePotGrewByWhatTheDepositSaysItEarned:576` (72 vs 60) and, from the floor, `theDepositWasPricedAsTheFirstWeekOfARun:555` (60 vs 72) |
+| The mirror image: `deposit.paidAt` writes 1.00 for anybody in the `gift` table, pricing untouched — **green before this attempt** | **RED** — `theHistoryRemembersTheDepositTheWayItWasMade:612`, expected 1.20 but was 1.00 |
+| (the same mirror mutation, run before the new helper existed) | GREEN — which is how the stored-rate hole was found |
+
+### What the running application showed
+
+Backend on a throwaway database at DEBUG, three secured weeks for both customers, then the identical
+EUR 60,00 deposit either side of a gift of five points (transcript:
+`.scratch/peer-to-peer-gifting/logs/04-a-gift-moves-points-and-nothing-else.app.4.curl.log`):
+
+    overview before the gift : currentStreakWeeks=3 bestStreakWeeks=3 currentMultiplier=1.20
+    EUR 60.00 before the gift: id=7 pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.20
+    POST /api/customers/1/gifts {"recipientContactDetails":"bram.devos@example.be","points":"5"} -> 201
+    overview after the gift  : currentStreakWeeks=3 bestStreakWeeks=3 currentMultiplier=1.20
+    pot immediately before   : 265
+    EUR 60.00 after the gift : id=8 pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.20
+    pot after                : 337  (grew by 72, exactly what the deposit says it earned)
+    deposit 8 in the history : pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.2
+
+And the log either side of the gift, which is the same figure said by the module that spends it:
+
+    INFO i.d.s.deposits.DepositsService : deposit accepted depositId=7 ... streakWeeks=3 multiplier=1.20 basePoints=60 streakBonusPoints=12 pointsEarned=72
+    INFO i.d.s.gifting.GiftingService   : gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 points=5 givenAt=2026-09-24T04:37:29.608Z
+    INFO i.d.s.deposits.DepositsService : deposit accepted depositId=8 ... streakWeeks=3 multiplier=1.20 basePoints=60 streakBonusPoints=12 pointsEarned=72
+
+`cd backend && ./mvnw test` -> 252 tests, 0 failures. `cd frontend && npm run typecheck` -> clean
+(Node v24.16.0). `git status --porcelain` is empty and `git diff agentic_engineered -- backend/src/main
+frontend` is empty: every mutation above was reverted.
+
+### Not blocking, left alone deliberately
+
+- The three "not blocking" notes from the attempt-3 review (criteria 4 and 5 read only the first
+  savings account; `theBodyOfAReadThatHadToSucceed` names the URI template rather than the account;
+  the marker-guard javadoc overstates the case for `pointsBalance`) are untouched — none of them is
+  a criterion, and I did not want to move code the reviewer had just read.
+- Criterion 1's `moneyBalance` was considered for the same label-versus-thing sweep and left: it is
+  summed live from the deposits' `remaining_amount` rather than stored, and both halves of it
+  already go red under mutation (attempt 3's table).
