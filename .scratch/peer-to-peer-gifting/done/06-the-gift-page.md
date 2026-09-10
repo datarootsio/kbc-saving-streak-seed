@@ -198,3 +198,25 @@ GiftingService : gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 po
 The four non-blocking notes from attempt 1 were all taken (`GiftPage` now takes `customerId:
 number`, `.choice-name` is `aria-hidden`, the misleading comment is gone, `.give-line label` is
 folded into `.deposit label`). Nothing new was found.
+
+### Two things seen and judged non-blocking, recorded so nobody has to rediscover them
+
+Both were surfaced by a `/code-review` pass that reported after the review had finished, and both
+were then reproduced by hand against the running app. Neither breaks a criterion.
+
+1. `App.tsx:1653` — `/^\d+$/` has no length bound and `Number()` is a double, so a very long run
+   of digits is rounded before it reaches the label. Typing `111111111111111111111` at a balance
+   of 2 greys the button and reads `111.111.111.111.111.110.000 to go` — a figure nobody typed.
+   This is *not* the attempt-1 blocker in miniature: 21 digits is a whole number of points, the
+   backend refuses that gift for want of points too (`That gift costs 999999999999999999999
+   points, and you have 2.`, checked by curl), so the page is hinting where the backend agrees
+   rather than ruling where it would not. Only the quoted shortfall is wrong, and only past
+   `Number.MAX_SAFE_INTEGER`. Worth a bound if this code is touched again.
+2. `App.tsx:1648-1651` — the comment lists `1e3` among the figures "the backend answers in words".
+   It does not: `POST … {"points":"1e3"}` comes back `That gift costs 1000 points, and you have
+   2.`, i.e. a valid thousand-point gift. The behaviour is right (the page leaves it pressable and
+   the backend decides); the comment and the `e29f75e` commit message overstate it.
+
+The other two findings from that pass — the unsignalled post-gift `loadGifts()` and `accountsError`
+not reaching this screen — are the same two the attempt-1 review already examined and marked as
+faithful to `Banking.onClaimed` and `MoneyHistory`. They are unchanged and were not re-litigated.
