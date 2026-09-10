@@ -42,7 +42,29 @@ final class TheNotificationSweep {
     List<RaisedNotification> whatWasSaidAbout(long savingsAccountId, String customerName) {
         return app.theApplicationsOwn(NotificationsService.class)
                 .notificationsOf(app.customerIdOf(customerName)).stream()
-                .filter(raised -> raised.savingsAccountId() == savingsAccountId)
+                .filter(raised -> savingsAccountId == raised.savingsAccountId())
                 .toList();
+    }
+
+    /**
+     * Only what was said about the deposits in one savings account and their coming anniversaries,
+     * newest first.
+     *
+     * <p>Separate from the read above because a deposit that moves a balance onto a rung raises a
+     * balance notification too, and a test about anniversaries would otherwise have to count rows it
+     * is not about — and would go green the day a change to the ladder happened to add or drop one.
+     * Two rules share the sweep and each test asks about one of them.
+     */
+    List<RaisedNotification> whatWasSaidAboutAnAnniversaryIn(long savingsAccountId,
+                                                             String customerName) {
+        return whatWasSaidAbout(savingsAccountId, customerName).stream()
+                .filter(raised -> NotificationReason.THE_ANNIVERSARY_REASONS
+                        .contains(raised.reason()))
+                .toList();
+    }
+
+    /** The record itself, for the one test whose subject is the rule the database keeps. */
+    NotificationRepository theRecord() {
+        return app.theApplicationsOwn(NotificationRepository.class);
     }
 }

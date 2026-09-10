@@ -93,10 +93,21 @@ class TheNotificationSweepIsAJobThatCanBeRunOnDemandApiTest extends ApiIntegrati
 
         List<RaisedNotification> said = sweep.whatWasSaidAbout(savingsAccount, ANKE);
         assertThat(said)
-                .as("and it acted on that moment rather than reporting that it had")
-                .hasSize(1);
-        assertThat(Duration.between(theApplicationThinksItIs, said.get(0).raisedAt()).abs())
-                .as("the moment stamped on the notification is the application's, not the machine's")
-                .isLessThan(Duration.ofMinutes(5));
+                .as("and it acted on that moment rather than reporting that it had: both of the "
+                        + "sweep's rules had something to say about this account, one about the "
+                        + "rung the balance landed on and one about the deposit's anniversary — "
+                        + "which the wound clock has carried the application past and which no "
+                        + "loyalty sweep has been run to settle, so it is outstanding and the "
+                        + "euros behind it are exposed right now")
+                .hasSize(2);
+        assertThat(said).map(RaisedNotification::reason)
+                .containsExactlyInAnyOrder(
+                        NotificationReason.BALANCE_THRESHOLD_REACHED,
+                        NotificationReason.LOYALTY_BONUS_AT_RISK);
+        assertThat(said).allSatisfy(raised ->
+                assertThat(Duration.between(theApplicationThinksItIs, raised.raisedAt()).abs())
+                        .as("the moment stamped on the notification is the application's, not the "
+                                + "machine's")
+                        .isLessThan(Duration.ofMinutes(5)));
     }
 }

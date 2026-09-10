@@ -3,13 +3,21 @@ package io.dataroots.savingstreak.notifications;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.dataroots.savingstreak.accounts.AccountHolder;
 import io.dataroots.savingstreak.accounts.AccountsService;
+import io.dataroots.savingstreak.deposits.DepositStillHoldingMoney;
 import io.dataroots.savingstreak.deposits.DepositsService;
+import io.dataroots.savingstreak.loyalty.LoyaltyService;
+import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +29,16 @@ import org.springframework.transaction.annotation.Transactional;
  * application, and the whole of the rule.
  *
  * <p>A module of its own because a notification is not owned by any of the rules it reports on. It
- * reads a savings balance from Deposits and who holds an account from Accounts, writes nothing but
- * its own record, and neither module learns that notifications exist. It moves no money, credits no
+ * reads a savings balance and the deposits still holding money from Deposits, who holds an account
+ * from Accounts, and when those deposits next pay from Loyalty; it writes nothing but its own
+ * record, and none of those modules learns that notifications exist. It moves no money, credits no
  * points and secures no week: this is a record addressed to a customer, not a rule that pays them.
+ *
+ * <p>Two rules, and the sweep runs both over every savings account. One is about where a balance
+ * stands on a fixed ladder, argued out below; the other is about a deposit's coming anniversary and
+ * is argued out at {@link #whatThisAccountsAnniversariesHaveToSay}. They share the walk, the moment
+ * and the one write, and share nothing else — a balance rung is about an account and an anniversary
+ * is about one deposit inside it.
  *
  * <p><strong>A balance notification is raised on a change of rung, not on a crossing event.</strong>
  * That is the load-bearing decision in here and it is forced by what this application stores. A
@@ -64,12 +79,14 @@ public class NotificationsService {
 
     private final AccountsService accounts;
     private final DepositsService deposits;
+    private final LoyaltyService loyalty;
     private final NotificationRepository notifications;
 
-    NotificationsService(AccountsService accounts, DepositsService deposits,
+    NotificationsService(AccountsService accounts, DepositsService deposits, LoyaltyService loyalty,
                          NotificationRepository notifications) {
         this.accounts = accounts;
         this.deposits = deposits;
+        this.loyalty = loyalty;
         this.notifications = notifications;
     }
 
@@ -99,8 +116,31 @@ public class NotificationsService {
     public void raiseNotifications(Instant now) {
         List<Long> savingsAccounts = accounts.everySavingsAccount();
         List<Notification> raising = new ArrayList<>();
+        int depositsConsidered = 0;
         for (long savingsAccountId : savingsAccounts) {
-            whatThisAccountsBalanceHasToSay(savingsAccountId, now).ifPresent(raising::add);
+            Optional<AccountHolder> holder = accounts.holderOfSavingsAccount(savingsAccountId);
+            if (holder.isEmpty()) {
+                // Only reachable if an account is closed between the listing and this read, which
+                // nothing in this application does yet. Said out loud because a sweep that
+                // considered an account and raised nothing for it should never be silent about why,
+                // and because with nobody to address a notification to there is nothing either half
+                // of this sweep could say about the account.
+                log.warn("account passed over savingsAccountId={} "
+                        + "reason=nobody holds it any more", savingsAccountId);
+                continue;
+            }
+            long customerId = holder.get().customerId();
+            whatThisAccountsBalanceHasToSay(savingsAccountId, customerId, now)
+                    .ifPresent(raising::add);
+            // The deposits still holding money, oldest first — which is both the set the
+            // anniversary rule has anything to say about and the order the next withdrawal would
+            // drain them in. Read here rather than inside the rule so that the count reaches the
+            // one line the sweep logs about itself.
+            List<DepositStillHoldingMoney> holding =
+                    deposits.depositsStillHoldingMoneyIn(savingsAccountId);
+            depositsConsidered += holding.size();
+            raising.addAll(
+                    whatThisAccountsAnniversariesHaveToSay(savingsAccountId, customerId, holding, now));
         }
         // One write for the run, so that a sweep either says everything it decided or nothing at
         // all. Nothing raised is no statement at all rather than an empty one.
@@ -117,11 +157,12 @@ public class NotificationsService {
                     asMoney(notification.getAmount()), notification.getPoints(),
                     notification.getOccursOn(), notification.getId());
         }
-        // One line per sweep: the moment it judged everything against, how many accounts it looked
-        // at and how many notifications it raised. A quiet night and a night that was handed nothing
-        // to look at can be told apart from this line alone.
-        log.info("notifications raised asAt={} accountsConsidered={} raised={}",
-                now, savingsAccounts.size(), raised.size());
+        // One line per sweep: the moment it judged everything against, how many accounts and how
+        // many deposits it looked at, and how many notifications it raised. A quiet night and a
+        // night that was handed nothing to look at can be told apart from this line alone.
+        log.info("notifications raised asAt={} accountsConsidered={} depositsConsidered={} "
+                        + "raised={}",
+                now, savingsAccounts.size(), depositsConsidered, raised.size());
     }
 
     /**
@@ -148,17 +189,7 @@ public class NotificationsService {
      * nothing to EUR 2.600 is one occasion, not four.
      */
     private Optional<Notification> whatThisAccountsBalanceHasToSay(long savingsAccountId,
-                                                                   Instant now) {
-        Optional<AccountHolder> holder = accounts.holderOfSavingsAccount(savingsAccountId);
-        if (holder.isEmpty()) {
-            // Only reachable if an account is closed between the listing and this read, which
-            // nothing in this application does yet. Said out loud because a sweep that considered an
-            // account and raised nothing for it should never be silent about why.
-            log.warn("account passed over for a balance notification savingsAccountId={} "
-                    + "reason=nobody holds it any more", savingsAccountId);
-            return Optional.empty();
-        }
-        long customerId = holder.get().customerId();
+                                                                   long customerId, Instant now) {
         BigDecimal balance = deposits.moneyBalanceOf(savingsAccountId);
         Optional<BigDecimal> standsOn = BalanceThresholds.theRungStoodOnWith(balance);
         Optional<Notification> lastSaid = notifications
@@ -194,6 +225,139 @@ public class NotificationsService {
         BigDecimal fallenOff = BalanceThresholds.theRungAbove(balance).orElseGet(stoodOn::orElseThrow);
         return Optional.of(
                 Notification.balanceRungLost(customerId, savingsAccountId, fallenOff, now));
+    }
+
+    /**
+     * Everything this account's deposits have to say about their coming anniversaries tonight.
+     *
+     * <p>One notification per deposit at most, and none for most deposits most nights. A deposit is
+     * worth saying something about when its next anniversary is near enough
+     * ({@link AnAnniversaryComingSoon}), is worth at least one point, and has not already been
+     * announced under the reason it would get now.
+     *
+     * <p><strong>The split is the whole of this rule.</strong> The deposits arrive oldest first,
+     * ordered by the moment the money landed and then by identifier, which is precisely the order
+     * {@code WithdrawalsService} drains them in — so the first of them is the deposit the next euro
+     * withdrawn from this account comes out of. That one's bonus is
+     * {@link NotificationReason#LOYALTY_BONUS_AT_RISK}; every other deposit near its anniversary is
+     * standing behind money that would go first, and gets
+     * {@link NotificationReason#LOYALTY_BONUS_ABOUT_TO_PAY}. Mutually exclusive by construction, so
+     * one deposit never says both things about one anniversary — and a deposit that becomes the
+     * oldest, when what stood in front of it is emptied, is announced again under the other reason,
+     * which is the escalation this feature is for.
+     *
+     * <p>Nothing here works out what an anniversary falls on or what it pays. Both come from
+     * {@code LoyaltyService.whenTheDepositsInAnAccountNextPay} exactly as the deposits table already
+     * shows them, and the rate they were worked out from is written down once, in {@code
+     * LoyaltyRate}. A tenth computed a second time here would be a second answer to disagree with
+     * the first the day anybody reprices loyalty.
+     */
+    private List<Notification> whatThisAccountsAnniversariesHaveToSay(
+            long savingsAccountId, long customerId, List<DepositStillHoldingMoney> holding,
+            Instant now) {
+        if (holding.isEmpty()) {
+            // Which is every account nobody has saved into, so this is the line that says a sweep
+            // raising no anniversary for an account had no anniversary to raise one about. The
+            // deposits that have been emptied are outside the listing rather than passed over in
+            // it: money never comes back into one, and a deposit at zero has no anniversary left to
+            // reach.
+            log.debug("account passed over for anniversary notifications savingsAccountId={} "
+                    + "reason=none of its deposits holds money", savingsAccountId);
+            return List.of();
+        }
+        Map<Long, NextAnniversaryOfADeposit> whenTheyNextPay =
+                loyalty.whenTheDepositsInAnAccountNextPay(savingsAccountId);
+        Set<AnAnnouncedAnniversary> alreadyAnnounced = whatHasAlreadyBeenAnnouncedFor(holding);
+        LocalDate theLastDayWorthSaying = AnAnniversaryComingSoon.theLastDayWorthSayingAsAt(now);
+        // The oldest deposit still holding money, which is the one the next withdrawal empties
+        // first. Present because the listing is not empty.
+        long firstInLineForTheNextWithdrawal = holding.get(0).id();
+        // The inputs behind every decision below, before any of them is taken: how far the window
+        // reaches tonight, and which deposit the queue puts first. A reviewer redoes the split from
+        // this line and the per-deposit lines under it.
+        log.debug("the withdrawal queue in a savings account savingsAccountId={} customerId={} "
+                        + "depositsStillHoldingMoney={} firstInLineForTheNextWithdrawal={} "
+                        + "anniversariesWorthSayingUpToAndIncluding={} alreadyAnnounced={}",
+                savingsAccountId, customerId, holding.size(), firstInLineForTheNextWithdrawal,
+                theLastDayWorthSaying, alreadyAnnounced.size());
+        List<Notification> raising = new ArrayList<>();
+        for (DepositStillHoldingMoney deposit : holding) {
+            NextAnniversaryOfADeposit nextPays = whenTheyNextPay.get(deposit.id());
+            if (nextPays == null) {
+                // Loyalty's way of saying a deposit holds nothing, and unreachable while both reads
+                // ask the same question inside one transaction. Kept because the absence has a
+                // meaning and a sweep that silently dropped a deposit it had counted would be the
+                // one silence this module cannot explain.
+                log.debug("deposit passed over for an anniversary notification depositId={} "
+                        + "reason=it holds no money", deposit.id());
+                continue;
+            }
+            if (!AnAnniversaryComingSoon.isWorthSayingAsAt(nextPays.on(), now)) {
+                log.debug("deposit passed over for an anniversary notification depositId={} "
+                                + "occursOn={} worthSayingUpToAndIncluding={} "
+                                + "reason=its anniversary is further off than thirty days",
+                        deposit.id(), nextPays.on(), theLastDayWorthSaying);
+                continue;
+            }
+            if (nextPays.points() == 0) {
+                log.debug("deposit passed over for an anniversary notification depositId={} "
+                                + "occursOn={} remainingAmount={} "
+                                + "reason=a tenth of what it still holds rounds down to no points",
+                        deposit.id(), nextPays.on(), asMoney(deposit.remainingAmount()));
+                continue;
+            }
+            NotificationReason reason = deposit.id() == firstInLineForTheNextWithdrawal
+                    ? NotificationReason.LOYALTY_BONUS_AT_RISK
+                    : NotificationReason.LOYALTY_BONUS_ABOUT_TO_PAY;
+            // Added rather than asked, so that the set carries what this run has decided as well as
+            // what the record already held: an account listed twice, or a deposit reached twice by
+            // any later change to this loop, cannot announce the same occasion under the same reason
+            // twice. Which is also what the database's own index refuses.
+            if (!alreadyAnnounced.add(
+                    new AnAnnouncedAnniversary(deposit.id(), reason, nextPays.on()))) {
+                // Which is every deposit on the second run of a night, and on all thirty nights an
+                // anniversary is near after the first of them. One occasion, one notification.
+                log.debug("deposit passed over for an anniversary notification depositId={} "
+                                + "reason=this anniversary has already been announced occursOn={} "
+                                + "announcedReason={}",
+                        deposit.id(), nextPays.on(), reason);
+                continue;
+            }
+            // The figures behind the decision and, above all, why this deposit got this reason
+            // rather than the other one — the split is the load-bearing call in this module and it
+            // should not have to be inferred from which enum came out.
+            log.debug("a deposit's anniversary is worth saying depositId={} savingsAccountId={} "
+                            + "occursOn={} points={} remainingAmount={} "
+                            + "firstInLineForTheNextWithdrawal={} reason={}",
+                    deposit.id(), savingsAccountId, nextPays.on(), nextPays.points(),
+                    asMoney(deposit.remainingAmount()),
+                    firstInLineForTheNextWithdrawal, reason);
+            raising.add(reason == NotificationReason.LOYALTY_BONUS_AT_RISK
+                    ? Notification.anniversaryAtRiskFor(customerId, savingsAccountId, deposit.id(),
+                            nextPays.on(), nextPays.points(), now)
+                    : Notification.anniversaryComingFor(customerId, savingsAccountId, deposit.id(),
+                            nextPays.on(), nextPays.points(), now));
+        }
+        return raising;
+    }
+
+    /**
+     * Which anniversaries of these deposits have already been announced, and under which reason.
+     *
+     * <p>Read in one question for the whole account rather than one per deposit, and read as a set
+     * the loop can both ask and add to — so the check against the record and the check against what
+     * this run has already decided are one check rather than two that could disagree.
+     */
+    private Set<AnAnnouncedAnniversary> whatHasAlreadyBeenAnnouncedFor(
+            List<DepositStillHoldingMoney> holding) {
+        List<Long> depositIds = holding.stream().map(DepositStillHoldingMoney::id).toList();
+        return notifications
+                .anniversariesAlreadyAnnouncedFor(
+                        depositIds, NotificationReason.THE_ANNIVERSARY_REASONS)
+                .stream()
+                .map(said -> new AnAnnouncedAnniversary(
+                        said.getDepositId(), said.getReason(), said.getOccursOn()))
+                .collect(Collectors.toCollection(HashSet::new));
     }
 
     /**
@@ -248,5 +412,21 @@ public class NotificationsService {
         return amount == null
                 ? null
                 : amount.setScale(DECIMAL_PLACES_IN_MONEY, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /**
+     * One anniversary that has been announced: the deposit, the reason it was announced under and
+     * the day.
+     *
+     * <p>The key uniqueness is judged on, in Java and in the database's own index, and the same
+     * three columns in both places. The reason belongs in it because the two anniversary reasons are
+     * an escalation rather than two names for one statement: a deposit told it is shielded, and
+     * later told it is first in line, has said two different things about one day and both are worth
+     * having.
+     *
+     * <p>A record so that equality is the three values, which is the whole of what it is for.
+     */
+    private record AnAnnouncedAnniversary(long depositId, NotificationReason reason,
+                                          LocalDate occursOn) {
     }
 }

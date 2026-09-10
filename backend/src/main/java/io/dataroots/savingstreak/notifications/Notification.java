@@ -91,6 +91,23 @@ class Notification {
     }
 
     /**
+     * The other half of the per-reason nullability, and the reason there are two constructors rather
+     * than one taking everything: a caller that could pass both an amount and a deposit could
+     * construct a row belonging to neither family. Each of these two fills exactly the columns one
+     * family has and leaves the other family's null.
+     */
+    private Notification(long customerId, NotificationReason reason, long savingsAccountId,
+                         long depositId, LocalDate occursOn, long points, Instant raisedAt) {
+        this.customerId = customerId;
+        this.reason = reason;
+        this.savingsAccountId = savingsAccountId;
+        this.depositId = depositId;
+        this.occursOn = occursOn;
+        this.points = points;
+        this.raisedAt = raisedAt;
+    }
+
+    /**
      * A savings balance now stands on a rung it was not last known to stand on, and the new rung is
      * the higher one. The amount is the rung it has landed on — one notification however many rungs
      * a single deposit vaulted, because what a customer wants told is where they are.
@@ -112,6 +129,34 @@ class Notification {
         return new Notification(
                 customerId, NotificationReason.BALANCE_THRESHOLD_LOST, savingsAccountId, rung,
                 raisedAt);
+    }
+
+    /**
+     * A deposit's next anniversary is near enough to be worth saying, it is worth at least one
+     * point, and the deposit stands behind an older one still holding money — so the money the
+     * anniversary would pay on is not what the next withdrawal would reach first.
+     *
+     * <p>The day and the points come from Loyalty exactly as they are: they are the same figures
+     * the deposits table already shows, and nothing in this module works out what an anniversary is
+     * worth.
+     */
+    static Notification anniversaryComingFor(long customerId, long savingsAccountId, long depositId,
+                                             LocalDate on, long points, Instant raisedAt) {
+        return new Notification(
+                customerId, NotificationReason.LOYALTY_BONUS_ABOUT_TO_PAY, savingsAccountId,
+                depositId, on, points, raisedAt);
+    }
+
+    /**
+     * The same anniversary on the deposit that is first in line for the next withdrawal, which is
+     * the oldest one in the account still holding money — so the euros this anniversary would be
+     * paid on are exactly the euros a withdrawal would take.
+     */
+    static Notification anniversaryAtRiskFor(long customerId, long savingsAccountId, long depositId,
+                                             LocalDate on, long points, Instant raisedAt) {
+        return new Notification(
+                customerId, NotificationReason.LOYALTY_BONUS_AT_RISK, savingsAccountId, depositId,
+                on, points, raisedAt);
     }
 
     Long getId() {
