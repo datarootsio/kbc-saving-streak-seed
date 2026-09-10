@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.giftingpoints;
 
 import java.math.BigDecimal;
+import java.util.stream.Stream;
 
 import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
@@ -55,6 +56,14 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
 
     /** What a euro earns with no run behind it, which is also the floor a broken run falls back to. */
     private static final BigDecimal THE_ORDINARY_RATE = new BigDecimal("1.00");
+
+    /**
+     * What {@link #A_DEPOSIT_THAT_SECURES_A_WEEK} is worth at the ordinary rate, which is one point
+     * per whole euro. A known figure rather than a derived one, so that a deposit priced at the
+     * ordinary rate can have its points asserted outright and not only compared against a rate the
+     * same deposit reported about itself.
+     */
+    private static final long WHOLE_EUROS_IN_A_DEPOSIT_THAT_SECURES_A_WEEK = 60;
 
     private static AnApplicationWithAClockToMove app;
 
@@ -182,6 +191,13 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
      * Everything above this reads the figures off the overview, and a gift that had secured a week
      * only where euros are priced would not be in any of them.
      *
+     * <p>Of that deposit both the rate it says it was paid at and the points it actually earned are
+     * asserted, and then that those points are the ones that reached the pot. Three figures because
+     * they are separately sourced — {@code deposit.paidAt(multiplier)} writes the label,
+     * {@code points.creditPointsFor(..., multiplier, ...)} four lines later buys the points, and
+     * the pot is what those credits add up to — so any two of them can be made to disagree, and
+     * only the last two are money.
+     *
      * <p>This is half of the promise — the half about a gift <em>adding</em> to a week or a run.
      * The half about a gift taking one away is
      * {@link #a_gift_costs_neither_customer_the_run_of_weeks_they_are_on}, which cannot be asserted
@@ -231,14 +247,23 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
         // gone would make it the second, and this is the only assertion in the class that would
         // notice.
         app.aWeekPasses();
-        assertThat(app.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK).multiplierApplied())
-                .as("the sender's next deposit is priced as the first week of a run, because the "
-                        + "week she made the gift in secured nothing")
-                .isEqualByComparingTo(THE_ORDINARY_RATE);
-        assertThat(app.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK).multiplierApplied())
-                .as("and so is the recipient's, because being given points secured no week of his "
-                        + "either")
-                .isEqualByComparingTo(THE_ORDINARY_RATE);
+        long ankesPot = app.pointsBalanceOf(ANKE);
+        DepositView ankesNext = app.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK);
+        theDepositWasPricedAsTheFirstWeekOfARun("the sender's next deposit", ankesNext,
+                "the week she made the gift in secured nothing");
+        thePotGrewByWhatTheDepositSaysItEarned("the sender", ankesPot, app.pointsBalanceOf(ANKE),
+                ankesNext);
+        theHistoryRemembersTheDepositTheWayItWasMade("the sender", app.depositsInto(ankesSavings),
+                ankesNext);
+
+        long bramsPot = app.pointsBalanceOf(BRAM);
+        DepositView bramsNext = app.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK);
+        theDepositWasPricedAsTheFirstWeekOfARun("the recipient's next deposit", bramsNext,
+                "being given points secured no week of his either");
+        thePotGrewByWhatTheDepositSaysItEarned("the recipient", bramsPot, app.pointsBalanceOf(BRAM),
+                bramsNext);
+        theHistoryRemembersTheDepositTheWayItWasMade("the recipient", app.depositsInto(bramsSavings),
+                bramsNext);
     }
 
     /**
@@ -258,15 +283,20 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
      * has room to show. Both are checked to be up there before the gift is made, because "still
      * three weeks at 1.20×" is only worth asserting where that was true to begin with.
      *
-     * <p>And the rate is asked for twice, because this application has two of them and only one is
-     * on the screen. {@code currentMultiplier} on the overview is what a customer is <em>told</em>
-     * they earn at; what a euro is actually <em>paid</em> at is the rate the Deposits module works
-     * out for itself when it prices a deposit. The two come from the same derivation and are meant
-     * never to disagree, which is exactly why a gift that moved one of them and not the other would
-     * be invisible: the front page would go on promising 1,20× while the euros were paid at 1,00×,
-     * and the customer's only evidence would be arithmetic they did by hand. So each of them makes
-     * one more deposit <em>after</em> the gift — after, or it says nothing — and the rate that
-     * deposit reports being paid at is held to the rate they were promised before it.
+     * <p>And the rate is asked for three times, because this application has it in three places
+     * and only one of them is on the screen. {@code currentMultiplier} on the overview is what a
+     * customer is <em>told</em> they earn at. {@code multiplierApplied} on a deposit is what that
+     * deposit <em>says</em> it was paid at, written by {@code deposit.paidAt(multiplier)}. And the
+     * points themselves are what the customer is actually paid, bought four lines further down by
+     * handing that same local to {@code points.creditPointsFor} — a second use of one value, and
+     * so a second place it can be changed. A change reaching only the pricing call pays fewer
+     * points while the deposit, the history and the front page all go on reading 1,20×, and the
+     * customer's only evidence would be arithmetic they did by hand; a change reaching only the
+     * label is the same lie the other way round. So each of them makes one more deposit
+     * <em>after</em> the gift — after, or it says nothing — the rate it reports is held to the
+     * rate they were promised before it, and the points it earned are held to the identical
+     * deposit they made in the same week before it. Then that the pot grew by those points, which
+     * is the last place the figure can still go missing.
      *
      * <p>On an application of its very own, which is the one thing this test cannot borrow from the
      * class. Every other test here starts from wherever the last one left off, and that is fine for
@@ -283,13 +313,18 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
                 aDatabaseFileThatDoesNotExistYet("saving-streak-a-gift-and-a-live-run"))) {
             long ankesSavings = untouched.savingsAccountOf(ANKE);
             long bramsSavings = untouched.savingsAccountOf(BRAM);
-            for (int week = 1; week <= WEEKS_OF_A_RUN_WORTH_LOSING; week++) {
-                if (week > 1) {
-                    untouched.aWeekPasses();
-                }
+            for (int week = 1; week < WEEKS_OF_A_RUN_WORTH_LOSING; week++) {
                 untouched.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK);
                 untouched.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK);
+                untouched.aWeekPasses();
             }
+            // The last week of the run, kept in hand: these two deposits are the identical euros
+            // paid in at the identical point of the identical run as the two made after the gift,
+            // so they are what the post-gift pair has to come back equal to.
+            DepositView ankesLastBeforeTheGift =
+                    untouched.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK);
+            DepositView bramsLastBeforeTheGift =
+                    untouched.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK);
 
             BalancesView ankeBefore = untouched.balancesOf(ankesSavings);
             BalancesView bramBefore = untouched.balancesOf(bramsSavings);
@@ -310,13 +345,30 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
             theWeekAndTheRunAreExactlyWhatTheyWere("the recipient", bramBefore, bramAfter);
 
             // The rate a euro is paid at, which is the other multiplier and the one that costs
-            // money. Both deposits land in the week the run already secured, so neither the run nor
-            // the rate has any business changing — and a gift that had quietly repriced either
-            // customer shows up here and nowhere else.
+            // money — and the points that rate buys, which is a third figure again and the only
+            // one of the three a customer can spend. Both deposits land in the week the run
+            // already secured and are the same euros as the last deposit before the gift, so all
+            // of it has to come back identical; a gift that had quietly repriced either customer
+            // shows up here and nowhere else.
+            long ankesPot = untouched.pointsBalanceOf(ANKE);
+            DepositView ankesNext =
+                    untouched.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK);
             theRateTheyWerePromisedIsTheRateTheyArePaid("the sender", ankeBefore,
-                    untouched.deposit(ankesSavings, ANKE, A_DEPOSIT_THAT_SECURES_A_WEEK));
+                    ankesLastBeforeTheGift, ankesNext);
+            thePotGrewByWhatTheDepositSaysItEarned("the sender", ankesPot,
+                    untouched.pointsBalanceOf(ANKE), ankesNext);
+            theHistoryRemembersTheDepositTheWayItWasMade("the sender",
+                    untouched.depositsInto(ankesSavings), ankesNext);
+
+            long bramsPot = untouched.pointsBalanceOf(BRAM);
+            DepositView bramsNext =
+                    untouched.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK);
             theRateTheyWerePromisedIsTheRateTheyArePaid("the recipient", bramBefore,
-                    untouched.deposit(bramsSavings, BRAM, A_DEPOSIT_THAT_SECURES_A_WEEK));
+                    bramsLastBeforeTheGift, bramsNext);
+            thePotGrewByWhatTheDepositSaysItEarned("the recipient", bramsPot,
+                    untouched.pointsBalanceOf(BRAM), bramsNext);
+            theHistoryRemembersTheDepositTheWayItWasMade("the recipient",
+                    untouched.depositsInto(bramsSavings), bramsNext);
         }
     }
 
@@ -447,19 +499,129 @@ class AGiftMovesPointsAndNothingElseApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * The rate the overview promised before the gift, against the rate a deposit made after it says
-     * it was actually paid at. The one figure in this class that comes from the pricing rather than
-     * from the reporting, and the only way in from outside: a deposit is the moment the applied rate
-     * becomes visible, and it has to be made after the gift for its answer to be about the gift.
+     * The rate the overview promised before the gift, asked of both of the places a deposit made
+     * after it puts that rate: the rate the deposit reports, and the points it actually earned.
+     *
+     * <p>Both, because they are separately sourced and only one of them is money.
+     * {@code DepositsService.deposit} derives the rate once and then uses the local twice — first
+     * {@code deposit.paidAt(multiplier)}, which is the figure the deposit, the history and the
+     * front page all report, and four lines later
+     * {@code points.creditPointsFor(customerId, deposit.getId(), amount, multiplier, now)}, which
+     * is what the customer is paid. Either use can be changed without the other, so asserting the
+     * label proves nothing about the points and asserting the points proves nothing about the
+     * label.
+     *
+     * <p>The label is held to the overview, because those two are the same promise said in two
+     * places. The points are held to {@code beforeTheGift} — the identical euros, paid into the
+     * same account, in the same week of the same run, immediately before the gift — because that
+     * is the only figure in this test that says what these euros were worth when nobody had been
+     * generous yet. The three parts as well as the total, since a total that came back right out
+     * of parts that had moved would be a breakdown that had changed its mind about where the
+     * points came from.
      */
     private static void theRateTheyWerePromisedIsTheRateTheyArePaid(String whose,
                                                                     BalancesView before,
-                                                                    DepositView paid) {
-        assertThat(paid.multiplierApplied())
+                                                                    DepositView beforeTheGift,
+                                                                    DepositView afterTheGift) {
+        assertThat(afterTheGift.multiplierApplied())
                 .as(whose + " is paid at the rate " + whose + " was promised before the gift, "
                         + "because the rate on the overview and the rate a euro earns are the same "
                         + "rate")
                 .isEqualByComparingTo(before.currentMultiplier());
+        assertThat(afterTheGift.pointsEarned())
+                .as(whose + " earns from the same euros exactly what they earned immediately "
+                        + "before the gift, which is the rate where it is spent rather than where "
+                        + "it is written")
+                .isEqualTo(beforeTheGift.pointsEarned());
+        assertThat(afterTheGift.basePoints())
+                .as(whose + " earns the same base points from the same euros as before the gift")
+                .isEqualTo(beforeTheGift.basePoints());
+        assertThat(afterTheGift.streakBonusPoints())
+                .as(whose + " earns the same streak bonus as before the gift, which is the part of "
+                        + "a deposit the run is what pays for")
+                .isEqualTo(beforeTheGift.streakBonusPoints());
+    }
+
+    /**
+     * A deposit priced as the opening week of a run, asked of the points as well as of the rate,
+     * for the reason above one more time: the rate a deposit reports and the points it bought are
+     * two uses of one local and either can be changed alone.
+     *
+     * <p>From the floor there is nothing to compare against — every deposit in that test is the
+     * first of a run — so the points are asserted outright instead, which the ordinary rate makes
+     * possible: a whole number of euros at one point per euro earns exactly its euros, and no
+     * streak bonus, because a run of one week is what the ordinary rate means.
+     */
+    private static void theDepositWasPricedAsTheFirstWeekOfARun(String which, DepositView paid,
+                                                                String because) {
+        assertThat(paid.multiplierApplied())
+                .as(which + " is priced as the first week of a run, because " + because)
+                .isEqualByComparingTo(THE_ORDINARY_RATE);
+        assertThat(paid.pointsEarned())
+                .as(which + " earns one point per whole euro and not a point more, which is what "
+                        + "the ordinary rate is worth — the rate it says it was paid at is a "
+                        + "separate figure and the two can disagree")
+                .isEqualTo(WHOLE_EUROS_IN_A_DEPOSIT_THAT_SECURES_A_WEEK);
+        assertThat(paid.streakBonusPoints())
+                .as(which + " earns no streak bonus, because " + because + " and a run of one "
+                        + "week pays the ordinary rate")
+                .isZero();
+    }
+
+    /**
+     * What the pot actually gained, against what the deposit says it earned. One layer below the
+     * two helpers above and the same shape a third time: {@code pointsEarned} is a figure the API
+     * reports about a deposit, and the points a customer can spend are the credits standing in
+     * their name. A gift that had repriced somebody where the points are credited, leaving what
+     * the deposit reports alone, would be invisible everywhere else in this class and visible
+     * here.
+     */
+    private static void thePotGrewByWhatTheDepositSaysItEarned(String whose, long potBefore,
+                                                               long potAfter, DepositView paid) {
+        assertThat(potAfter - potBefore)
+                .as(whose + " has in the pot exactly the points deposit " + paid.id() + " says it "
+                        + "earned, because what a deposit reports earning and what a customer can "
+                        + "spend are the same points")
+                .isEqualTo(paid.pointsEarned());
+    }
+
+    /**
+     * The deposit as it came back when it was made, against the same deposit read back out of the
+     * history — the last of the separately sourced pairs in this class, and the one that lasts.
+     *
+     * <p>{@code DepositsService.deposit} writes the rate onto the row with
+     * {@code deposit.paidAt(multiplier)} and then hands the caller the local it wrote from, so the
+     * rate a customer is shown the moment they pay in and the rate their history will show them
+     * ever afterwards are two copies of one figure. A gift that repriced only the stored copy
+     * never reaches the answer the deposit came back with, and the customer would be told 1,20×
+     * once and 1,00× for the rest of the deposit's life. The history is the copy that is still
+     * there tomorrow, so it is the one that has to agree.
+     */
+    private static void theHistoryRemembersTheDepositTheWayItWasMade(String whose,
+                                                                     DepositView[] history,
+                                                                     DepositView asMade) {
+        DepositView remembered = Stream.of(history)
+                .filter(entry -> entry.id().equals(asMade.id()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "deposit " + asMade.id() + " is missing from " + whose + "'s history"));
+        String because = whose + " reads deposit " + asMade.id() + " back out of the history "
+                + "exactly as it came back when it was made — ";
+        assertThat(remembered.multiplierApplied())
+                .as(because + "at the same rate, which is the copy of that rate that lasts")
+                .isEqualByComparingTo(asMade.multiplierApplied());
+        assertThat(remembered.pointsEarned())
+                .as(because + "having earned the same points")
+                .isEqualTo(asMade.pointsEarned());
+        assertThat(remembered.basePoints())
+                .as(because + "from the same base")
+                .isEqualTo(asMade.basePoints());
+        assertThat(remembered.streakBonusPoints())
+                .as(because + "and the same streak bonus")
+                .isEqualTo(asMade.streakBonusPoints());
+        assertThat(remembered.amount())
+                .as(because + "for the same euros")
+                .isEqualByComparingTo(asMade.amount());
     }
 
     /**
