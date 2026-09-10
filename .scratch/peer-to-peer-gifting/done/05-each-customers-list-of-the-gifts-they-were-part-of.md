@@ -240,3 +240,28 @@ Note for whoever reads this next: the repository's `/code-review` skill was laun
 and never reported back (it appears to have attached to the same agent that stalled on attempt 1),
 so as the orchestrator allowed, the diff review here was done by reading all 391 added lines
 directly against the ticket and the sibling tests in `giftingpoints/`.
+
+### Addendum: `/code-review` reported after the decision
+
+The `/code-review` run mentioned above did come back, about sixteen minutes late and after this
+ticket was already committed as done. It raised nothing blocking and nothing that touches a
+criterion, so the decision stands. Its two findings are recorded here rather than sent back, both
+one-line test-hygiene nits for whoever is next in these files:
+
+- `AGiftListIsOnlyReadForACustomerWhoExistsApiTest.java:37` — `refused.getBody()` is dereferenced
+  three times with no null guard. `TestRestTemplate` does not throw on 4xx, so a regression to a
+  404 with an empty body would fail as a bare `NullPointerException` instead of the "a refusal
+  carries its reason in detail, and this one answered …" message written for that case. The harness
+  guards this class of problem deliberately in `AnApplicationWithAClockToMove.theBodyOfAReadThatHadToSucceed`.
+- `AGiftOutlivesThePointsItMovedApiTest.java:122` — the comment "Not one point of either gift is
+  anywhere" survived attempt 2's narrowing and now contradicts the paragraph eight lines above it,
+  which says Anke's pot is deliberately no longer asserted to be zero. Only Bram's pot is checked.
+
+**Its one unreproducible failure was mine, not the code's.** The report flags that on its first run
+`AGiftOutlivesThePointsItMovedApiTest:125` and `BothPartiesReadTheSameGiftFromTheirOwnEndApiTest:139`
+both failed with `expected: 2L but was: 1L` (newest-first inverted), never reproduced in twelve
+later runs, and guesses at a stale build. It was neither stale nor flaky: this reviewer had
+`OrderByGivenAtDescIdDesc` deliberately mutated to `...AscIdAsc` in this shared working tree from
+09:08:00 to 09:08:30 as a mutation check, which is exactly that failure signature, and the "another
+agent committing on this branch at 09:10" it noticed was this review's own commit at 09:10:32. There
+is nothing to chase; a repeat of that signature in CI would be a real defect.
