@@ -211,6 +211,21 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
     }
 
     /**
+     * The customer's own overview exactly as the API sends it — the read the home screen makes, as
+     * text, for a test that has to say a figure is <em>not</em> on it.
+     *
+     * <p>The other overview there is. {@link #theAccountOverviewAsItIsSent} is one savings account's
+     * summary; this is the customer's, where the figures that belong to the person rather than to an
+     * account live. A test saying nothing was added to the front page has to ask both, and has to
+     * ask for the text for the reason that method gives: a view binds the fields it knows about and
+     * says nothing about the ones it does not.
+     */
+    public String theCustomerOverviewAsItIsSent(String customerName) {
+        return http.getForObject("/api/customers/{id}/accounts", String.class,
+                seeded.customerIdOf(customerName));
+    }
+
+    /**
      * Every deposit into the account as the history reports it, newest first — what a customer sees
      * when they look back at what a deposit earned, rather than what they were told at the time.
      */
