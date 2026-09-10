@@ -26,3 +26,7 @@ data/*.db-shm
 # Maven output from a run made at the repository root rather than in backend/. Left
 # untracked it trips the clean-working-tree gate that every ticket branch switch needs.
 /target/
+
+# macOS Finder metadata. Machine-local and recreated whenever Finder looks at a directory;
+# left untracked it trips the clean-working-tree gate that every ticket branch switch needs.
+.DS_Store
