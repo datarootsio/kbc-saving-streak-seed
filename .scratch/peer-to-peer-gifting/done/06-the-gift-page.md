@@ -1,6 +1,6 @@
 # 06: The gift page
 
-Status: needs-review
+Status: done
 
 **Blocked by:** 01 (a customer can give points to another customer), 02 (a gift is refused in words
 and changes nothing), 05 (each customer's list of the gifts they were part of).
@@ -134,3 +134,67 @@ and hides this.
   it was told to imitate.
 - The way-through sits in the "Savings accounts" panel under Money history. The ticket says "beside
   Money history", so this meets the letter of it.
+
+## Verified
+
+Reviewed on attempt 2, branch `ticket/06-the-gift-page` against `agentic_engineered`. Only
+`frontend/` changed between the two attempts (`e29f75e`); the code was read as a diff by hand
+because the `/code-review` skill did not report in time.
+
+**Checks, run again by the reviewer** (`logs/06-the-gift-page.review.2.checks.log`):
+`cd backend && ./mvnw test` → `Tests run: 256, Failures: 0, Errors: 0`, BUILD SUCCESS.
+`cd frontend && npm run typecheck` → clean.
+
+**The attempt-1 blocker is fixed.** The hint now reads only `/^\d+$/`, so a fraction is never
+ruled on by the page. Driven with Playwright against a throwaway database
+(`logs/06-the-gift-page.app.2b.backend.log`, browser output in `…review.2.browser.log`):
+
+- At a balance of **0**, with Bram chosen: `2.5`, `0.5`, `1.25`, `12.5`, `abc`, `-5`, `1e3` all
+  report `disabled=False label='Give points'`. Sending each produced the backend's own words —
+  `Points are whole, and 2.5 is not a whole number.`, `A gift is a whole number of points, and
+  "abc" is not a number.`, `A gift has to be more than zero points, and -5 is not.` — with the
+  field, the balance and the (empty) gift list unchanged.
+- At a balance of **10**, the case the previous review asked for: `12.5`, `10.5`, `99.9` are all
+  pressable, and `12.5` came back `Points are whole, and 12.5 is not a whole number.` while the
+  balance stayed at 10 and the list stayed empty (`…review.2.anke-05-fraction-over-balance.png`).
+- A *whole* number over the balance still greys, as the ticket wants a hint to:
+  `[typed '99'] disabled=True label='89 to go'`. No fractional figure can reach that label any more.
+- Probed by curl that the hint never disagrees with the backend: `05` is accepted as 5 and a
+  21-digit figure is refused for want of points, which is what the grey button already says.
+
+**The rest of the page, driven end to end as both demo customers** (screenshots read, all styled,
+no blank frames):
+
+- Home carries `Money history` and `Give points` side by side; `All accounts` returns home
+  (`…review.2.final-anke-home.png`).
+- Anke's picker offers only `Bram De Vos, bram.devos@example.be`; Bram's offers only Anke. The
+  radio-card/avatar pattern from the stylesheet is what is drawn, and the radio's `aria-label` is
+  the only thing announced (the drawn spans are `aria-hidden`).
+- Gift of 4 to Bram: `[in flight] disabled=True label='Giving…'`, then the flash
+  `4 points to Bram De Vos`, the headline falling 10 → 6 with no reload, and the row
+  `To Bram De Vos | Sent | −4` appearing highlighted. A second gift of 1 landed above it and the
+  balance fell to 5.
+- Bram, signed in separately, saw `From Anke Peeters … +1` above `… +4`, gave 2 back, and both
+  lists then interleave directions newest first (`…final-anke-giftpage.png`,
+  `…final-bram-giftpage.png`). Narrow viewport stacks the chip and badge as the new CSS intends.
+- Button disabled with nothing chosen, with nothing typed, and with both — checked in all three.
+
+**Backend log** (`io.dataroots.savingstreak` at DEBUG) has the whole flow, WARN on every refusal
+I triggered and INFO plus the DEBUG draw on every gift:
+
+```
+GiftingService : gift rejected senderCustomerId=1 recipientAsGiven=bram.devos@example.be kind=NOT_A_NUMBER_OF_POINTS reason=Points are whole, and 12.5 is not a whole number.
+GiftingService : gift judged against the sender's pot senderCustomerId=1 recipientCustomerId=2 points=4 senderBalance=10
+PointsService  : points credited customerId=2 sourceReferenceId=1 reason=GIFT_RECEIVED points=4 batches=1 oldestEarnedAt=2026-09-10T08:02:25.549Z
+GiftingService : gift drawn from the sender's oldest points first giftId=1 … slices=1 drawnOn=[points=4 earnedAt=2026-09-10T08:02:25.549Z]
+GiftingService : gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 points=4 givenAt=2026-09-10T08:03:07.294Z
+```
+
+**Browser console:** zero `pageerror`. The only `console:error` lines are Chromium's
+`Failed to load resource: … 400` for the seven refusals I deliberately triggered, and the
+`ERR_ABORTED` `requestfailed` lines are StrictMode's double-invoked effects hitting the existing
+`AbortController` cleanup — the same lines the pre-existing accounts and redemptions reads produce.
+
+The four non-blocking notes from attempt 1 were all taken (`GiftPage` now takes `customerId:
+number`, `.choice-name` is `aria-hidden`, the misleading comment is gone, `.give-line label` is
+folded into `.deposit label`). Nothing new was found.
