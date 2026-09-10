@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: needs-review
+Status: done
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -631,3 +631,177 @@ frontend` is empty: every mutation above was reverted.
 - Criterion 1's `moneyBalance` was considered for the same label-versus-thing sweep and left: it is
   summed live from the deposits' `remaining_amount` rather than stored, and both halves of it
   already go red under mutation (attempt 3's table).
+
+## Verified
+
+Reviewed on `ticket/04-a-gift-moves-points-and-nothing-else` against `agentic_engineered`. The
+branch is test-only: `git diff agentic_engineered -- backend/src/main frontend` is empty, so the
+whole deliverable is `AGiftMovesPointsAndNothingElseApiTest` (712 lines) and four helpers added to
+`AnApplicationWithAClockToMove`. The behaviour was never in doubt across four attempts; the question
+was only whether the tests can prove it. They now can.
+
+### The two mutations this attempt was sent back to close — both re-applied by me, both RED
+
+Applied one at a time to `backend/src/main/java/io/dataroots/savingstreak/deposits/DepositsService.java`
+(injecting `ObjectProvider<GiftingService>`), then reverted.
+
+| Mutation | Result |
+| --- | --- |
+| **The reviewer's original (attempt 3's defect 6).** `creditPointsFor` priced at `1.00` for anybody in the `gift` table; `deposit.paidAt(multiplier)` left alone, so every visible figure still reads 1,20× | **RED** — `theRateTheyWerePromisedIsTheRateTheyArePaid:535`, called from `a_gift_costs_neither_customer_the_run_of_weeks_they_are_on:356`: *"the sender earns from the same euros exactly what they earned immediately before the gift, which is the rate where it is spent rather than where it is written"*, expected 72L but was 60L |
+| **The mirror this attempt found by sweeping.** `deposit.paidAt` writes `1.00` for anybody in the `gift` table, pricing untouched — the label wrong while the money stays right | **RED** — `theHistoryRemembersTheDepositTheWayItWasMade:612`, called from `:360`: *"the sender reads deposit 7 back out of the history exactly as it came back when it was made — at the same rate, which is the copy of that rate that lasts"*, expected 1.20 but was 1.00 |
+
+Both go red at a *named* assertion with the right diagnosis, not incidentally somewhere else. I
+confirmed the mirror hole is real and not invented: `RecordedDeposit` is built from the local
+`multiplier`, so a change reaching only `deposit.paidAt` never touches the answer the POST returns —
+only the row the history reads. Without `theHistoryRemembersTheDepositTheWayItWasMade` that mutation
+has nothing to fail against.
+
+The five criteria are now each asserted where the figure is *used*, not only where it is reported.
+For the multiplier that is four separate places — `currentMultiplier` on the overview,
+`multiplierApplied` on the returned deposit, the points `creditPointsFor` actually bought, and the
+rate stored on the row — and all four are pinned. Every earlier round's hole (a field added to
+`DepositResponse` / `MoneyMovementResponse`, a run wiped by `StreaksService`, a read that quietly
+404s) is closed and was verified red in earlier reviews.
+
+### Checks
+
+- `cd backend && ./mvnw test` → **252 tests, 0 failures, 0 errors, BUILD SUCCESS**, twice on the
+  clean tree. No sign of the known random-port flake in either run.
+- `cd frontend && npm run typecheck` → clean.
+- `git status --porcelain` empty at the end; every mutation reverted.
+
+### The running application, driven from a throwaway database
+
+Backend on 8080 at DEBUG, seeded demo customers, nothing written before I started. Full transcript in
+`.scratch/peer-to-peer-gifting/logs/04-a-gift-moves-points-and-nothing-else.review.4.curl.log`.
+
+Built a **live run** first — `EUR 60,00` a week into savings 1 (Anke) and savings 3 (Bram),
+`POST /api/dev/clock/advance {"days":7}` between — so both reached the gift at
+`currentStreakWeeks: 3, bestStreakWeeks: 3, currentMultiplier: 1.20`. Then made the **identical
+EUR 60,00 deposit either side of the gift**, which is the thing a rate alone cannot tell you:
+
+    EUR 60,00 before the gift (Anke, id=7): pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.20
+    POST /api/customers/1/gifts {"recipientContactDetails":"bram.devos@example.be","points":"5"} -> 201
+    EUR 60,00 after  the gift (Anke, id=9): pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.20
+    pot 265 -> 337  (grew by exactly 72)
+    deposit 9 read back out of the history: pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.2
+
+The same on the recipient's side (Bram, deposits 8 and 10, 72 points each, pot 275 → 347). A euro
+earns after the gift exactly what it earned before it, in the deposit, in the pot and in the history.
+
+Diffing **ten reads** byte for byte across the gift — three savings-account overviews, both customer
+overviews, three deposit histories, both money-movement ledgers — the only things that changed were
+`pointsBalance` (270→265 for the sender, 270→275 for the recipient) and `pointsExpiringNext` (the
+same five points seen from the other end). Reported `IDENTICAL` by the diff: both money-movement
+ledgers, all three deposit histories, every `moneyBalance`, both current-account balances, and
+`newSavingsThisWeek`, `weeklyMinimum`, `stillNeededThisWeek`, `currentStreakWeeks`,
+`bestStreakWeeks`, `currentMultiplier` at both ends.
+
+### The log is the evidence, and here it is mostly negative
+
+The whole gift request, `06:45:33.984` to `Completed 201 CREATED` at `06:45:34.004`, wrote exactly
+three rows and touched no money table:
+
+    insert into gift (given_at,points,recipient_customer_id,sender_customer_id) values (?,?,?,?)
+    insert into points_credit (customer_id,earned_at,expired_at,points,reason,remaining_points,source_reference_id) values (...)
+    update points_credit set ... where id=?
+
+Grepping that same window for `deposit accepted|withdraw|WeekAndStreakDerivation|insert into
+deposit|update deposit|update current_account|update savings_account` returns **0 matches**. No
+deposit, no money movement, no streak derivation ran at all. What it did say:
+
+    DEBUG i.d.savingstreak.gifting.GiftingService : gift judged against the sender's pot senderCustomerId=1 recipientCustomerId=2 points=5 senderBalance=270
+    DEBUG i.d.savingstreak.points.PointsService   : points moved oldest first fromCustomerId=1 toCustomerId=2 points=5 available=270 batchesWithSomethingLeft=7 slices=1 drawnOn=[batchId=1 reason=BASE_ACCRUAL earnedAt=2026-09-10T04:45:33.499Z taken=5 leftInIt=55]
+    INFO  i.d.savingstreak.points.PointsService   : points credited customerId=2 sourceReferenceId=1 reason=GIFT_RECEIVED points=5 batches=1 oldestEarnedAt=2026-09-10T04:45:33.499Z
+    INFO  i.d.savingstreak.gifting.GiftingService : gift given giftId=1 senderCustomerId=1 recipientCustomerId=2 points=5 givenAt=2026-09-24T04:45:33.996Z
+
+The streak walk runs only in the reads that follow, and says what it said before — for both
+customers, counting deposits and not gifts:
+
+    DEBUG i.d.s.streaks.WeekAndStreakDerivation : streak of secured weeks derived from the ledger customerId=2 ... walkedBackThrough=[2026-09-21/2026-09-27 EUR 120.00 secured; 2026-09-14/2026-09-20 EUR 60.00 secured; 2026-09-07/2026-09-13 EUR 60.00 secured; 2026-08-31/2026-09-06 EUR 0.00 not secured, short by EUR 50.00 — the run ends here] currentStreakWeeks=3 bestStreakWeeks=3 multiplier=1.20
+
+And the two `deposit accepted` lines either side of the gift are identical on every figure that
+matters:
+
+    deposit accepted depositId=7 ... amount=60.00 streakWeeks=3 multiplier=1.20 basePoints=60 streakBonusPoints=12 pointsEarned=72
+    deposit accepted depositId=9 ... amount=60.00 streakWeeks=3 multiplier=1.20 basePoints=60 streakBonusPoints=12 pointsEarned=72
+
+### Refusals
+
+Six tried against the live API, each answered with its sentence and each leaving a WARN saying why:
+
+    100000 points on a balance of 337 -> 400 "That gift costs 100000 points, and you have 337."
+    a gift to myself                  -> 400 "A gift goes to somebody else, and Anke Peeters is who you are signed in as."
+    2.5                               -> 400 "Points are whole, and 2.5 is not a whole number."
+    0                                 -> 400 "A gift has to be more than zero points, and 0 is not."
+    -3                                -> 400 "A gift has to be more than zero points, and -3 is not."
+    nobody@example.be                 -> 404 "No customer banks here under that email address."
+
+    WARN i.d.savingstreak.gifting.GiftingService : gift rejected senderCustomerId=1 recipientAsGiven=bram.devos@example.be kind=NOT_ENOUGH_POINTS reason=That gift costs 100000 points, and you have 337.
+
+A re-diff of **twelve** reads (the ten above plus both gift lists) across all six refusals came back
+`IDENTICAL` on every one.
+
+### The page
+
+Playwright, chromium, fresh context per customer, console/pageerror/requestfailed subscribed to
+`...review.4.browser.log` before navigating. **Zero** `pageerror` and **zero** `console:error`; the
+only `requestfailed` lines are the two `net::ERR_ABORTED` per load that React StrictMode's
+double-invoked fetch produces and that appear in every earlier review's browser log.
+
+- `...review.4.anke-home.png` — the sender's home, fully rendered and styled: € 2.180,00 current
+  account, savings 1 € 300,00, savings 2 € 0,00, "€ 180,00 of € 50,00 / the week has what it asks
+  for", "earning 1,20× per euro / 3 weeks in a row / best ever 3 weeks", "337 points to spend".
+  Nothing anywhere about points given away.
+- `...review.4.bram-home.png` — the recipient's home: € 850,00, savings 3 € 300,00, the same
+  1,20× and 3-week run **intact after receiving a gift**, "347 points to spend". No "points
+  received" figure.
+- `...review.4.anke-money-history.png` / `...bram-money-history.png` — the Money history screen for
+  both, five "Into savings" rows of € 60,00 each and nothing else. No gift row, no gift column. The
+  post-gift deposit sits there at `+ 72`, the same as the two before it.
+
+The only occurrence of any of the three watch-words on either page is the catalogue's own
+"Ten points, given as money to this season's good cause" on the charity reward — pre-existing copy,
+not a gift figure.
+
+### Notes, not blocking
+
+- The three notes carried forward from the attempt-3 review are still open and still notes:
+  criteria 4 and 5 read only each customer's first savings account; `theBodyOfAReadThatHadToSucceed`
+  names the URI template rather than the account, so a failure on the two reads of
+  `/api/savings-accounts/{id}` in one test cannot say which account; and the marker-guard javadoc
+  says the named field is "one every entry of the body carries", which is true of `direction` and
+  `pointsEarned` but not of the scalar `pointsBalance`. Leaving them alone this attempt was the
+  right call.
+- The "gift"/"given"/"received" word-list trade stays settled: a total named `pointsFromOthers`
+  would still slip past, and that is known and accepted for a training application.
+
+### The one finding `/code-review` raised, and why it is not blocking
+
+The repository's `/code-review` over this range raised a single medium finding worth recording,
+because the next person may think of it too. Its claim: `a_gift_is_no_part_of_what_any_deposit_of_
+either_customers_earned` reads only `depositsInto(ankesSavings)` and `depositsInto(bramsSavings)`,
+never Anke's *second* savings account, which the first test in the class puts EUR 20,00 into. The
+escape it proposed is that `PointsCredit.sourceReferenceId` is a shared id space — a deposit credit
+stores the deposit id there, a gift credit the gift id — so folding `GIFT_RECEIVED` into
+`PointsService.EARNED_BY_A_DEPOSIT` makes a gift show up in the breakdown of whichever deposit
+happens to share the gift's id. Its argument was that today that collision lands on a deposit the
+test reads, and a differently-numbered one would go unnoticed.
+
+I applied that mutation myself (`EARNED_BY_A_DEPOSIT` gains `PointsReason.GIFT_RECEIVED`) and it
+goes red **twice, in two different tests**:
+
+    a_gift_is_no_part_of_what_any_deposit_of_either_customers_earned
+      "and giving them away rewrote none of the sender's deposits either"
+    a_gift_moves_no_euros_and_appears_in_neither_ledger_of_money:159
+      "the sender's ledger is a record of euros that moved, and none did"
+      ... id=2 savingsAccountId=1 amount=60.00 pointsEarned=85   (expected 60)
+
+The second failure is what settles it. The money-movement ledger is read **per customer**, not per
+account, and every entry carries its own `pointsEarned` — the failing comparison prints
+`MoneyMovementView[... id=5, savingsAccountId=2, amount=20.00, pointsEarned=20]` among the entries
+being held identical. So Anke's *second* savings account is covered after all: a gift folded into
+any deposit of hers, in any account, changes that deposit's `pointsEarned`, which changes its ledger
+entry, which the `containsExactly` before-and-after in the first test catches. The finding is the
+same "criteria 4 and 5 read only the first savings account" note the attempt-3 review recorded, and
+the new evidence points the other way rather than reopening it. Reverted; nothing committed from it.
