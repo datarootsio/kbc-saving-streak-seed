@@ -1,6 +1,6 @@
 # 04: The bell carries the count and opens the panel
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 03 (A customer reads their notifications).
 
@@ -27,14 +27,14 @@ polling anywhere, and adding its first `setInterval` for a nightly rule would be
 An empty panel says plainly that nothing has happened yet, so emptiness is not mistaken for a page
 that failed to load. Follow the `.nothing` idiom.
 
-- [ ] The bell shows the unread count and shows no badge at all when nothing is unread
-- [ ] Opening the panel lists every notification newest-first with read rows visibly dimmed
-- [ ] Opening the panel marks everything read in one call and the badge drops to zero
-- [ ] Read notifications stay in the panel after being read
-- [ ] Each of the four reasons renders its own sentence with the figures the backend sent
-- [ ] Euros and dates are formatted by the existing helpers and match the rest of the application
-- [ ] The panel re-loads after a deposit, a withdrawal, a claim, a gift, a clock advance and a job
+- [x] The bell shows the unread count and shows no badge at all when nothing is unread
+- [x] Opening the panel lists every notification newest-first with read rows visibly dimmed
+- [x] Opening the panel marks everything read in one call and the badge drops to zero
+- [x] Read notifications stay in the panel after being read
+- [x] Each of the four reasons renders its own sentence with the figures the backend sent
+- [x] Euros and dates are formatted by the existing helpers and match the rest of the application
+- [x] The panel re-loads after a deposit, a withdrawal, a claim, a gift, a clock advance and a job
       run, and there is no interval anywhere
-- [ ] An empty panel says so in words
-- [ ] The bell and panel are legible at 320px wide and in both colour schemes, and the badge count
+- [x] An empty panel says so in words
+- [x] The bell and panel are legible at 320px wide and in both colour schemes, and the badge count
       is reachable to a screen reader
