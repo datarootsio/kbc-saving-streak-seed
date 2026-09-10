@@ -25,4 +25,14 @@ interface SavingsAccountRepository extends JpaRepository<SavingsAccount, Long> {
     /** Who holds the account, for the same reason as {@link CurrentAccountRepository#findHolderIdById}. */
     @Query("select account.customer.id from SavingsAccount account where account.id = :savingsAccountId")
     Optional<Long> findHolderIdById(@Param("savingsAccountId") long savingsAccountId);
+
+    /**
+     * Every savings account's identifier, oldest first, for a sweep that has to walk them all.
+     *
+     * <p>Identifiers rather than rows: what asks for these wants to consider one account at a time
+     * and to ask about each one on its own terms, and a query that loaded the customers behind them
+     * would fetch a graph nobody reads.
+     */
+    @Query("select account.id from SavingsAccount account order by account.id")
+    List<Long> findEveryId();
 }

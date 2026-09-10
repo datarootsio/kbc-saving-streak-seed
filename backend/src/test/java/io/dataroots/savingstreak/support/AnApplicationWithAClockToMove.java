@@ -153,6 +153,22 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return ran.getBody();
     }
 
+    /**
+     * One of this application's own beans, by type, for a test whose subject has no read over HTTP
+     * yet.
+     *
+     * <p>The exception rather than the way in, and it says so out loud. Behaviour is asserted at the
+     * HTTP seam and nowhere lower, because a lower seam binds a test to the storage decisions later
+     * slices need free to change. But a rule can arrive before the endpoint that reports it does,
+     * and a nightly sweep whose whole effect is rows nobody can yet ask for would otherwise have to
+     * be taken on trust for a slice or two. A test that reaches through here is asserting on what it
+     * drove through the endpoints — a deposit, a withdrawal, a job run by name — and only reading
+     * the answer from the module that owns it.
+     */
+    public <T> T theApplicationsOwn(Class<T> type) {
+        return application.getBean(type);
+    }
+
     /** The jobs this application says can be run, so that a test can ask whether one is there at all. */
     public ScheduledJobView[] whatCanBeRun() {
         return http.getForObject("/api/dev/jobs", ScheduledJobView[].class);
