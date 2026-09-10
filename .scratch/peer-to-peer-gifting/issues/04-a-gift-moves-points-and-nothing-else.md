@@ -1,6 +1,6 @@
 # 04: A gift moves points and nothing else
 
-Status: needs-review
+Status: needs-info
 
 **Blocked by:** 01 (a customer can give points to another customer).
 
@@ -21,7 +21,7 @@ production code if ticket 01 was built as specified; if any of these fail, the f
 code, not a new special case.
 
 - [x] Both customers' current-account and savings balances are unchanged by a gift.
-- [x] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
+- [ ] A gift secures no week and leaves both customers' streaks and multipliers exactly as they were.
 - [x] A gift does not appear in either customer's ledger of money that moved.
 - [x] A gift does not appear in any deposit's breakdown of what it earned, for either customer, and the total a deposit says it earned is unchanged.
 - [x] Nothing new appears on the account overview.
@@ -424,3 +424,135 @@ a named assertion:
 
 `cd backend && ./mvnw test` -> 252 tests, 0 failures. `cd frontend && npm run typecheck` -> clean.
 
+
+## Review feedback - attempt 3
+
+Four of the five criteria now hold, and the work done for attempts 2 and 3 is real: I re-ran the
+two mutations that sank attempt 2 and both go red at a named assertion, so that claim in the
+session log is true rather than asserted.
+
+| Mutation I re-applied myself (then reverted) | Result |
+| --- | --- |
+| `giftedPoints` component + `99L` on `MoneyMovementResponse` | **RED** — `a_gift_moves_no_euros_...:158 -> theLedgerNamesNoGift:517 -> nothingGiftShapedIn:539` "no gift figure anywhere in the sender's ledger of money that moved" |
+| `DepositsService` prices anybody in the `gift` table at 1.00 (`multiplier = new BigDecimal("1.00")` right after line 119) | **RED** — `a_gift_costs_neither_customer_the_run_of_weeks_they_are_on:316 -> theRateTheyWerePromisedIsTheRateTheyArePaid:462` expected 1.20 |
+
+I also tried two mutations nobody had tried, and the suite caught both — worth recording so the
+next reviewer does not spend the time again:
+
+| New mutation | Result |
+| --- | --- |
+| `PointsService.EARNED_BY_A_DEPOSIT` gains `PointsReason.GIFT_RECEIVED` — the absence the spec and that field's own javadoc call "load bearing" | **RED** at two assertions: `:365` "and giving them away rewrote none of the sender's deposits either" and `:150` "the sender's ledger is a record of euros that moved, and none did" |
+| A recipient's received gifts folded into the `RecordedDeposit` returned by `DepositsService.deposit` (total + gifted, streak bonus + gifted) | **RED** — caught by ticket 01's class, `AGiftMovesPointsFromOneCustomerToAnotherApiTest.a_gift_is_not_part_of_what_any_deposit_earned:145` "and in none of his deposits" |
+
+One criterion does not hold. It is the same shape of hole as the last two rounds — a promise
+asserted where it is *reported* rather than where it *takes effect* — and attempt 3's fix stops one
+line short of closing it.
+
+### Defect 6 (criterion 2): the applied multiplier is asserted as a *label*, not as the points a euro actually earns
+
+`theRateTheyWerePromisedIsTheRateTheyArePaid` (`AGiftMovesPointsAndNothingElseApiTest:455-463`)
+reads `paid.multiplierApplied()` off the `DepositView` a post-gift deposit comes back with. That
+field is not the rate the points were computed at. In `DepositsService.deposit` there are two
+separate uses of the local `multiplier`, on adjacent lines:
+
+    deposit.paidAt(multiplier);                                             // line 122 — the label
+    PointsByReason credited =
+            points.creditPointsFor(customerId, deposit.getId(), amount, multiplier, now);  // line 126 — the money
+
+`multiplierApplied` comes from the first. The points come from the second. Attempt 2's review
+proposed a mutation at line 119, above both, and attempt 3 correctly closed it. Move the same
+"helpfulness" four lines down, so it reaches only the pricing call, and nothing in the repository
+notices.
+
+**Reproduce it.** In `backend/src/main/java/io/dataroots/savingstreak/deposits/DepositsService.java`,
+inject `ObjectProvider<GiftingService> gifting` and replace the `creditPointsFor` call with:
+
+```java
+BigDecimal rateActuallyPaid = gifting.getObject().giftsOf(customerId).isEmpty()
+        ? multiplier : new BigDecimal("1.00");
+PointsByReason credited =
+        points.creditPointsFor(customerId, deposit.getId(), amount, rateActuallyPaid, now);
+```
+
+Leave `deposit.paidAt(multiplier)` alone. Then `cd backend && ./mvnw test`:
+
+    Tests run: 252, Failures: 0, Errors: 0, Skipped: 0
+    BUILD SUCCESS
+
+I ran that twice. All five tests in `AGiftMovesPointsAndNothingElseApiTest` pass, and so does every
+other class.
+
+**What it does to a customer.** I ran the mutated build on a throwaway database on port 8081, gave
+Anke a three-week run, and made the identical EUR 60,00 deposit either side of a gift of five
+points:
+
+    overview before the gift : currentStreakWeeks=3  currentMultiplier=1.2
+    EUR 60.00 before the gift: pointsEarned=72 basePoints=60 streakBonusPoints=12 multiplierApplied=1.20
+    POST /api/customers/1/gifts {"recipientContactDetails":"bram.devos@example.be","points":"5"} -> 201
+    overview after the gift  : currentStreakWeeks=3  currentMultiplier=1.2      <- unchanged
+    EUR 60.00 after the gift : pointsEarned=60 basePoints=60 streakBonusPoints=0  multiplierApplied=1.20
+
+The front page says 1,20×. The deposit itself says 1,20×. The deposit paid 60 points instead of 72.
+Anke loses twelve points on every future deposit because she gave a friend five, and every figure
+she can see still reads 1,20×. That is exactly the failure attempt 2 described — "the front page
+would go on promising 1,20× while the euros were paid at 1,00×, and the customer's only evidence
+would be arithmetic they did by hand" — and criterion 2 is the promise it breaks: the multiplier
+that decides what a customer earns is not left as it was. The full transcript is in
+`.scratch/peer-to-peer-gifting/logs/04-a-gift-moves-points-and-nothing-else.review.3.curl.log`.
+
+Note `theThreePartsAddUpTo` cannot catch this: 60 = 60 + 0 + 0 balances just as 72 = 60 + 12 does.
+And `containsExactly` cannot, because it only ever sees deposits that were made *before* that
+test's gift; the deposits made after it are never compared to anything.
+
+**Suggested fix, and it is two lines.** Both places that already make a post-gift deposit have a
+comparable pre-gift deposit in hand, so assert the points as well as the label:
+
+- `a_gift_costs_neither_customer_the_run_of_weeks_they_are_on:286-292` already makes an identical
+  EUR 60,00 deposit for each customer every week. Keep the last pre-gift one, and at `:316-319`
+  hold the post-gift deposit's `pointsEarned` (and ideally `basePoints`/`streakBonusPoints`) to it
+  as well as its `multiplierApplied`.
+- `a_gift_secures_no_week_and_changes_neither_streak:234,238` — the deposit priced as the first
+  week of a run earns exactly its whole euros, so `pointsEarned` there is a known figure (60 for
+  EUR 60,00) and asserting it costs one line.
+
+Then say in the javadoc that the two figures are separately sourced — `multiplierApplied` is
+written by `deposit.paidAt`, the points by `creditPointsFor` — because that is the reason both have
+to be asserted and it is not obvious from the outside.
+
+### The other four criteria: what I did to satisfy myself
+
+- **Criterion 1 (balances).** Verified live: three savings accounts and both current accounts were
+  given money first, then a gift of 25 points. All three savings balances (180 / 40 / 180) and both
+  current accounts were byte-identical afterwards.
+- **Criterion 3 (the ledger).** Both ledgers byte-identical across the gift, and the
+  `MoneyMovementResponse` field mutation goes red.
+- **Criterion 4 (deposit breakdowns).** Three deposit histories byte-identical; the two new
+  mutations above both go red, one of them in this class.
+- **Criterion 5 (the overview).** Both overviews carry no gift figure, in JSON and on the page.
+- The word-list trade on "gift"/"given"/"received" stays settled; I did not reopen it.
+
+### Not blocking, for the record
+
+- Criteria 4 and 5 read only each customer's *first* savings account
+  (`:351-352`, `:370-373`, `:419-422`), whereas criterion 1 deliberately reads Anke's second as
+  well (`:107`, `:114`). A new *field* still shows up everywhere, so this is not the hole above; it
+  is just an asymmetry, and `otherSavingsAccountOf` is already in the harness.
+- `theBodyOfAReadThatHadToSucceed` (`AnApplicationWithAClockToMove:284`) names the URI template
+  rather than the account, and `/api/savings-accounts/{id}` is read twice in one test, so a failure
+  cannot say which account. `SeededAccounts.read` already appends `Arrays.toString(variables)`.
+- The marker-guard javadoc (`:527`) says the named field is "one every entry of the body carries".
+  True of `direction` and `pointsEarned`; `pointsBalance` is an unconditional scalar, so for the
+  two overviews the marker proves only that the read succeeded.
+
+### Checks, and one thing to expect
+
+`cd backend && ./mvnw test` -> 252 tests, 0 failures on the clean tree (twice).
+`cd frontend && npm run typecheck` -> clean.
+
+Two of my six suite runs failed in `TheClockCannotBeMovedOutsideDevelopmentApiTest` and friends
+with `UnknownContentTypeException ... content type [text/plain]` and 404s from a restarted
+application. That is the pre-existing random-port flake the lab already records for its own ticket,
+not this branch — re-running was clean both times.
+
+`git status --porcelain` is empty and `git diff agentic_engineered -- backend/src/main frontend` is
+empty: every mutation above was reverted.
