@@ -251,10 +251,32 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
     }
 
     /**
+     * The ledger of money that moved exactly as the API sends it, for a test that has to say a
+     * figure is <em>not</em> in it.
+     *
+     * <p>The text rather than {@link #moneyMovementsOf}, for the reason
+     * {@link #theDepositHistoryAsItIsSent} gives about the deposit history and which holds word for
+     * word here: {@link MoneyMovementView} is filled in by Jackson too, so comparing two arrays of
+     * entries compares the fields the view already knew about and a field <em>added</em> to the
+     * ledger's entries never reaches it. A test saying nothing about a gift was written into the
+     * ledger has to read the ledger as it was sent.
+     */
+    public String theMoneyMovementLedgerAsItIsSent(String customerName) {
+        return theBodyOfAReadThatHadToSucceed(
+                "/api/customers/{id}/money-movements", seeded.customerIdOf(customerName));
+    }
+
+    /**
      * The body of a read that had to succeed, as text. {@code getForObject} hands back the error
      * body rather than throwing, so a read whose status nobody looked at is a read that can quietly
      * become a refusal — and every assertion about what a body does not contain would then be
      * asserting about a problem document.
+     *
+     * <p>The body itself is insisted on as well as the status, because the whole point of this
+     * method is to hand back something a test can ask questions of: a 200 with nothing in it would
+     * otherwise leave the caller with a null, and the failure would arrive as a
+     * {@link NullPointerException} somewhere else rather than as the diagnosis this method exists
+     * to give.
      */
     private String theBodyOfAReadThatHadToSucceed(String path, Object... uriVariables) {
         ResponseEntity<String> read = http.getForEntity(path, String.class, uriVariables);
@@ -262,6 +284,10 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
                 .describedAs("a read of " + path + " this test needs to have succeeded before it "
                         + "can say anything about what the body does not contain")
                 .isEqualTo(HttpStatus.OK);
+        assertThat(read.getBody())
+                .describedAs("a read of " + path + " answered with a body, because a test cannot "
+                        + "say what an empty answer does not contain")
+                .isNotBlank();
         return read.getBody();
     }
 
