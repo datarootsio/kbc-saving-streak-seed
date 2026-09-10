@@ -1,6 +1,6 @@
 # 05: A savings account page carries the notice that concerns it
 
-Status: ready-for-agent
+Status: needs-review
 
 **Blocked by:** 04 (The bell carries the count and opens the panel).
 
@@ -21,10 +21,10 @@ The notice disappears once the notification has been read, which happens when th
 It does not have a dismiss button of its own: two states is one state machine, and a training
 application should not let you discard the evidence that a rule fired.
 
-- [ ] The newest unread notification for this account renders above the transfer area
-- [ ] Nothing renders when this account has no unread notification
-- [ ] Only notifications for this account appear on it, never another pot's
-- [ ] `LOYALTY_BONUS_AT_RISK` renders with the alert treatment and the other three render calm
-- [ ] The alert treatment does not shake on page load
-- [ ] The notice goes away after the panel has been opened and everything marked read
-- [ ] The notice is legible at 320px wide and in both colour schemes
+- [x] The newest unread notification for this account renders above the transfer area
+- [x] Nothing renders when this account has no unread notification
+- [x] Only notifications for this account appear on it, never another pot's
+- [x] `LOYALTY_BONUS_AT_RISK` renders with the alert treatment and the other three render calm
+- [x] The alert treatment does not shake on page load
+- [x] The notice goes away after the panel has been opened and everything marked read
+- [x] The notice is legible at 320px wide and in both colour schemes
