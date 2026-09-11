@@ -1,0 +1,211 @@
+{
+  "schema": "module-depth-map-scoring/7",
+
+  "interfaceCost": {
+    "weights": {
+      "method": 1,
+      "parameter": 1,
+      "typeToLearn": 2,
+      "typeEveryCallerAlreadyKnows": 0,
+      "refusal": 2
+    },
+    "reachableFromOutside": ["public", "protected", "package-private"],
+    "typesEveryCallerAlreadyKnows": {
+      "java": [
+        "BigDecimal",
+        "BigInteger",
+        "Boolean",
+        "Byte",
+        "Character",
+        "Class",
+        "Clock",
+        "Collection",
+        "Comparable",
+        "Double",
+        "Duration",
+        "Exception",
+        "Float",
+        "Instant",
+        "Integer",
+        "Iterable",
+        "List",
+        "LocalDate",
+        "LocalDateTime",
+        "Long",
+        "Map",
+        "Number",
+        "Object",
+        "Optional",
+        "RuntimeException",
+        "Set",
+        "Short",
+        "Stream",
+        "String",
+        "Throwable",
+        "Void",
+        "ZoneId",
+        "boolean",
+        "byte",
+        "char",
+        "double",
+        "float",
+        "int",
+        "long",
+        "short"
+      ],
+      "typescript": [
+        "AbortSignal",
+        "Array",
+        "Date",
+        "Error",
+        "Map",
+        "Promise",
+        "Record",
+        "Response",
+        "Set",
+        "String",
+        "any",
+        "bigint",
+        "boolean",
+        "never",
+        "null",
+        "number",
+        "object",
+        "string",
+        "symbol",
+        "undefined",
+        "unknown"
+      ]
+    }
+  },
+
+  "refusals": {
+    "because": "A refusal a module can answer with is something its caller has to know before they call it: it decides what they write around the call, and a caller who does not know about it has not learned the module. So it is charged a weight of its own, and charged it whatever the refusal is called: the types every caller already knows are types they already hold, and knowing that IllegalStateException exists is not the same as knowing that this module can answer with one, which is the thing being learned here. It is then reported as a band of its own, so that a module whose interface is wide because it is honest about how it can fail can be told apart from one that is merely wide. Folded into a single number the two are identical, and a module is paid for saying nothing about its failure modes.",
+    "documentedNeverRaised": {
+      "finding": "documented but never raised",
+      "because": "The module's own documentation promises a refusal that nothing in its implementation can throw. Whoever reads the seam writes a catch for something that will never arrive, and whatever the module does refuse for arrives under some other name. Either the documentation is stale or the code lost a check, and which of the two it is is a question for a person; that there is a disagreement is a question for a machine."
+    },
+    "raisedNeverDocumented": {
+      "finding": "raised but never documented",
+      "because": "The implementation throws a refusal the module's documentation never mentions. A caller reading the seam finds nothing to catch, and meets it at run time instead. Of the two disagreements this page reports, this is the one a caller meets rather than reads: the other costs them a catch that can never fire, and this one costs them a failure nobody told them about."
+    }
+  },
+
+  "reach": {
+    "adapter": {
+      "because": "An interface whose implementation Spring Data generates at run time is how this application reaches its database. A module that drives one coordinates storage its caller never has to open, which is the plainest kind of reach there is.",
+      "when": {
+        "kind": ["interface"],
+        "extendsOrImplements": [
+          "CrudRepository",
+          "JpaRepository",
+          "JpaSpecificationExecutor",
+          "PagingAndSortingRepository",
+          "Repository"
+        ]
+      }
+    },
+    "persistentRecord": {
+      "because": "A type marked as an entity is a row that outlives the call it was written in. A module reaching one is keeping a record on its caller's behalf: it decides what goes into it, and the caller learns neither the table nor the identifier it was written under.",
+      "when": {"annotatedWith": ["Entity"]}
+    },
+    "transaction": {
+      "because": "A module that marks itself or one of its methods transactional establishes the transaction its whole flow runs in. That is the one piece of coordination a caller most obviously does not do: they make one call, and either all of what it set in motion happened or none of it did.",
+      "annotatedWith": ["Transactional"]
+    }
+  },
+
+  "deletionTest": {
+    "passThrough": {
+      "verdict": "pass-through",
+      "because": "Deleting a module hands whatever it coordinates back to the modules that were going through it. One that coordinates no more things than the methods it presents has concentrated nothing for deletion to remove: a caller learns a call for each thing they could have reached themselves, and coordinating one thing, or none, is coordinating nothing however few methods that is. It is a finding only when two or more modules go through it, because complexity that would move to a single caller has not moved anywhere a reader can see.",
+      "reachAtMost": {"perMethod": 1, "neverBelow": 1},
+      "callersAtLeast": 2
+    },
+    "earnsItsKeep": {
+      "verdict": "earns its keep",
+      "because": "A module that coordinates more things than the methods it presents is concentrating them: one call sets in motion what its caller would otherwise have set in motion themselves, and deleting it would put every one of those back into every caller."
+    },
+    "noFinding": {
+      "verdict": "no finding",
+      "because": "A module that concentrates nothing, with fewer than two modules going through it, is one this test has nothing to say about: there is nowhere for deleting it to move anything to, and calling it earned would be a claim about callers that do not exist."
+    }
+  },
+
+  "flows": [
+    {
+      "flow": "a deposit",
+      "because": "Money moving from a current account into a savings account is the first of the three things this application does, and the point a whole euro earns is credited inside the same call. The flow is entered by calling this method and nothing else is written down about it: every module under it is read from the call graph, so a flow that stops matching the code stops resolving rather than quietly describing an application that no longer exists.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.deposits.DepositsService",
+        "method": "deposit"
+      }
+    },
+    {
+      "flow": "a withdrawal, and the deposits it draws down",
+      "because": "Money moving back out is the second, and it is the one flow that cannot be read off a single module: a withdrawal is allocated against the deposits it comes out of, so the deposits it draws down are part of the event rather than a neighbour of it. Following the call graph out of this method is what puts them on the page without anybody listing them.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.deposits.WithdrawalsService",
+        "method": "withdraw"
+      }
+    },
+    {
+      "flow": "a reward claimed",
+      "because": "Spending points on a reward is the third, and the one a reader is most likely to go looking for: it is where the points the other two flows earn are finally worth something. Entered by calling this method, and traced from there the same way as the other two.",
+      "entryPoint": {
+        "module": "io.dataroots.savingstreak.rewards.RewardsService",
+        "method": "claim"
+      }
+    }
+  ],
+
+  "sourcesNotRead": {
+    "rule": "not the application's own source",
+    "because": "The graph covers the application's own source and nothing else. Test code is written to check a module rather than to be one, so scoring it would measure the checking; build output is derived from source that has already been read, so it would draw the same module twice; and an installed dependency is somebody else's source, which nobody in this repository can act on and which would arrive by the tens of thousands of files. Each would put modules on the page that nobody here wrote, and the finding would be buried under them. A directory is named outright and never walked into, which is what keeps a node_modules to one line in the graph instead of everything inside it; a file is matched on what its name ends with, which is how both languages here spell a test and how TypeScript spells a generated declaration. Every name on the directory list is one a build tool chose rather than one a programmer did: target is Maven's, dist is Vite's, and build and coverage belong to the tools that write them. Each is a legal Java package name in exactly the way a bare test or tests is, so the line here is drawn at who does the naming rather than at what a compiler would allow \u2014 nobody names a package target inside a Maven project, because the build already owns the word. A bare test or tests is a word an application really does name its own packages with, and a rule that quietly took a package of the application's own source off the page would be worse than one that misses a directory somebody can add to this list.",
+    "directories": [
+      "__tests__",
+      "build",
+      "coverage",
+      "dist",
+      "node_modules",
+      "target"
+    ],
+    "namesEndingWith": [
+      ".d.ts",
+      ".spec.ts",
+      ".spec.tsx",
+      ".test.ts",
+      ".test.tsx",
+      "IT.java",
+      "Test.java",
+      "Tests.java"
+    ]
+  },
+
+  "exclusions": [
+    {
+      "rule": "data carrier",
+      "because": "A record or an enum carries values across a seam and hides nothing behind them. Its interface is its content, so a score would only say how many fields it has, and ranking them beside the modules that do hide something would bury the finding.",
+      "when": {"kind": ["record", "enum"]}
+    },
+    {
+      "rule": "generated repository",
+      "because": "A Spring Data repository interface has no implementation written in this repository: the query is derived from the method name and the code is generated at run time. Scoring it would measure a naming convention rather than anything anybody wrote.",
+      "when": {
+        "kind": ["interface"],
+        "extendsOrImplements": [
+          "CrudRepository",
+          "JpaRepository",
+          "JpaSpecificationExecutor",
+          "PagingAndSortingRepository",
+          "Repository"
+        ]
+      }
+    },
+    {
+      "rule": "entry point",
+      "because": "The application's entry point exists to be started, not to be called. Its one method has the signature the platform dictates, and no module inside the application ever learns it.",
+      "when": {"annotatedWith": ["SpringBootApplication"]}
+    }
+  ]
+}
