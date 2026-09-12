@@ -740,7 +740,8 @@ body {
   border-left: 1px solid rgb(var(--line) / 0.14);
 }
 
-.deposit label {
+.deposit label,
+.give-line label {
   display: block;
   margin-bottom: 0.35rem;
   color: var(--ink-soft);
@@ -967,6 +968,17 @@ button::after {
   color: var(--brand-deep);
 }
 
+/* The one rule the deposit list needs stated before it can be read: it explains the third part of
+   every breakdown and, more importantly, why a small deposit's anniversary is worth nothing. Said
+   once over the list rather than on each row — a history that argued its own case on every line
+   would be an advertisement — and tighter than a panel's explanation, because it is inside a
+   block that is already a section of one. */
+.explanation.rule {
+  margin: -0.25rem 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
 .deposits {
   width: 100%;
   border-collapse: collapse;
@@ -1048,6 +1060,115 @@ button::after {
 /* The rate travels with its multiplication sign, the way the rate beside the week does. */
 .breakdown-rate {
   white-space: nowrap;
+}
+
+/* The third part of the sum, and the only one that arrived after the money did. Kept whole for the
+   same reason the rate is: "+ 30" at the end of one line and "loyalty" at the start of the next
+   reads as two figures, and a breakdown whose job is to be checkable cannot afford that. Its own
+   class rather than nothing, so the plus sign travels with it. */
+.breakdown-loyalty {
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- when a deposit next pays */
+
+/* The promise, under the record of what the deposit has already earned. Warm, because it is about
+   points and nothing else is allowed that colour — and the same weight and size as the expiry
+   deadline on the overview, because it is the same kind of sentence about the same kind of thing: a
+   figure and the day it lands on. The two are read the same way, so they are dressed the same way.
+
+   Louder than .breakdown above it and quieter than the badge above that. The order down the cell is
+   the answer, then the working, then what is coming — which is the order somebody reads it in. */
+.anniversary {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--points);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+/* The figure is the part somebody is deciding against, so it carries the weight of the two halves,
+   exactly as the expiry count does. */
+.anniversary-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The date travels with the words in front of it: a date alone at the start of a wrapped line reads
+   as a heading rather than as the end of this sentence. */
+.anniversary-when {
+  white-space: nowrap;
+}
+
+/* A deposit holding under ten euros earns nothing on its anniversary, and that is a rule rather than
+   a fault — the rule is written over the list. Dressed as the page's other absences are, in the grey
+   that .earnings.none and .nothing use: the warm colour is for points a customer is getting, and
+   there are none here. Not hidden, because the date is real and a hidden line would be
+   indistinguishable from the emptied deposit that has no anniversary at all. */
+.anniversary.none {
+  color: var(--ink-faint);
+}
+
+/* An account's two histories fold into blocks at a phone's width, the way the money history's rows
+   already do — same reason, and deliberately the same 36rem, so that a page whose two kinds of
+   history are read one after the other never has one of them folded and the other in columns.
+
+   The deposits list is what forces it. Its third cell now holds three things — the total, the
+   arithmetic behind it, and the day the deposit next pays — and a third of a phone's width is not
+   enough for any of them: a date kept whole on purpose ("due on 18 oktober 2029" must not break in
+   half) is wider than the column it was in, so the table pushed its own figures off the screen.
+   Given the whole width under the date and the amount, all three read as the sentences they are.
+
+   The withdrawals list is folded with it rather than left behind. Its destination cell is an IBAN,
+   which is one unbreakable sixteen-character word and overflowed the frame at this width before
+   this rule existed; leaving one of two side-by-side lists folded and the other spilling would
+   read as a fault in the one that folded. */
+@media (max-width: 36rem) {
+  /* The headings named columns that no longer exist. Every cell says what it is by how it is
+     dressed — a date, an amount, a badge, an IBAN — which is what lets the columns go. */
+  .ledger .deposits thead {
+    display: none;
+  }
+
+  .ledger .deposits tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'when amount'
+      'detail detail';
+    align-items: start;
+    gap: 0.3rem 0.75rem;
+    padding: 0.7rem 0;
+    /* The cells' own borders go with the columns, so the row carries the line that separated them.
+       Without it a list of blocks is one block. */
+    border-bottom: 1px solid rgb(var(--line) / 0.09);
+  }
+
+  .ledger .deposits tbody td {
+    display: block;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .ledger .deposits .when {
+    grid-area: when;
+  }
+
+  .ledger .deposits .amount {
+    grid-area: amount;
+    text-align: right;
+  }
+
+  /* Left, under the date it belongs to, exactly as the money history's words are: the table's
+     columns are right-aligned, which is right for a figure in a column and wrong for a stack of
+     sentences under a left-aligned date. */
+  .ledger .deposits .gained,
+  .ledger .deposits .returned {
+    grid-area: detail;
+    text-align: left;
+  }
 }
 
 /* The deposit just made is marked for a moment, so it can be found in a long list. */
@@ -1251,10 +1372,27 @@ button::after {
 /* ---------------------------------------------------------------- vouchers */
 
 /* The two lists that account for the points balance, side by side where there is room: what came in,
-   and what went out. */
+   and what went out.
+
+   "Where there is room" has to mean the room a list actually needs, and 20rem was not it. A column
+   of 20rem hands a list 17rem of content once .history's padding is taken out, and neither list has
+   ever fitted that: the widest deposit row needs 340px and a withdrawal's destination is an IBAN,
+   one unbreakable sixteen-character word, at 322px. So the two lists went side by side from about
+   700px of window, each in a column narrower than its own contents, and ran over the rule between
+   them — the deposits list since this branch gave it a third line, the withdrawals list since it
+   was written. Raising the minimum to the width a list needs is the whole fix: 28rem is 448px, or
+   400px of content, which clears the widest row with room to spare and is still under half of the
+   958px this panel comes to at its widest, so the two columns still appear on a desktop exactly as
+   they did. Between the two the lists stack, which is the layout they already had at every width
+   below 700px.
+
+   min(28rem, 100%) rather than 28rem, because a hard minimum wider than the panel is a column that
+   cannot fit its own frame: at 320px of window the 20rem one drew a 320px column inside a 286px
+   panel and .account's overflow: hidden cut the ends off the rows. Below 28rem the column is simply
+   as wide as there is, and the 36rem fold in the deposits section takes it from there. */
 .ledger {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
 }
 
 .ledger .history + .history {
@@ -1590,6 +1728,7 @@ button.quiet::after {
 }
 
 .topbar-inner {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -1641,6 +1780,181 @@ button.quiet.back svg {
   width: 2.2rem;
   height: 2.2rem;
   font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------- the bell */
+
+/* The bell is the only control in the bar that is about something rather than somewhere, so it is
+   drawn as the icon alone: a word beside it would put a third label in a bar that already carries
+   a name and a way out, and at 320px there is no room for a third label. */
+button.quiet.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: var(--brand-deep);
+}
+
+button.quiet.bell svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+@media (hover: hover) {
+  button.quiet.bell:hover:not(:disabled) {
+    background: rgb(var(--glow) / 0.1);
+  }
+}
+
+button.quiet.bell[aria-expanded='true'] {
+  color: var(--brand);
+  background: rgb(var(--glow) / 0.12);
+}
+
+/* The count, and only when there is one. Text rather than a dot, because "3" and "12" are
+   different news; drawn over the corner of the bell the way a badge is, and small enough that it
+   is the bell that is recognised first and the number second.
+
+   The two colours are the identity's, taken from the pair that swap places between the schemes:
+   --brand-deep is the dark blue on a light page and the light blue on a dark one, and --raised is
+   the ground it is standing on, which is white and dark navy respectively. So the badge is dark on
+   light and light on dark without a second palette written down for it. */
+.bell-count {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.15rem;
+  min-width: 1.05rem;
+  padding: 0 0.25rem;
+  border: 2px solid var(--raised);
+  border-radius: var(--radius-pill);
+  background: var(--brand-deep);
+  color: var(--raised);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+}
+
+/* Hung off the bar rather than off the bell, so that its right edge lands in the same gutter every
+   other thing on the page lines up with. Anchored to the bell it would sit two controls in from
+   the edge, and at 320px a panel wider than that offset would hang off the left of the screen. */
+.notifications {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: clamp(1rem, 4vw, 2rem);
+  z-index: 6;
+  width: min(23rem, calc(100vw - 2rem));
+  max-height: min(26rem, 70vh);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid rgb(var(--line) / 0.14);
+  border-radius: var(--radius);
+  background: var(--raised);
+  box-shadow: 0 0.9rem 2rem -0.7rem rgb(var(--line) / 0.45);
+  animation: rise 0.25s var(--ease) both;
+}
+
+.notifications h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--brand-deep);
+}
+
+.said {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgb(var(--line) / 0.14);
+  border-radius: var(--radius-sm);
+  background: var(--inset);
+}
+
+/* Read, and still here. Dimmed rather than dropped: the panel is the record that a rule fired, and
+   a row that vanished once it had been looked at would take that record with it. */
+.notification.read {
+  border-color: rgb(var(--line) / 0.08);
+  background: none;
+  opacity: 0.62;
+}
+
+.notification-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--brand);
+}
+
+.notification-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+/* The one of the four that is a warning rather than a remark. Colour only, and no shake and no
+   fill: this is a standing record, and the alert treatment belongs on the account page beside the
+   withdrawal form that would cost the customer the bonus. */
+.notification.at-risk .notification-icon {
+  color: var(--danger);
+}
+
+.notification-words {
+  min-width: 0;
+}
+
+.notification-what {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.notification-warning {
+  color: var(--danger);
+}
+
+.notification .when {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+}
+
+.notifications .nothing {
+  margin: 0.75rem 0 0;
+}
+
+/* ------------------------------------------- the notice on an account page */
+
+/* The newest unread thing said about one account, drawn on that account's page above the forms
+   that move its money. The panel it sits in has no padding of its own — its header, its balances
+   and its ledger all carry their own — so the notice carries the same gutter the read failure
+   above it wears. Both the calm dress and the alert dress come through this rule, so the two sit
+   in exactly the same place on the page. */
+.account > .notice {
+  margin: 1.25rem 1.5rem;
+}
+
+/* A standing notice is not news. A refusal shakes because it has just happened in answer to
+   something the customer did; this is drawn again every time the page is, and a page that shakes
+   on every load is noise rather than emphasis. The red left rule, the tinted ground and the colour
+   all stay: only the movement goes. */
+[role='alert'].standing {
+  animation: none;
 }
 
 /* ---------------------------------------------------------------- account cards */
@@ -2021,11 +2335,63 @@ button.quiet.back svg {
   letter-spacing: 0;
 }
 
+/* -------------------------------------------------- giving points away */
+
+/* The people who bank here are one question with one answer, and a fieldset is what says so to
+   anything reading the page out. Its own frame is taken off: the cards inside already draw one
+   each, and a box around a grid of boxes is a second border saying nothing. */
+.who-for {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Dressed as the panel's own h3, because that is what it is doing here — naming the part of the
+   form underneath it. A legend rather than a heading so the naming reaches the radios themselves. */
+.who-for legend {
+  padding: 0;
+  color: var(--brand-deep);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* The figure and the button that sends it, under the people it is going to. The deposit form's
+   row without its padding: that one sits in a panel with none of its own, and this one does not. */
+.give-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+/* Figures line up under each other, the way an amount in the deposit box does. */
+.give-line input {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Which way the gift went and what it was worth, together in the stub's last column: two facts
+   about one gift, and the chip is the one a reader scans the list for. */
+.gift-outcome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 30rem) {
   .transfer-area {
     grid-template-columns: 1fr;
+  }
+
+  /* The chip and the badge stack rather than squeezing the name beside them off the stub: at this
+     width the last column of a gift is wider than the words it sits next to. */
+  .gift-outcome {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
   }
 
   .withdrawal {
@@ -2097,6 +2463,23 @@ button.quiet.back svg {
 
   .who .avatar {
     display: none;
+  }
+
+  /* The bell keeps its whole tap target and gives up its margins: at this width the name of the
+     application is one wrap away from taking a second line, and the row it is on is the only
+     place left to find the few pixels that keep it on one. */
+  button.quiet.bell {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  button.quiet.bell svg {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .who {
+    gap: 0.3rem;
   }
 
   .price {

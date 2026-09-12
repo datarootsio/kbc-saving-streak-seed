@@ -7,6 +7,8 @@ import io.dataroots.savingstreak.accounts.CustomerAccounts;
 import io.dataroots.savingstreak.accounts.SavingsAccount;
 import io.dataroots.savingstreak.deposits.DepositsService;
 import io.dataroots.savingstreak.deposits.MoneyMovementsService;
+import io.dataroots.savingstreak.gifting.GiftingService;
+import io.dataroots.savingstreak.notifications.NotificationsService;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.rewards.Reward;
 import io.dataroots.savingstreak.rewards.RewardsService;
@@ -34,17 +36,21 @@ class CustomerController {
 
     private final AccountsService accounts;
     private final DepositsService deposits;
+    private final GiftingService gifting;
     private final MoneyMovementsService movements;
+    private final NotificationsService notifications;
     private final PointsService points;
     private final RewardsService rewards;
     private final StreaksService streaks;
 
-    CustomerController(AccountsService accounts, DepositsService deposits,
-                       MoneyMovementsService movements, PointsService points,
-                       RewardsService rewards, StreaksService streaks) {
+    CustomerController(AccountsService accounts, DepositsService deposits, GiftingService gifting,
+                       MoneyMovementsService movements, NotificationsService notifications,
+                       PointsService points, RewardsService rewards, StreaksService streaks) {
         this.accounts = accounts;
         this.deposits = deposits;
+        this.gifting = gifting;
         this.movements = movements;
+        this.notifications = notifications;
         this.points = points;
         this.rewards = rewards;
         this.streaks = streaks;
@@ -87,8 +93,12 @@ class CustomerController {
                 // which is all this application can honestly tell apart: it knows who exists, and
                 // not who is typing. Worded for someone who mistyped their own address, because in
                 // a training session that is who it will be.
+                // Worded by Accounts, which owns what a customer is and therefore what it sounds
+                // like when nobody banks under an address. A gift addressed to a stranger has to
+                // say the same thing, and two copies of the sentence are one rewording away from
+                // disagreeing about what absence sounds like.
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "No customer banks here under that email address."));
+                        AccountsService.noCustomerBanksUnderThoseContactDetails()));
     }
 
     /**
@@ -199,7 +209,121 @@ class CustomerController {
         }
     }
 
-    /** Worded for whoever reads it: a refusal reaches the screen with its reason unchanged. */
+    /**
+     * Gives some of the customer's points to another customer of the bank, named by the contact
+     * details they bank under.
+     *
+     * <p>Against the customer rather than one of their accounts, for the reason a claim is: these
+     * are their points, out of the one pot everything they save earns into.
+     *
+     * <p>Reading the request, not judging it. Whether the recipient exists, whether they are
+     * somebody else, whether the figure is a number of points at all and whether the sender holds
+     * that many are all rules, and every one of them belongs to Gifting, which refuses on its own.
+     * What is checked here is only whether the two things a gift is made of were sent at all — the
+     * same line the claim endpoint draws about the reward it names.
+     */
+    @PostMapping("/{customerId}/gifts")
+    @ResponseStatus(HttpStatus.CREATED)
+    GiftResponse give(@PathVariable long customerId, @RequestBody GiftRequest request) {
+        if (request == null || request.recipientContactDetails() == null
+                || request.recipientContactDetails().isBlank()) {
+            throw refusingTheGift(customerId,
+                    "A gift needs the email address of the customer it is going to.");
+        }
+        if (request.points() == null || request.points().isBlank()) {
+            throw refusingTheGift(customerId, "A gift needs a number of points to give.");
+        }
+        return GiftResponse.of(
+                gifting.give(customerId, request.recipientContactDetails(), request.points()));
+    }
+
+    /**
+     * Every gift this customer was part of, sent and received together, newest first, each row marked
+     * with the direction it reads in for them.
+     *
+     * <p>One list rather than two endpoints, because a customer's gifting reads chronologically and
+     * which end of a gift they were on is a property of who is asking — the idiom the money-movement
+     * ledger already set with its own direction.
+     *
+     * <p>Asked before the gifts are, so that a customer nobody has heard of is refused rather than
+     * answered with the empty list of somebody who has simply never given or received anything. The
+     * same line every other per-customer read here draws.
+     */
+    @GetMapping("/{customerId}/gifts")
+    List<GiftResponse> giftsOf(@PathVariable long customerId) {
+        if (!accounts.customerExists(customerId)) {
+            throw noSuchCustomer(customerId);
+        }
+        return gifting.giftsOf(customerId).stream().map(GiftResponse::of).toList();
+    }
+
+    /**
+     * Everything the rules have decided was worth saying to this customer, newest first, read and
+     * unread together.
+     *
+     * <p>Customer-scoped, matching the money-movement ledger, the claimed rewards and the gifts. A
+     * notification is addressed to the person who reads it: balance rungs and coming anniversaries
+     * have exactly one person they concern, and somebody holding two savings accounts has one panel
+     * and not two. Which pot each row is about travels in it, so the panel can name it and an
+     * account's own page can pick out the notice that concerns it.
+     *
+     * <p>Read and unread together, because the panel is a record rather than an inbox that empties.
+     *
+     * <p>Nothing is judged here. Whether the customer exists is a rule and it belongs to
+     * Notifications, which refuses on its own and is reported by {@code RefusalsAsHttp} — this
+     * endpoint turns the module's answer into the shape the API sends and decides nothing else.
+     */
+    @GetMapping("/{customerId}/notifications")
+    List<NotificationResponse> notificationsOf(@PathVariable long customerId) {
+        return notifications.notificationsOf(customerId).stream()
+                .map(NotificationResponse::of)
+                .toList();
+    }
+
+    /**
+     * Marks everything this customer has not yet looked at as looked at, and answers the same list
+     * back.
+     *
+     * <p>No body. There is nothing to say: the request is "I have looked at my notifications", the
+     * customer is in the path, and when they looked is the application's own clock rather than
+     * anything a browser can claim.
+     *
+     * <p>The list comes back so that the caller needs one round trip rather than two — opening the
+     * panel is one action, and a page that had to read again afterwards would go on showing the
+     * count it just cleared for as long as the second request took.
+     *
+     * <p>A plain 200 and not a 201: nothing was created. A moment was written onto rows that already
+     * existed, and the answer is the record as it now reads.
+     *
+     * <p>Safe to send twice, because the rule underneath is: a notification keeps the moment it was
+     * first read at, so a second call marks nothing and answers the same list.
+     */
+    @PostMapping("/{customerId}/notifications/read")
+    List<NotificationResponse> markNotificationsRead(@PathVariable long customerId) {
+        return notifications.markEverythingReadFor(customerId).stream()
+                .map(NotificationResponse::of)
+                .toList();
+    }
+
+    /**
+     * A gift refused before the domain ever sees it, because the body did not carry the two things a
+     * gift is made of. Said out loud as well as answered, for the reason every other refusal here is:
+     * the reason reaches whoever asked and nowhere else, and the log is the only copy a reviewer
+     * tracing somebody's complaint can read.
+     *
+     * <p>Kept alongside Gifting's own WARN so that {@code grep "gift rejected"} finds every refused
+     * gift, whichever side of the domain boundary turned it down — a refusal that left no line saying
+     * why would be indistinguishable in the log from a gift nobody ever tried to make.
+     *
+     * <p>A bad request rather than one of Gifting's four, and the kind says which: a field that was
+     * never filled in is a malformed request, where an address that is filled in and belongs to
+     * nobody is a 404. That is the line signing in already draws for itself.
+     */
+    private ResponseStatusException refusingTheGift(long customerId, String reason) {
+        log.warn("gift rejected senderCustomerId={} kind=NOT_A_GIFT reason={}", customerId, reason);
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, reason);
+    }
+
     /**
      * The refusal every endpoint here gives for somebody who does not bank at this application, said
      * out loud as well as answered.

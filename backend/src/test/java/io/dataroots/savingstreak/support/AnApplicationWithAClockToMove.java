@@ -153,6 +153,22 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return ran.getBody();
     }
 
+    /**
+     * One of this application's own beans, by type, for a test whose subject has no read over HTTP
+     * yet.
+     *
+     * <p>The exception rather than the way in, and it says so out loud. Behaviour is asserted at the
+     * HTTP seam and nowhere lower, because a lower seam binds a test to the storage decisions later
+     * slices need free to change. But a rule can arrive before the endpoint that reports it does,
+     * and a nightly sweep whose whole effect is rows nobody can yet ask for would otherwise have to
+     * be taken on trust for a slice or two. A test that reaches through here is asserting on what it
+     * drove through the endpoints — a deposit, a withdrawal, a job run by name — and only reading
+     * the answer from the module that owns it.
+     */
+    public <T> T theApplicationsOwn(Class<T> type) {
+        return application.getBean(type);
+    }
+
     /** The jobs this application says can be run, so that a test can ask whether one is there at all. */
     public ScheduledJobView[] whatCanBeRun() {
         return http.getForObject("/api/dev/jobs", ScheduledJobView[].class);
@@ -173,6 +189,17 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return seeded.pointsExpiringNextOnOf(customerName);
     }
 
+    /**
+     * What is in the customer's current account, for a test that has to say no euros moved.
+     *
+     * <p>The other end of every movement this application makes, and the figure that would give a
+     * bonus away if paying one ever touched money: a savings balance that had not changed while the
+     * current account had would be euros moving in a direction nobody asked for.
+     */
+    public BigDecimal currentAccountBalanceOf(String customerName) {
+        return seeded.currentAccountBalanceOf(customerName);
+    }
+
     /** Every movement of money in or out of the customer's savings, newest first. */
     public MoneyMovementView[] moneyMovementsOf(String customerName) {
         return http.getForObject("/api/customers/{id}/money-movements", MoneyMovementView[].class,
@@ -185,6 +212,99 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
      */
     public BalancesView balancesOf(long savingsAccountId) {
         return http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
+    }
+
+    /**
+     * The account overview exactly as the API sends it, for a test that has to say a figure is
+     * <em>not</em> in it.
+     *
+     * <p>The body rather than {@link BalancesView}, because a view binds the fields it knows about
+     * and says nothing about the ones it does not: a test asserting that nothing was added to the
+     * overview cannot ask a record that would have to be changed first in order to notice.
+     *
+     * <p>The status is insisted on for the reason {@link #deposit} gives, and it matters more here
+     * than anywhere: a refusal is answered with a problem body, and a problem body contains none of
+     * the words a test like that is looking for. An overview that had started answering 404 or 500
+     * would satisfy every "this figure is not in it" assertion ever written against it.
+     */
+    public String theAccountOverviewAsItIsSent(long savingsAccountId) {
+        return theBodyOfAReadThatHadToSucceed(
+                "/api/savings-accounts/{id}", savingsAccountId);
+    }
+
+    /**
+     * The customer's own overview exactly as the API sends it — the read the home screen makes, as
+     * text, for a test that has to say a figure is <em>not</em> on it.
+     *
+     * <p>The other overview there is. {@link #theAccountOverviewAsItIsSent} is one savings account's
+     * summary; this is the customer's, where the figures that belong to the person rather than to an
+     * account live. A test saying nothing was added to the front page has to ask both, and has to
+     * ask for the text for the reason that method gives: a view binds the fields it knows about and
+     * says nothing about the ones it does not.
+     *
+     * <p>Insisted on the same way, and for the same reason: an overview that answered a problem
+     * body instead would pass any assertion about what it does not contain.
+     */
+    public String theCustomerOverviewAsItIsSent(String customerName) {
+        return theBodyOfAReadThatHadToSucceed(
+                "/api/customers/{id}/accounts", seeded.customerIdOf(customerName));
+    }
+
+    /**
+     * Every deposit into the account exactly as the history sends it, for a test that has to say a
+     * figure is <em>not</em> in one.
+     *
+     * <p>The text rather than {@link #depositsInto}, and this is the sharper case of the rule
+     * {@link #theAccountOverviewAsItIsSent} states. {@link DepositView} is filled in by Jackson,
+     * which drops JSON properties the record has no component for, so a comparison of two arrays of
+     * views is a comparison of the fields the view already knew about — a field <em>added</em> to
+     * the deposit response is invisible to it. A test saying nothing was added to a deposit's
+     * breakdown has to read the breakdown as it was sent.
+     */
+    public String theDepositHistoryAsItIsSent(long savingsAccountId) {
+        return theBodyOfAReadThatHadToSucceed(
+                "/api/savings-accounts/{id}/deposits", savingsAccountId);
+    }
+
+    /**
+     * The ledger of money that moved exactly as the API sends it, for a test that has to say a
+     * figure is <em>not</em> in it.
+     *
+     * <p>The text rather than {@link #moneyMovementsOf}, for the reason
+     * {@link #theDepositHistoryAsItIsSent} gives about the deposit history and which holds word for
+     * word here: {@link MoneyMovementView} is filled in by Jackson too, so comparing two arrays of
+     * entries compares the fields the view already knew about and a field <em>added</em> to the
+     * ledger's entries never reaches it. A test saying nothing about a gift was written into the
+     * ledger has to read the ledger as it was sent.
+     */
+    public String theMoneyMovementLedgerAsItIsSent(String customerName) {
+        return theBodyOfAReadThatHadToSucceed(
+                "/api/customers/{id}/money-movements", seeded.customerIdOf(customerName));
+    }
+
+    /**
+     * The body of a read that had to succeed, as text. {@code getForObject} hands back the error
+     * body rather than throwing, so a read whose status nobody looked at is a read that can quietly
+     * become a refusal — and every assertion about what a body does not contain would then be
+     * asserting about a problem document.
+     *
+     * <p>The body itself is insisted on as well as the status, because the whole point of this
+     * method is to hand back something a test can ask questions of: a 200 with nothing in it would
+     * otherwise leave the caller with a null, and the failure would arrive as a
+     * {@link NullPointerException} somewhere else rather than as the diagnosis this method exists
+     * to give.
+     */
+    private String theBodyOfAReadThatHadToSucceed(String path, Object... uriVariables) {
+        ResponseEntity<String> read = http.getForEntity(path, String.class, uriVariables);
+        assertThat(read.getStatusCode())
+                .describedAs("a read of " + path + " this test needs to have succeeded before it "
+                        + "can say anything about what the body does not contain")
+                .isEqualTo(HttpStatus.OK);
+        assertThat(read.getBody())
+                .describedAs("a read of " + path + " answered with a body, because a test cannot "
+                        + "say what an empty answer does not contain")
+                .isNotBlank();
+        return read.getBody();
     }
 
     /**
@@ -210,6 +330,97 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
                 seeded.customerIdOf(customerName));
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return claimed.getBody();
+    }
+
+    /**
+     * A gift of points from one customer to another, with the refusal ruled out: a gift that was
+     * turned down would leave a test asserting that points nobody moved are still where they were —
+     * and passing.
+     *
+     * <p>The recipient is named to this method by name and reaches the API as the contact details
+     * they bank under, because that is what the contract carries. The points go over the wire as the
+     * text they are given here, the way a deposit's amount does, so a test can hand this whatever a
+     * customer could type.
+     */
+    public GiftView give(String senderName, String recipientName, String points) {
+        ResponseEntity<GiftView> given =
+                giveNaming(senderName, seeded.contactDetailsOf(recipientName), points);
+        assertThat(given.getStatusCode())
+                .describedAs("a gift this test needs in order to have moved any points")
+                .isEqualTo(HttpStatus.CREATED);
+        return given.getBody();
+    }
+
+    /**
+     * The same request with the recipient addressed as whatever text is given here, answered with
+     * whatever the API answered — for a test about how an address is matched, where the point is the
+     * text and not that the gift went through.
+     */
+    public ResponseEntity<GiftView> giveNaming(String senderName, String recipientAsTyped,
+                                               String points) {
+        return http.postForEntity(
+                "/api/customers/{id}/gifts",
+                Map.of("recipientContactDetails", recipientAsTyped, "points", points),
+                GiftView.class,
+                seeded.customerIdOf(senderName));
+    }
+
+    /**
+     * Every gift the customer was part of, sent and received together, newest first — the record
+     * both parties read, and the only way from outside to say whether a gift was written down.
+     */
+    public GiftView[] giftsOf(String customerName) {
+        return http.getForObject("/api/customers/{id}/gifts", GiftView[].class,
+                seeded.customerIdOf(customerName));
+    }
+
+    /**
+     * Everything that has been said to the customer as the API reports it, newest first, read and
+     * unread together — the read the panel makes.
+     *
+     * <p>Read over HTTP rather than out of the module, now that there is an endpoint in front of it:
+     * a test that says a sweep raised something is then also saying the customer can see it.
+     *
+     * <p>The status is insisted on for the reason {@link #deposit} gives, and it matters as much
+     * here: {@code getForObject} hands back the error body rather than throwing, so a read that had
+     * quietly become a refusal would satisfy every "nothing has been said yet" assertion ever
+     * written against it.
+     */
+    public NotificationView[] notificationsOf(String customerName) {
+        ResponseEntity<NotificationView[]> read = http.getForEntity(
+                "/api/customers/{id}/notifications", NotificationView[].class,
+                seeded.customerIdOf(customerName));
+        assertThat(read.getStatusCode())
+                .describedAs("a read of somebody's notifications this test needs to have succeeded")
+                .isEqualTo(HttpStatus.OK);
+        return read.getBody();
+    }
+
+    /**
+     * The customer looks at their notifications, which marks every unread one read and answers the
+     * whole list back — one round trip, as the panel makes it.
+     *
+     * <p>Insisted on the same way: a call that was refused would leave a test asserting that
+     * notifications nobody marked are still unread — and passing.
+     */
+    public NotificationView[] marksTheirNotificationsRead(String customerName) {
+        ResponseEntity<NotificationView[]> marked = http.postForEntity(
+                "/api/customers/{id}/notifications/read", null, NotificationView[].class,
+                seeded.customerIdOf(customerName));
+        assertThat(marked.getStatusCode())
+                .describedAs("a marking-read this test needs in order to have read anything")
+                .isEqualTo(HttpStatus.OK);
+        return marked.getBody();
+    }
+
+    /** Which customer this is, for a test asserting on who a gift names. */
+    public long customerIdOf(String customerName) {
+        return seeded.customerIdOf(customerName);
+    }
+
+    /** What the customer signs in with, which is also how a gift addresses them. */
+    public String contactDetailsOf(String customerName) {
+        return seeded.contactDetailsOf(customerName);
     }
 
     /** Why a claim the customer could not afford was refused, in the words they are given. */

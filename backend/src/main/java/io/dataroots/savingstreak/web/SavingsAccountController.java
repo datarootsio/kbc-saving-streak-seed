@@ -2,11 +2,15 @@ package io.dataroots.savingstreak.web;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import io.dataroots.savingstreak.accounts.AccountHolder;
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.deposits.DepositsService;
+import io.dataroots.savingstreak.deposits.RecordedDeposit;
 import io.dataroots.savingstreak.deposits.WithdrawalsService;
+import io.dataroots.savingstreak.loyalty.LoyaltyService;
+import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
 import io.dataroots.savingstreak.points.PointsService;
 import io.dataroots.savingstreak.streaks.StreaksService;
 import org.slf4j.Logger;
@@ -26,10 +30,11 @@ import org.springframework.web.server.ResponseStatusException;
  * A savings account, what is in it, what its holder has to spend, and the money that has moved in
  * and out of it.
  *
- * <p>The figures come from four modules that do not know about each other — who holds the account,
- * what has been paid into it, what its holder has earned, and how their week and their run of weeks
- * are going and what that run pays — and are assembled here. Assembling an answer is not a rule: no
- * decision about money, points, weeks or rates is taken in this class.
+ * <p>The figures come from five modules that do not know about each other — who holds the account,
+ * what has been paid into it, what its holder has earned, how their week and their run of weeks are
+ * going and what that run pays, and when each deposit next pays for the money still sitting in it —
+ * and are assembled here. Assembling an answer is not a rule: no decision about money, points,
+ * weeks, rates or anniversaries is taken in this class.
  *
  * <p>Only the money is the account's. The points, the week and the run of weeks all belong to the
  * customer who holds it and read the same beside every account they hold; what paying in <em>here</em>
@@ -50,15 +55,18 @@ class SavingsAccountController {
     private final WithdrawalsService withdrawals;
     private final PointsService points;
     private final StreaksService streaks;
+    private final LoyaltyService loyalty;
 
     SavingsAccountController(AccountsService accounts, DepositsService deposits, WithdrawalsService withdrawals,
                              PointsService points,
-                             StreaksService streaks) {
+                             StreaksService streaks,
+                             LoyaltyService loyalty) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.withdrawals = withdrawals;
         this.points = points;
         this.streaks = streaks;
+        this.loyalty = loyalty;
     }
 
     /**
@@ -92,6 +100,27 @@ class SavingsAccountController {
                 streaks.weekAndStreakOf(holder.customerId()));
     }
 
+    /**
+     * Every deposit into the account, what each earned, and when each next pays.
+     *
+     * <p>In one read transaction, for the reason the overview above gives one step further out: what
+     * a deposit has earned and what its next anniversary is worth are read from two modules, and a
+     * withdrawal committing between the two would have a row reporting a bonus worked out on euros
+     * that had already left. One transaction, and the two halves of every row describe the same
+     * instant of the ledger.
+     *
+     * <p>Package-private like the rest of this class, and the annotation above is honoured all the
+     * same. It is worth saying so, because {@link LoyaltyService#payLoyaltyBonuses} and
+     * {@code PointsService} both carry a comment claiming a proxy cannot advise a method that is not
+     * public and are declared public on the strength of it. That was true of older Spring: the
+     * transaction attribute source used to read public methods only. Since Spring Framework 6.0 the
+     * one this application runs on is built as {@code AnnotationTransactionAttributeSource(false)}
+     * by {@code AbstractTransactionManagementConfiguration}, so that a CGLIB proxy — which can
+     * override a package-private method of a class in its own package — advises this handler exactly
+     * as it advises the overview above it. A DEBUG log from {@code JpaTransactionManager} names the
+     * transaction after this method, which is how to check the claim rather than take it on trust.
+     */
+    @Transactional(readOnly = true)
     @GetMapping("/{savingsAccountId}/deposits")
     List<DepositResponse> depositsInto(@PathVariable long savingsAccountId) {
         // Asked before the deposits are, so that an account nobody has heard of is refused rather
@@ -99,7 +128,14 @@ class SavingsAccountController {
         if (!accounts.savingsAccountExists(savingsAccountId)) {
             throw noSuchSavingsAccount(savingsAccountId);
         }
-        return deposits.depositsInto(savingsAccountId).stream().map(DepositResponse::of).toList();
+        List<RecordedDeposit> history = deposits.depositsInto(savingsAccountId);
+        // Absent for every deposit that has been emptied, which is how a row comes to report no
+        // next anniversary: the money has gone and there is no promise left to make about it.
+        Map<Long, NextAnniversaryOfADeposit> nextAnniversaries =
+                loyalty.whenTheDepositsInAnAccountNextPay(savingsAccountId);
+        return history.stream()
+                .map(deposit -> DepositResponse.of(deposit, nextAnniversaries.get(deposit.id())))
+                .toList();
     }
 
     @PostMapping("/{savingsAccountId}/deposits")
@@ -112,8 +148,14 @@ class SavingsAccountController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A deposit needs an amount and the current account it comes from.");
         }
-        return DepositResponse.of(deposits.deposit(
-                savingsAccountId, request.fromCurrentAccountId(), amountIn(request)));
+        RecordedDeposit made = deposits.deposit(
+                savingsAccountId, request.fromCurrentAccountId(), amountIn(request));
+        // The anniversary the money has just started counting towards, read the same way the
+        // history reads it rather than worked out here: a deposit just made and the same deposit
+        // looked back at have to say the same thing, and one code path is what makes that true
+        // instead of hoped for. It holds all of its money, so it is always in this answer.
+        return DepositResponse.of(
+                made, loyalty.whenTheDepositsInAnAccountNextPay(savingsAccountId).get(made.id()));
     }
 
     @PostMapping("/{savingsAccountId}/withdrawals")

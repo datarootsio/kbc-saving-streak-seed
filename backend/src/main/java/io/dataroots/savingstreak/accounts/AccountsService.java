@@ -45,6 +45,20 @@ public class AccountsService {
     }
 
     /**
+     * The customer with this identifier, or nothing at all if there is no such customer.
+     *
+     * <p>The customer rather than only whether they exist, for a caller that has to name them: a
+     * module reporting something one customer did to another has to be able to put both names in
+     * front of whoever reads it, and asking whether they exist and then asking who they are is two
+     * queries for one fact. {@link #customerExists} is still the answer where only the fact is
+     * wanted.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Customer> customerWith(long customerId) {
+        return customers.findById(customerId);
+    }
+
+    /**
      * Who holds the given savings account, or nothing at all if there is no such account.
      *
      * <p>The holder rather than the customer record: whoever asks wants to say whose account this is
@@ -54,6 +68,23 @@ public class AccountsService {
     @Transactional(readOnly = true)
     public Optional<AccountHolder> holderOfSavingsAccount(long savingsAccountId) {
         return savingsAccounts.findHolderById(savingsAccountId);
+    }
+
+    /**
+     * Every savings account there is, by identifier, in the order they were opened.
+     *
+     * <p>For a nightly sweep, which has nobody's account in front of it and has to walk them all.
+     * Identifiers rather than accounts or holders: whoever sweeps asks this module who holds each
+     * one as it gets to it, and a module that handed out its entities to be read elsewhere would
+     * have no boundary left to speak of.
+     *
+     * <p>All of them on every call. With the seeded customers that is three rows, and with a real
+     * population a sweep would want to be handed them a page at a time — which is a change to make
+     * when there is a population, not before.
+     */
+    @Transactional(readOnly = true)
+    public List<Long> everySavingsAccount() {
+        return savingsAccounts.findEveryId();
     }
 
     /** Whether there is a customer with this identifier at all, for callers that only ask. */
@@ -98,6 +129,20 @@ public class AccountsService {
      */
     public static String noSuchCustomer(long customerId) {
         return "There is no customer " + customerId + ".";
+    }
+
+    /**
+     * And for contact details nobody banks under, which anything that finds a customer the way
+     * signing in does has to be able to say. Signing in says it about the address somebody typed
+     * about themselves, and a gift says it about the address they typed about somebody else — the
+     * same objection, and worth being the same sentence.
+     *
+     * <p>The address is deliberately not named back. This application knows who exists and not who
+     * is typing, so an answer that echoed the address would be telling whoever asked slightly more
+     * about who banks here than they gave it.
+     */
+    public static String noCustomerBanksUnderThoseContactDetails() {
+        return "No customer banks here under that email address.";
     }
 
     /**

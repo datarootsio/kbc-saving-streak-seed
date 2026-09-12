@@ -131,8 +131,8 @@ export async function signIn(contactDetails: string): Promise<Customer> {
 }
 
 // All backend endpoints sit under /api, which the dev server proxies to the backend.
-export async function fetchCustomers(): Promise<Customer[]> {
-  const response = await fetch('/api/customers')
+export async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  const response = await fetch('/api/customers', { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load the customer list'))
   }
@@ -212,12 +212,38 @@ export type SavingsAccountBalances = {
 }
 
 /**
- * A deposit that was made, and what it earned when it was made.
+ * A deposit that was made, what it has earned since, and when it next pays.
  *
  * <p>`pointsEarned` is everything it earned however it earned it, which is what it has always meant:
- * `basePoints` and `streakBonusPoints` are the two parts of that figure and always add up to it, so
- * nine points against a seven-euro deposit is an arithmetic a customer can check rather than a number
- * they have to take on trust.
+ * `basePoints`, `streakBonusPoints` and `loyaltyBonusPoints` are the three parts of that figure and
+ * always add up to it, so nine points against a seven-euro deposit is an arithmetic a customer can
+ * check rather than a number they have to take on trust.
+ *
+ * <p>`loyaltyBonusPoints` is every anniversary this deposit has been paid, added up. It is the one
+ * figure here that grows after the money moved — a deposit left alone is paid a tenth of its euros
+ * again every twelve months — so the total answers "what has this deposit been worth to me" while
+ * the base and the streak bonus still answer "what did it earn when it landed", unchanged.
+ *
+ * <p>`nextAnniversaryOn` and `nextAnniversaryPoints` are the promise rather than the record: the day
+ * this deposit next pays, and what that day is worth at what the deposit holds today. Three states,
+ * and the page draws each of them differently because they say different things:
+ *
+ * - both `null`, and only ever together: the deposit has been emptied, and money that has gone has
+ *   no anniversary left to reach. There is no promise to make, so the page makes none.
+ * - a date with `0`: the deposit is still holding money, but under ten euros of it — a tenth of nine
+ *   euros rounds down to nothing. The date is real and the figure is honest, which is a different
+ *   statement from having no anniversary at all.
+ * - a date with a figure: what leaving the money alone pays on that day, and what taking it out
+ *   would cost. The figure falls when the customer withdraws from the deposit.
+ *
+ * <p>The date is the day this deposit next *pays*, which is not always the next date its calendar
+ * reaches: between an anniversary falling and the overnight sweep paying it, the day reported is the
+ * one just gone. A date in the past here means a bonus is owed and coming — under a day of it in
+ * normal running, and arbitrarily long on a clock a trainer has wound forward without sweeping. That
+ * is why the page never writes the word "next" in front of it and says "due" instead, which is true
+ * on either side of the date and needs no opinion about what day it is today. This page has no such
+ * opinion and wants none: the clock this promise is kept by is the application's, and the browser's
+ * would disagree with it by years on a demonstration.
  *
  * <p>`multiplierApplied` is the rate this deposit was in fact paid at, decided when the money moved
  * and never worked out again. Not the rate on `SavingsAccountBalances`, which is what the *next*
@@ -230,8 +256,13 @@ export type RecordedDeposit = {
   pointsEarned: number
   basePoints: number
   streakBonusPoints: number
+  loyaltyBonusPoints: number
   multiplierApplied: number
   depositedAt: string
+  /** A plain `YYYY-MM-DD`, as the backend's own zone read it. Null exactly when the deposit is empty. */
+  nextAnniversaryOn: string | null
+  /** Null exactly when `nextAnniversaryOn` is, and `0` for a deposit holding under ten euros. */
+  nextAnniversaryPoints: number | null
 }
 
 /** Money returned from savings to a current account, newest first when read as history. */
@@ -429,6 +460,175 @@ export async function fetchMoneyMovements(
   const response = await fetch(`/api/customers/${customerId}/money-movements`, { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load your money history'))
+  }
+  return response.json()
+}
+
+/**
+ * One gift of points, as either end of it reads.
+ *
+ * <p>One shape for a gift just made and for a gift read back out of a list, which is the same
+ * bargain {@link MoneyMovement} strikes: a gift is one event seen from two sides, and a customer
+ * reading back what they have given and been given reads one list rather than two they have to
+ * interleave by eye. What differs between the two ends is `direction` rather than the fields.
+ *
+ * <p>`direction` is the backend's own word rather than a sign on the points, for the reason the
+ * money ledger's is: points here are always a positive figure, and a list that carried the
+ * direction in the sign of the number would be the one place that stopped being true. A gift just
+ * created comes back `SENT`, because the person who made it is the person being answered.
+ *
+ * <p>Both people rather than only the other one, so a row says who it is about whoever fetched it.
+ * Which of the two is "the other person" follows from the direction and is the page's to decide.
+ *
+ * <p>`givenAt` is off the application's clock rather than the browser's, so a gift made against a
+ * clock a trainer has wound forward reads where they wound it to.
+ */
+export type Gift = {
+  id: number
+  direction: 'SENT' | 'RECEIVED'
+  senderId: number
+  senderName: string
+  recipientId: number
+  recipientName: string
+  points: number
+  givenAt: string
+}
+
+/**
+ * Every gift this customer was part of, sent and received together, newest first.
+ *
+ * <p>The customer's rather than one account's, because points are the person's: they are earned by
+ * paying into any savings account and given away by the person, so there is one list and it hangs
+ * off them.
+ */
+export async function fetchGifts(customerId: number, signal?: AbortSignal): Promise<Gift[]> {
+  const response = await fetch(`/api/customers/${customerId}/gifts`, { signal })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not load your gifts'))
+  }
+  return response.json()
+}
+
+/**
+ * Gives some of this customer's points to another customer, and there is no way back: the points
+ * are the recipient's the moment this succeeds.
+ *
+ * <p>The recipient travels as the address they bank under rather than as an identifier, because
+ * that is the contract — the same address they would type to sign in. A page may offer a picker
+ * over the people who bank here, and this is still the request underneath it.
+ *
+ * <p>The number of points travels as the text that was typed, the way a deposit's amount does. What
+ * counts as a number of points is the backend's decision — whole, positive, and no more than the
+ * sender holds — and reading "2.5" into something plausible on the way there would be this page
+ * taking a little of that decision. Sent as typed, and refused in words if it was not a gift.
+ */
+export async function giveGift(
+  customerId: number,
+  recipientContactDetails: string,
+  points: string,
+): Promise<Gift> {
+  const response = await fetch(`/api/customers/${customerId}/gifts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipientContactDetails, points }),
+  })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'The gift was not made'))
+  }
+  return response.json()
+}
+
+/**
+ * Why a rule decided something was worth saying. The backend's own enum name, sent as it is:
+ * a notification travels as its reason and its figures, and the sentence is written in the page.
+ *
+ * <p>Four values and no more today, and the union is written out here rather than left as a
+ * `string` so that a page switching on it is told by the compiler when the backend grows a fifth
+ * — points about to expire, a reward newly affordable — instead of quietly rendering nothing for
+ * a reason it has never heard of.
+ */
+export type NotificationReason =
+  | 'BALANCE_THRESHOLD_REACHED'
+  | 'BALANCE_THRESHOLD_LOST'
+  | 'LOYALTY_BONUS_ABOUT_TO_PAY'
+  | 'LOYALTY_BONUS_AT_RISK'
+
+/**
+ * A moment a rule decided was worth saying: the reason, the figures behind it, when it was raised
+ * and — once the customer has looked — when it was read.
+ *
+ * <p>**Figures and no sentence.** Every euro and every date in this application is written
+ * Dutch-style here, in the browser, and a sentence composed in Java would fork that formatting into
+ * a second place that will drift. So the backend sends numbers and `WhatHappened` writes the words,
+ * exactly as `WhatItEarned` already composes a sentence out of three numbers on a deposit. Refusals
+ * are the exception and stay as the backend's own sentences, because a refusal's wording is domain
+ * logic and a notification's wording is not.
+ *
+ * <p>Which figures are filled in is decided by the reason and is total, so a page that has read the
+ * reason knows which fields it can rely on:
+ *
+ * - `BALANCE_THRESHOLD_REACHED` and `BALANCE_THRESHOLD_LOST` carry `amount`, the rung, and no
+ *   `depositId`, `points` or `occursOn`.
+ * - `LOYALTY_BONUS_ABOUT_TO_PAY` and `LOYALTY_BONUS_AT_RISK` carry `depositId`, `points` and
+ *   `occursOn`, and no `amount`.
+ *
+ * <p>`occursOn` is a plain `YYYY-MM-DD` rather than a moment, for the reason
+ * {@link CustomerAccounts} gives about an expiry day: the backend has already decided which day
+ * this is, in the one zone this application counts calendars in.
+ *
+ * <p>`readAt` is a moment rather than a flag, and null until somebody looks. Two states and not
+ * three — there is no dismissing a notification, and nothing is ever deleted — so a row that has
+ * been read stays in the panel, dimmed, as the record that the rule fired.
+ */
+export type Notification = {
+  id: number
+  reason: NotificationReason
+  savingsAccountId: number
+  depositId: number | null
+  /** The rung, for a balance reason, and null for the two anniversary reasons. */
+  amount: number | null
+  /** What the anniversary pays, for a loyalty reason, and null for the two balance reasons. */
+  points: number | null
+  /** The anniversary day as `YYYY-MM-DD`, for a loyalty reason, and null for the balance ones. */
+  occursOn: string | null
+  raisedAt: string
+  /** When the customer read it, and null while it is unread. */
+  readAt: string | null
+}
+
+/**
+ * Everything that has been said to this customer, newest first, read and unread together.
+ *
+ * <p>The customer's rather than one account's, because a notification is addressed to the person
+ * who reads it: the bell is in the top bar on every screen and counts everything, whichever pot it
+ * is about. Each one carries the savings account it concerns, so the panel can name the pot and a
+ * page can find the notice that concerns it.
+ */
+export async function fetchNotifications(
+  customerId: number,
+  signal?: AbortSignal,
+): Promise<Notification[]> {
+  const response = await fetch(`/api/customers/${customerId}/notifications`, { signal })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not load your notifications'))
+  }
+  return response.json()
+}
+
+/**
+ * Marks everything unread as read, and answers with the whole list as it now stands.
+ *
+ * <p>One call rather than one per row, and one round trip rather than two: the backend returns the
+ * same list the read endpoint would, so opening the panel both clears the count and refreshes what
+ * the panel is about to show. It is idempotent — a notification already read keeps the moment it
+ * was first read at — so opening the panel again changes nothing.
+ */
+export async function markNotificationsRead(customerId: number): Promise<Notification[]> {
+  const response = await fetch(`/api/customers/${customerId}/notifications/read`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    throw new Error(await reasonRefused(response, 'Could not mark your notifications as read'))
   }
   return response.json()
 }

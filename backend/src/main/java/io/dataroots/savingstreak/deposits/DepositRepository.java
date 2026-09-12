@@ -85,6 +85,52 @@ interface DepositRepository extends JpaRepository<Deposit, Long> {
                                @Param("until") Instant until);
 
     /**
+     * Every deposit that still has money in it and landed before a moment, oldest first, with the
+     * identifier settling ties at the millisecond the application records.
+     *
+     * <p>Everybody's at once, because the sweep that asks for these is one pass over the deposits
+     * rather than a pass per customer.
+     *
+     * <p>Deposits holding nothing are outside the query rather than filtered out of the answer.
+     * Money cannot come back into a deposit — a new payment in is a new deposit with a clock of its
+     * own — so a deposit drawn down to zero can never be worth anything again, and reading it back
+     * every night in order to decide that afresh would be reading a row to say nothing about it.
+     *
+     * <p>Landed before a moment rather than every deposit ever made, because the caller's rule
+     * turns on age and a deposit made this morning cannot yet be old enough for it. Exclusive of
+     * the moment, for the reason {@link #landedBetween} gives.
+     *
+     * <p>Oldest first because that is the order the money arrived in, and because it makes the
+     * caller's line-per-deposit read as a chronology rather than as whatever order the database
+     * felt like.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.remainingAmount > 0 and deposit.depositedAt < :until "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> stillHoldingMoneyThatLandedBefore(@Param("until") Instant until);
+
+    /**
+     * The deposits into one savings account that still have money in them, oldest first, with the
+     * identifier settling ties at the millisecond the application records.
+     *
+     * <p>One account rather than everybody's, because the caller is a customer looking at their own
+     * history rather than a sweep passing over all of them. {@link #stillHoldingMoneyThatLandedBefore}
+     * is the sweep's question and the two differ in exactly that.
+     *
+     * <p>No boundary in time, either. A rule that turns on age asks for the deposits old enough for
+     * it; a page asks about the deposits in front of the customer, whatever age they are, because
+     * every one of them has an anniversary coming.
+     *
+     * <p>Deposits holding nothing are outside the query rather than filtered out of the answer, for
+     * the reason the sweep's query gives: money never comes back into one, so a deposit at zero has
+     * nothing left to decide about.
+     */
+    @Query("select deposit from Deposit deposit "
+            + "where deposit.savingsAccountId = :savingsAccountId and deposit.remainingAmount > 0 "
+            + "order by deposit.depositedAt asc, deposit.id asc")
+    List<Deposit> stillHoldingMoneyIn(@Param("savingsAccountId") long savingsAccountId);
+
+    /**
      * Gives what remains to every deposit that has no answer to the question, and reports how many
      * that was.
      *

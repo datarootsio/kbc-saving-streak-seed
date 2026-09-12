@@ -19,7 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * What a deposit looked back at says about itself: the euros it earned, the uplift the run of weeks
- * added, the rate it was paid at, and the total the two come to.
+ * added, the anniversaries it has been paid since, the rate it was paid at, the total the three come
+ * to, and when it next pays.
  *
  * <p>A customer reading their history is not the customer who made the deposit. They no longer know
  * which week it fell in or what their run was worth at the time, and an entry saying "9 points"
@@ -63,6 +64,9 @@ class EachDepositInTheHistoryExplainsItselfApiTest extends ApiIntegrationTest {
         assertThat(listed(savingsAccount, made.id())).satisfies(entry -> {
             assertThat(entry.basePoints()).isEqualTo(1);
             assertThat(entry.streakBonusPoints()).as("nothing, said rather than left out").isZero();
+            assertThat(entry.loyaltyBonusPoints())
+                    .as("nor has it had an anniversary, which is also said rather than left out")
+                    .isZero();
             assertThat(entry.multiplierApplied()).as("its own rate, not the absence of one")
                     .isEqualByComparingTo(made.multiplierApplied())
                     .isBetween(new BigDecimal("1.00"), new BigDecimal("1.50"));
@@ -71,8 +75,8 @@ class EachDepositInTheHistoryExplainsItselfApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * All four figures are in the entry as figures, rather than dropped from it when they happen to
-     * be nothing.
+     * All of the figures are in the entry as figures, rather than dropped from it when they happen
+     * to be nothing.
      *
      * <p>Read as JSON rather than through the record every other test binds to, because a record
      * with a {@code long} in it reads an absent field back as zero and would agree with a body that
@@ -91,15 +95,26 @@ class EachDepositInTheHistoryExplainsItselfApiTest extends ApiIntegrationTest {
         JsonNode entry = entryInTheHistoryJson(savingsAccount, made.id());
         assertThat(entry.hasNonNull("basePoints")).as("basePoints is in the body").isTrue();
         assertThat(entry.hasNonNull("streakBonusPoints")).as("streakBonusPoints is in the body").isTrue();
+        assertThat(entry.hasNonNull("loyaltyBonusPoints")).as("loyaltyBonusPoints is in the body").isTrue();
         assertThat(entry.hasNonNull("multiplierApplied")).as("multiplierApplied is in the body").isTrue();
         assertThat(entry.hasNonNull("pointsEarned")).as("pointsEarned is in the body").isTrue();
+        assertThat(entry.hasNonNull("nextAnniversaryOn")).as("nextAnniversaryOn is in the body").isTrue();
+        assertThat(entry.hasNonNull("nextAnniversaryPoints"))
+                .as("nextAnniversaryPoints is in the body").isTrue();
         assertThat(entry.get("streakBonusPoints").asLong()).isZero();
+        assertThat(entry.get("loyaltyBonusPoints").asLong())
+                .as("no anniversary has been paid on a deposit made a moment ago, said rather than "
+                        + "left out")
+                .isZero();
+        assertThat(entry.get("nextAnniversaryPoints").asLong())
+                .as("a tenth of one euro rounds down to nothing, which is a figure and not an absence")
+                .isZero();
         assertThat(new BigDecimal(entry.get("multiplierApplied").asText()))
                 .isEqualByComparingTo(made.multiplierApplied());
     }
 
     /**
-     * The entry and the answer the deposit was given are the same four figures, for a deposit whose
+     * The entry and the answer the deposit was given are the same figures, for a deposit whose
      * cents floor away and whose uplift therefore has a remainder thrown away with it. The awkward
      * amount is the point: a history that recomputed anything would be recomputing it from the
      * amount, and this is where the two arithmetics come apart.
@@ -114,10 +129,15 @@ class EachDepositInTheHistoryExplainsItselfApiTest extends ApiIntegrationTest {
         assertThat(listed(savingsAccount, made.id())).satisfies(entry -> {
             assertThat(entry.basePoints()).isEqualTo(made.basePoints());
             assertThat(entry.streakBonusPoints()).isEqualTo(made.streakBonusPoints());
+            assertThat(entry.loyaltyBonusPoints()).isEqualTo(made.loyaltyBonusPoints());
             assertThat(entry.multiplierApplied()).isEqualByComparingTo(made.multiplierApplied());
             assertThat(entry.pointsEarned()).isEqualTo(made.pointsEarned());
-            assertThat(entry.basePoints() + entry.streakBonusPoints())
-                    .as("the two parts of the entry add up to its total")
+            assertThat(entry.nextAnniversaryOn())
+                    .as("and the anniversary it has just started counting towards")
+                    .isEqualTo(made.nextAnniversaryOn());
+            assertThat(entry.nextAnniversaryPoints()).isEqualTo(made.nextAnniversaryPoints());
+            assertThat(entry.basePoints() + entry.streakBonusPoints() + entry.loyaltyBonusPoints())
+                    .as("the three parts of the entry add up to its total")
                     .isEqualTo(entry.pointsEarned());
         });
     }

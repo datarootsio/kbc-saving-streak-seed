@@ -13,19 +13,26 @@ import {
   fetchClaimed,
   fetchCustomers,
   fetchDeposits,
+  fetchGifts,
   fetchMoneyMovements,
+  fetchNotifications,
   fetchWithdrawals,
   fetchRewards,
   fetchSavingsAccount,
+  giveGift,
   makeDeposit,
   makeWithdrawal,
+  markNotificationsRead,
   signIn,
   SignInFailed,
   type ClaimedReward,
   type CurrentAccount,
   type Customer,
   type CustomerAccounts,
+  type Gift,
   type MoneyMovement,
+  type Notification,
+  type NotificationReason,
   type RecordedDeposit,
   type RecordedWithdrawal,
   type Reward,
@@ -289,6 +296,7 @@ function SignIn({
 type Screen =
   | { at: 'home' }
   | { at: 'history' }
+  | { at: 'gifts' }
   | { at: 'savings-account'; savingsAccountId: number }
 
 /**
@@ -312,6 +320,11 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
   // account.
   const [claimed, setClaimed] = useState<ClaimedReward[] | null>(null)
   const [claimedError, setClaimedError] = useState<string | null>(null)
+  // Everything the rules have said to this customer, read and unread together. Held here rather
+  // than in the bell that shows it, because it is read on every screen and because the savings
+  // account page carries the notice that concerns it: one list, loaded once, shown twice.
+  const [notifications, setNotifications] = useState<Notification[] | null>(null)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
   // Which of the three screens is showing. A union rather than a pair of nullable fields, so that
   // "an account is open and so is the history" is not a state this component can get into.
   const [screen, setScreen] = useState<Screen>({ at: 'home' })
@@ -346,11 +359,57 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
       })
   }, [customer.id])
 
+  const loadNotifications = useCallback((signal?: AbortSignal) => {
+    fetchNotifications(customer.id, signal)
+      .then((said) => {
+        if (signal?.aborted !== true) {
+          setNotifications(said)
+          setNotificationsError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (signal?.aborted !== true) {
+          setNotificationsError(problem.message)
+        }
+      })
+  }, [customer.id])
+
   useEffect(() => {
     const request = new AbortController()
     loadAccounts(request.signal)
     return () => request.abort()
   }, [loadAccounts])
+
+  useEffect(() => {
+    const request = new AbortController()
+    loadNotifications(request.signal)
+    return () => request.abort()
+  }, [loadNotifications])
+
+  /**
+   * Reads them again when the page is looked at again, and that is the whole of the refreshing this
+   * feature does. There is no interval anywhere in this application and this does not add the
+   * first: nothing is asked for while nobody is looking, and coming back to the tab asks once.
+   *
+   * <p>It is here for the trainer. Every other thing that raises a notification is something done
+   * on this page — a deposit, a withdrawal, a claim, a gift — and each of those already says so
+   * through the callbacks below. A wound-forward clock and a job run are not: they are done against
+   * the API from a terminal, and without this the bell would still be showing last night's count
+   * when the trainer turned back to the browser to demonstrate what the sweep had just raised.
+   */
+  useEffect(() => {
+    const lookedAtAgain = () => {
+      if (document.visibilityState === 'visible') {
+        loadNotifications()
+      }
+    }
+    document.addEventListener('visibilitychange', lookedAtAgain)
+    window.addEventListener('focus', lookedAtAgain)
+    return () => {
+      document.removeEventListener('visibilitychange', lookedAtAgain)
+      window.removeEventListener('focus', lookedAtAgain)
+    }
+  }, [loadNotifications])
 
   useEffect(() => {
     const request = new AbortController()
@@ -377,6 +436,19 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
         // One level deep is as deep as this application goes, so the way back is always the
         // overview — from an open account and from the history alike.
         onBack={screen.at === 'home' ? null : () => setScreen({ at: 'home' })}
+        notifications={notifications}
+        notificationsError={notificationsError}
+        // Opening the panel is the customer having looked, so everything in it is marked read in
+        // one call — and that call answers with the list as it now stands, which is what the
+        // panel then shows. One round trip: the count drops and the rows stay, dimmed.
+        onOpened={() =>
+          markNotificationsRead(customer.id)
+            .then((said) => {
+              setNotifications(said)
+              setNotificationsError(null)
+            })
+            .catch((problem: Error) => setNotificationsError(problem.message))
+        }
       />
 
       <div className="shell">
@@ -394,9 +466,11 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               // list beside them, so both are read again.
               loadAccounts()
               loadClaimed()
+              loadNotifications()
             }}
             onOpen={(savingsAccountId) => setScreen({ at: 'savings-account', savingsAccountId })}
             onOpenHistory={() => setScreen({ at: 'history' })}
+            onOpenGifts={() => setScreen({ at: 'gifts' })}
           />
         )}
 
@@ -409,8 +483,17 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               savingsAccountId={screen.savingsAccountId}
               currentAccounts={accounts?.currentAccounts ?? []}
               // Every figure on the overview is behind whatever just happened here: the money in
-              // both accounts, and the points the deposit earned.
-              onChanged={loadAccounts}
+              // both accounts, and the points the deposit earned. The notifications too: a rung
+              // this deposit has just passed, or a bonus the withdrawal has just exposed, is
+              // raised by the overnight sweep against balances this has just moved.
+              onChanged={() => {
+                loadAccounts()
+                loadNotifications()
+              }}
+              // The whole list rather than the one notice, because which of them concerns this
+              // account is the page's own question and it is the page that knows which account it
+              // is. Read once in this component and shown twice — in the bell above, and here.
+              notifications={notifications ?? []}
             />
           </main>
         )}
@@ -424,6 +507,25 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
           </main>
         )}
 
+        {screen.at === 'gifts' && (
+          <main>
+            <GiftPage
+              customerId={customer.id}
+              // The balance the page greys its button against, and the figure that has to fall the
+              // moment a gift goes through. It is this component's read of the accounts rather than
+              // a figure the gift page keeps for itself, which is what makes the fall real: the
+              // gift asks for the accounts again below, and the new figure arrives as a prop.
+              pointsToSpend={accounts?.pointsBalance ?? null}
+              // The points that paid for the gift are the overview's headline figure, so the
+              // accounts are read again — the same thing a claim does with the points it spent.
+              onGiven={() => {
+                loadAccounts()
+                loadNotifications()
+              }}
+            />
+          </main>
+        )}
+
         {/* Held by the account it belongs to, so it is still on screen while one is open. */}
         {screen.at === 'savings-account' && openedAccount === null && accountsError !== null && (
           <Refusal reason={accountsError} />
@@ -433,15 +535,21 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
   )
 }
 
-/** Who is signed in, the way back, and the way out. */
+/** Who is signed in, what has been said to them, the way back, and the way out. */
 function TopBar({
   customer,
   onSignOut,
   onBack,
+  notifications,
+  notificationsError,
+  onOpened,
 }: {
   customer: Customer
   onSignOut: () => void
   onBack: (() => void) | null
+  notifications: Notification[] | null
+  notificationsError: string | null
+  onOpened: () => void
 }) {
   return (
     <header className="topbar">
@@ -461,6 +569,14 @@ function TopBar({
           )}
         </div>
         <div className="who">
+          {/* In the bar rather than on the overview, because it is the one thing here that is
+              about something the customer has not been to look at. It stays on screen wherever
+              they are, which is the whole reason a bell is a bell. */}
+          <Bell
+            notifications={notifications}
+            notificationsError={notificationsError}
+            onOpened={onOpened}
+          />
           <span className="avatar" aria-hidden="true">{initialsOf(customer.name)}</span>
           <button type="button" className="quiet" onClick={onSignOut}>
             Sign out
@@ -468,6 +584,282 @@ function TopBar({
         </div>
       </div>
     </header>
+  )
+}
+
+/**
+ * The bell: how many notifications have not been read, and the panel behind it.
+ *
+ * <p>The count is a badge only when there is one to show. A 0 in a circle is a figure somebody has
+ * to read before they can find out that nothing happened, and the absence of the badge says the
+ * same thing faster. The badge is decoration for anything that cannot see it — the button's own
+ * label carries the count in words, so a screen reader is told "3 unread" rather than being handed
+ * a bare number next to a picture of a bell.
+ *
+ * <p>Opening it is the customer having looked, so it marks everything read in one call. The rows do
+ * not go anywhere: they dim, and stay. Nothing is ever deleted here and there is no dismissing —
+ * this is a record of what the rules decided, and a training application should not let you throw
+ * away the evidence that one fired.
+ */
+function Bell({
+  notifications,
+  notificationsError,
+  onOpened,
+}: {
+  notifications: Notification[] | null
+  notificationsError: string | null
+  onOpened: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  // The bell and its panel together, so that a press inside the panel is not a press outside it.
+  const holding = useRef<HTMLDivElement>(null)
+
+  const unread =
+    notifications === null ? 0 : notifications.filter((said) => said.readAt === null).length
+
+  // A panel that hangs over the page closes the two ways anything hanging over a page closes:
+  // Escape, and a press anywhere else. Listened for only while it is open, so a closed bell adds
+  // nothing to the page's handling of a key or a click.
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    const elsewhere = (pressed: MouseEvent) => {
+      if (holding.current !== null && !holding.current.contains(pressed.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const escaped = (key: KeyboardEvent) => {
+      if (key.key === 'Escape') {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', elsewhere)
+    document.addEventListener('keydown', escaped)
+    return () => {
+      document.removeEventListener('mousedown', elsewhere)
+      document.removeEventListener('keydown', escaped)
+    }
+  }, [open])
+
+  return (
+    <div className="bell-holder" ref={holding}>
+      <button
+        type="button"
+        className="quiet bell"
+        aria-expanded={open}
+        aria-controls="notifications"
+        aria-label={
+          unread === 0
+            ? 'Notifications, none unread'
+            : `Notifications, ${points.format(unread)} unread`
+        }
+        onClick={() => {
+          const opening = !open
+          setOpen(opening)
+          if (opening) {
+            // Once per opening, and it is also the read: the call answers with the list as it now
+            // stands, so the panel about to be drawn is showing what the backend has this moment
+            // rather than what it had when the page was last loaded.
+            onOpened()
+          }
+        }}
+      >
+        <BellIcon />
+        {unread > 0 && (
+          <span className="bell-count" aria-hidden="true">
+            {points.format(unread)}
+          </span>
+        )}
+      </button>
+
+      {open && <NotificationsPanel notifications={notifications} error={notificationsError} />}
+    </div>
+  )
+}
+
+/**
+ * Everything that has been said to this customer, newest first, read and unread together.
+ *
+ * <p>Read rows are dimmed rather than dropped. The panel is a record and not an inbox that empties:
+ * a customer who has seen that their balance passed EUR 1.000 should still be able to find the
+ * night it did.
+ *
+ * <p>The order is the backend's — newest first, as it sends them — and nothing here sorts. A row
+ * says which pot it is about, because a customer holding two savings accounts cannot tell from
+ * "your savings" alone which one crossed the rung.
+ */
+function NotificationsPanel({
+  notifications,
+  error,
+}: {
+  notifications: Notification[] | null
+  error: string | null
+}) {
+  return (
+    <div className="notifications" id="notifications" aria-label="Notifications" role="group">
+      <h2>Notifications</h2>
+
+      {error !== null && <Refusal reason={error} />}
+
+      {notifications === null && error === null && (
+        <Waiting label="Loading your notifications…" bars={['100%', '70%']} />
+      )}
+
+      {notifications !== null && notifications.length === 0 && (
+        <p className="nothing">Nothing has happened yet.</p>
+      )}
+
+      {notifications !== null && notifications.length > 0 && (
+        <ul className="said">
+          {notifications.map((said) => (
+            // Three things in the class: the row, whether it is the one warning of the four,
+            // and whether it has been read. Read last, because dimming is the modifier that
+            // applies to any of them.
+            <li key={said.id} className={rowFor(said)}>
+              <span className="notification-icon" aria-hidden="true">
+                <WhatHappenedIcon reason={said.reason} />
+              </span>
+              <div className="notification-words">
+                <p className="notification-what">
+                  <WhatHappened notification={said} />
+                </p>
+                <span className="when">
+                  {dateAndTime.format(new Date(said.raisedAt))} · Savings account{' '}
+                  {said.savingsAccountId}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A notification row's classes: what it is, whether it is the warning, and whether it has been
+ * read. Worked out here rather than inline, because three conditions strung through a template
+ * literal in the middle of the markup is a sentence nobody can read.
+ */
+function rowFor(said: Notification): string {
+  const warning = said.reason === 'LOYALTY_BONUS_AT_RISK' ? ' at-risk' : ''
+  const dimmed = said.readAt === null ? '' : ' read'
+  return `notification${warning}${dimmed}`
+}
+
+/**
+ * What a rule decided was worth saying, as a sentence, out of the reason and the figures behind it.
+ *
+ * <p>The sentence is written here and not in Java, which is the same bargain {@link WhatItEarned}
+ * strikes with "7 base + 2 bonus at 1,30× + 30 loyalty": every euro and every date in this
+ * application is written Dutch-style in the browser, and a sentence composed on the backend would
+ * fork that formatting into a second place that will drift. Both figures go through the formatters
+ * this page already has — {@link asADay} for the day, so an anniversary is written the way the
+ * expiry deadline and the deposits table write theirs.
+ *
+ * <p>The four sentences say four different things and are deliberately not one sentence with a
+ * word swapped:
+ *
+ * - a rung reached is a plain statement of something good, and says nothing else;
+ * - a rung lost is the same statement in the other direction, and does not scold;
+ * - an anniversary coming is a promise: what arrives, and when;
+ * - an anniversary at risk is that promise plus the one thing the customer can act on — that a
+ *   withdrawal now comes out of this deposit before any other, which is `WithdrawalsService`'s
+ *   oldest-deposit-first rule said out loud to the person it protects.
+ *
+ * <p>A figure the reason says should be there and is not draws nothing at all. Which fields are
+ * filled in is decided by the reason and the backend keeps that total, so this is unreachable in
+ * practice; drawing "Your savings passed" with a gap where the money goes would be worse than
+ * drawing nothing.
+ */
+function WhatHappened({ notification }: { notification: Notification }) {
+  const { amount, occursOn, points: worth, reason } = notification
+  switch (reason) {
+    case 'BALANCE_THRESHOLD_REACHED':
+      return amount === null ? null : <>Your savings passed {euros.format(amount)}</>
+    case 'BALANCE_THRESHOLD_LOST':
+      return amount === null ? null : <>Your savings fell below {euros.format(amount)}</>
+    case 'LOYALTY_BONUS_ABOUT_TO_PAY':
+    case 'LOYALTY_BONUS_AT_RISK':
+      if (worth === null || occursOn === null) {
+        return null
+      }
+      return (
+        <>
+          {points.format(worth)} {worth === 1 ? 'point arrives' : 'points arrive'} on{' '}
+          {asADay(occursOn)}
+          {reason === 'LOYALTY_BONUS_AT_RISK' && (
+            <span className="notification-warning">
+              {' '}
+              — money taken out now comes out of this deposit first
+            </span>
+          )}
+        </>
+      )
+  }
+}
+
+/**
+ * The picture beside the sentence: which way a balance went, or that points are coming and whether
+ * anything stands between them and the next withdrawal.
+ *
+ * <p>The one warning of the four gets the warning icon the refusals already use, and the two
+ * anniversaries share the spark that means points everywhere else on these screens. A reason is a
+ * rule rather than a severity, so the reading of it — calm or not — is made here, on the page,
+ * which is the only place it belongs.
+ */
+function WhatHappenedIcon({ reason }: { reason: NotificationReason }) {
+  switch (reason) {
+    case 'BALANCE_THRESHOLD_REACHED':
+      return <RisingIcon />
+    case 'BALANCE_THRESHOLD_LOST':
+      return <FallingIcon />
+    case 'LOYALTY_BONUS_ABOUT_TO_PAY':
+      return <SparkIcon />
+    case 'LOYALTY_BONUS_AT_RISK':
+      return <WarningIcon />
+  }
+}
+
+/**
+ * The newest thing a rule has said about one savings account that its holder has not read yet,
+ * drawn on that account's own page rather than left behind the bell.
+ *
+ * <p>The point of it being here is proximity. The warning worth having — a deposit whose
+ * anniversary is close and which the next withdrawal would empty first — belongs beside the
+ * withdrawal form that would cost the customer that bonus, not two clicks away behind an icon.
+ *
+ * <p>One of the four is a warning and three are remarks, and they are dressed as what they are.
+ * The three calm ones wear the {@code .explanation} idiom this application already uses for
+ * everything it says quietly beside a figure: muted, and capped at about sixty characters a line.
+ * {@code LOYALTY_BONUS_AT_RISK} wears the {@code [role='alert']} treatment {@link Refusal} has —
+ * the red left rule and the tinted ground — because it is the one of the four that warns.
+ *
+ * <p>It does not shake. A refusal shakes because it has just happened in answer to something the
+ * customer did; this is standing, and is drawn again every time the page is. Movement that arrives
+ * unasked on every load is noise, so the {@code standing} modifier opts out of the animation and
+ * keeps the colour.
+ *
+ * <p>There is no dismiss button, here or anywhere. The notice goes when the notification has been
+ * read, which happens when the panel is opened — two states is one state machine, and a training
+ * application should not let you throw away the evidence that a rule fired.
+ */
+function Notice({ notification }: { notification: Notification }) {
+  if (notification.reason === 'LOYALTY_BONUS_AT_RISK') {
+    return (
+      <p className="notice standing" role="alert">
+        <WarningIcon />
+        <span>
+          <WhatHappened notification={notification} />
+        </span>
+      </p>
+    )
+  }
+  return (
+    <p className="notice explanation">
+      <WhatHappened notification={notification} />
+    </p>
   )
 }
 
@@ -491,6 +883,7 @@ function Home({
   onClaimed,
   onOpen,
   onOpenHistory,
+  onOpenGifts,
 }: {
   customerId: number
   accounts: CustomerAccounts | null
@@ -502,6 +895,7 @@ function Home({
   onClaimed: () => void
   onOpen: (savingsAccountId: number) => void
   onOpenHistory: () => void
+  onOpenGifts: () => void
 }) {
   return (
     <main>
@@ -551,6 +945,27 @@ function Home({
                 <span className="way-through-name">Money history</span>
                 <span className="way-through-note">
                   Every euro in and out, across all your savings, newest first
+                </span>
+              </span>
+              <span className="card-go" aria-hidden="true">
+                <ForwardIcon />
+              </span>
+            </button>
+
+            {/* Beside Money history rather than under Rewards, because the two are the same kind
+                of thing: a screen of its own holding a form and the ledger it writes into, which
+                is what earned the money history a way-through here instead of a panel. Gifting is
+                about points and the rewards catalogue is about points too, but the catalogue is a
+                catalogue and fits in a panel; a page you fill in and then read back does not.
+
+                Second, because a customer's own money comes before what they hand to somebody
+                else. */}
+            <button type="button" className="way-through" onClick={onOpenGifts}>
+              <span className="way-through-words">
+                <span className="way-through-name">Give points</span>
+                <span className="way-through-note">
+                  Hand some of your points to somebody else who banks here, and see every gift
+                  you have been part of
                 </span>
               </span>
               <span className="card-go" aria-hidden="true">
@@ -850,10 +1265,12 @@ function SavingsAccountPage({
   savingsAccountId,
   currentAccounts,
   onChanged,
+  notifications,
 }: {
   savingsAccountId: number
   currentAccounts: CurrentAccount[]
   onChanged: () => void
+  notifications: Notification[]
 }) {
   const [account, setAccount] = useState<SavingsAccountView | null>(null)
   const [accountError, setAccountError] = useState<string | null>(null)
@@ -901,6 +1318,16 @@ function SavingsAccountPage({
     const over = setTimeout(() => setCelebrated(null), 2600)
     return () => clearTimeout(over)
   }, [celebrated])
+
+  // The one thing said about this account that its holder has not read. Nothing here sorts: the
+  // list arrives newest first, as the backend sends it, so the first one that matches is the newest
+  // one. Another pot's notification never matches, and neither does one already read — which is
+  // what makes the notice go away by itself once the panel has been opened and everything in it
+  // marked.
+  const notice =
+    notifications.find(
+      (said) => said.savingsAccountId === savingsAccountId && said.readAt === null,
+    ) ?? null
 
   return (
     <section className="panel account">
@@ -1001,6 +1428,10 @@ function SavingsAccountPage({
           </div>
         </dl>
       )}
+
+      {/* Above the forms rather than below them, because a warning about what a withdrawal would
+          cost has to be read before the amount is typed. */}
+      {notice !== null && <Notice notification={notice} />}
 
       {/* Outside the check above on purpose: a read that failed is no reason to stop someone
           depositing, and the deposit is what will read the account again. */}
@@ -1209,7 +1640,10 @@ function Withdrawals({
               >
                 <td className="when">{dateAndTime.format(new Date(made.withdrawnAt))}</td>
                 <td className="amount">{euros.format(made.amount)}</td>
-                <td>
+                {/* Named for the same reason the deposits' points cell is: the stylesheet folds
+                    this row into a block at a phone's width and needs to say which cell goes
+                    where without counting columns. */}
+                <td className="returned">
                   {ibans.get(made.toCurrentAccountId) ?? `Current account ${made.toCurrentAccountId}`}
                 </td>
               </tr>
@@ -1222,8 +1656,16 @@ function Withdrawals({
 }
 
 /**
- * The deposits behind the balances above, newest first, each with what it earned. Together they are
- * what makes the two figures checkable: the amounts add up to the one, the points to the other.
+ * The deposits behind the balances above, newest first, each with what it earned and when it next
+ * pays. Together they are what makes the two figures checkable: the amounts add up to the one, the
+ * points to the other.
+ *
+ * <p>The rule behind the loyalty part of a row is written once, over the list, rather than on every
+ * row that shows it. A row is then free to be as short as a fact — "30 points due on 30 september
+ * 2028" — and the sentence a customer needs in order to read it, including why a small deposit is
+ * plainly worth nothing on its anniversary rather than mysteriously worth nothing, is stated where
+ * it belongs to the whole list. Repeating it per row would turn a history into an advertisement,
+ * which is exactly what a promise on this page must not become.
  */
 function Deposits({
   deposits,
@@ -1238,36 +1680,46 @@ function Deposits({
       {deposits.length === 0 ? (
         <p className="nothing">No deposits yet.</p>
       ) : (
-        <table className="deposits">
-          <thead>
-            <tr>
-              <th scope="col">When</th>
-              <th scope="col">Amount</th>
-              <th scope="col">Points earned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deposits.map((made, place) => (
-              <tr
-                key={made.id}
-                className={made.id === landedId ? 'landed' : undefined}
-                // Rows arrive one after another rather than all at once, which reads as a list
-                // being filled in. Only the first handful are staggered; past that it is a wait.
-                style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
-              >
-                <td className="when">{dateAndTime.format(new Date(made.depositedAt))}</td>
-                <td className="amount">{euros.format(made.amount)}</td>
-                <td>
-                  <span className={made.pointsEarned > 0 ? 'earnings' : 'earnings none'}>
-                    {made.pointsEarned > 0 && <SparkIcon />}
-                    {points.format(made.pointsEarned)}
-                  </span>
-                  <WhatItEarned deposit={made} />
-                </td>
+        <>
+          <p className="explanation rule">
+            A deposit earns again every year it stays: a tenth of the euros still in it, rounded
+            down.
+          </p>
+          <table className="deposits">
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Points earned</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {deposits.map((made, place) => (
+                <tr
+                  key={made.id}
+                  className={made.id === landedId ? 'landed' : undefined}
+                  // Rows arrive one after another rather than all at once, which reads as a list
+                  // being filled in. Only the first handful are staggered; past that it is a wait.
+                  style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+                >
+                  <td className="when">{dateAndTime.format(new Date(made.depositedAt))}</td>
+                  <td className="amount">{euros.format(made.amount)}</td>
+                  {/* Named so the stylesheet can lay the row out as a block at a phone's width
+                      without counting columns, the way the money history's cells are. This one
+                      holds three things now and is the reason the row has to fold at all. */}
+                  <td className="gained">
+                    <span className={made.pointsEarned > 0 ? 'earnings' : 'earnings none'}>
+                      {made.pointsEarned > 0 && <SparkIcon />}
+                      {points.format(made.pointsEarned)}
+                    </span>
+                    <WhatItEarned deposit={made} />
+                    <NextAnniversary deposit={made} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
@@ -1484,6 +1936,335 @@ function Movement({
 }
 
 /**
+ * Giving points away: who they go to, how many, and every gift this customer has been part of.
+ *
+ * <p>A screen of its own rather than a panel on the overview, and the money history is the shape it
+ * borrows: a form *and* the ledger the form writes into. The rewards catalogue is a panel because a
+ * catalogue is only a catalogue — there is nothing to fill in and nothing to read back.
+ *
+ * <p>Nothing here decides whether a gift is a gift. The recipient travels as the address they bank
+ * under and the points travel as the text that was typed, so every one of the four refusals is the
+ * backend's and arrives here already worded. The two things this page does work out for itself are
+ * both conveniences over that contract and neither is a ruling:
+ *
+ * - the picker leaves the signed-in customer out, so the one refusal a customer could stumble into
+ *   is unreachable rather than merely explained;
+ * - a whole number of points larger than the balance greys the button, the way a reward out of
+ *   reach greys its own. Anything that is not a plain whole number — "2.5", "-5", "abc" — is left
+ *   pressable on purpose whatever the balance is: the answer somebody needs there is about what a
+ *   number of points is, and only the backend gets to give it.
+ *
+ * <p>The gifts are read here, like the money history's rows, because this is the only screen that
+ * wants them. The points balance is not: it is the overview's read, handed down, so that the figure
+ * falling after a gift is the backend's new answer rather than this page's subtraction.
+ */
+function GiftPage({
+  customerId,
+  pointsToSpend,
+  onGiven,
+}: {
+  customerId: number
+  pointsToSpend: number | null
+  onGiven: () => void
+}) {
+  // Everybody else who banks here. The customers endpoint is the only way this frontend ever
+  // learns of another customer, and this is the first thing behind the sign-in gate to call it.
+  const [others, setOthers] = useState<Customer[] | null>(null)
+  const [othersError, setOthersError] = useState<string | null>(null)
+  const [gifts, setGifts] = useState<Gift[] | null>(null)
+  const [giftsError, setGiftsError] = useState<string | null>(null)
+  // The recipient as the address they bank under rather than as an identifier, because that is
+  // what the request carries: the picker is a convenience over the contract, not a way around it.
+  const [recipient, setRecipient] = useState<string | null>(null)
+  const [howMany, setHowMany] = useState('')
+  const [giving, setGiving] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  // The gift just made, kept only long enough to say so. It is the backend's own answer to the
+  // request, so the confirmation cannot congratulate somebody for points that did not move.
+  const [celebrated, setCelebrated] = useState<Gift | null>(null)
+
+  const loadGifts = useCallback((signal?: AbortSignal) => {
+    fetchGifts(customerId, signal)
+      .then((theirs) => {
+        if (signal?.aborted !== true) {
+          setGifts(theirs)
+          setGiftsError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (signal?.aborted !== true) {
+          setGiftsError(problem.message)
+        }
+      })
+  }, [customerId])
+
+  useEffect(() => {
+    const request = new AbortController()
+    loadGifts(request.signal)
+    return () => request.abort()
+  }, [loadGifts])
+
+  useEffect(() => {
+    const request = new AbortController()
+    fetchCustomers(request.signal)
+      .then((everybody) => {
+        if (!request.signal.aborted) {
+          // The signed-in customer is not in the list, so a gift to yourself cannot be chosen. The
+          // backend still refuses one; this is only about not offering somebody a mistake.
+          setOthers(everybody.filter((who) => who.id !== customerId))
+          setOthersError(null)
+        }
+      })
+      .catch((problem: Error) => {
+        if (!request.signal.aborted) {
+          setOthersError(problem.message)
+        }
+      })
+    return () => request.abort()
+  }, [customerId])
+
+  useEffect(() => {
+    if (celebrated === null) {
+      return
+    }
+    const over = setTimeout(() => setCelebrated(null), 2600)
+    return () => clearTimeout(over)
+  }, [celebrated])
+
+  // Read only to grey the button, and only for a plain run of digits: a whole number of points is
+  // the one class of figure this page is allowed to have an opinion about, because it is the only
+  // one it can be sure the backend would read the same way. Anything else — "2.5", "-5", "abc",
+  // "1e3" — stays pressable so the answer comes back from the backend in words. Keeping the hint
+  // to whole numbers also keeps a half point out of the button's own label.
+  const typed = howMany.trim()
+  const asked = /^\d+$/.test(typed) ? Number(typed) : null
+  const short = asked !== null && pointsToSpend !== null ? asked - pointsToSpend : 0
+  const beyondTheBalance = short > 0
+
+  function give(event: FormEvent) {
+    event.preventDefault()
+    if (recipient === null) {
+      return
+    }
+    setGiving(true)
+    setRefusal(null)
+    // Sent exactly as typed. What was typed is cleared only once a gift has actually been made: a
+    // refusal leaves the form as it was, because the next thing the person does is correct it, and
+    // because nothing on this page may change on a gift that did not happen.
+    giveGift(customerId, recipient, howMany)
+      .then((given) => {
+        setHowMany('')
+        setCelebrated(given)
+        // Both, together, the way a claim reloads the accounts and the redemptions: the points
+        // that left are the overview's figure and the gift itself belongs in the list below.
+        loadGifts()
+        onGiven()
+      })
+      .catch((problem: Error) => setRefusal(problem.message))
+      .finally(() => setGiving(false))
+  }
+
+  return (
+    <section className="panel">
+      <h2>Give points</h2>
+      <p className="explanation">
+        Points you give are theirs straight away — there is nothing to accept and no way back. They
+        keep the age they were earned at, so a gift does not buy them another twelve months.
+      </p>
+
+      <p className="points-to-spend">
+        <SparkIcon />
+        {pointsToSpend === null ? (
+          <span className="unit">Reading your points…</span>
+        ) : (
+          // The overview's figure, and it falls here the moment a gift goes through because the
+          // gift asks for the accounts again. Nothing is subtracted on this page.
+          <Rising
+            value={pointsToSpend}
+            format={(shown) => (
+              <>
+                {points.format(Math.round(shown))}
+                <span className="unit">points to give</span>
+              </>
+            )}
+          />
+        )}
+      </p>
+
+      {othersError !== null && <Refusal reason={othersError} />}
+      {others === null && othersError === null && (
+        <Waiting label="Loading the people who bank here…" bars={['100%', '100%']} />
+      )}
+
+      {others !== null &&
+        (others.length === 0 ? (
+          <p className="nothing">Nobody else banks here, so there is nobody to give points to.</p>
+        ) : (
+          // The frame the confirmation is thrown up out of, exactly as the catalogue's is.
+          <div className="spend-area">
+            {celebrated !== null && <Given gift={celebrated} />}
+            <form onSubmit={give}>
+              <fieldset className="who-for">
+                <legend>Who is it for?</legend>
+                <ul className="choices">
+                  {others.map((who) => (
+                    <li className="choice" key={who.id}>
+                      {/* The card is the control and the radio underneath it is what the keyboard
+                          and a screen reader get, which is the pattern the stylesheet was written
+                          for. Named out loud because the words beside it are drawn, not labelled. */}
+                      <input
+                        type="radio"
+                        name="recipient"
+                        value={who.contactDetails}
+                        aria-label={`${who.name}, ${who.contactDetails}`}
+                        checked={recipient === who.contactDetails}
+                        onChange={() => setRecipient(who.contactDetails)}
+                      />
+                      <span className="avatar" aria-hidden="true">{initialsOf(who.name)}</span>
+                      {/* Drawn, not read: the radio above already says the name and the address
+                          out loud, so leaving these audible would announce the person twice. */}
+                      <span className="choice-name" aria-hidden="true">
+                        {who.name}
+                        {/* The address the gift will actually name, shown rather than hidden
+                            behind the picker: it is the whole of the request underneath. */}
+                        <span className="choice-note">{who.contactDetails}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+
+              <div className="give-line">
+                <div className="field">
+                  <label htmlFor="giftPoints">How many points</label>
+                  <input
+                    id="giftPoints"
+                    name="giftPoints"
+                    inputMode="numeric"
+                    placeholder="25"
+                    autoComplete="off"
+                    value={howMany}
+                    onChange={(event) => setHowMany(event.target.value)}
+                  />
+                </div>
+                {/* Unavailable while a gift is in flight, so one press cannot become two gifts —
+                    the shape the reward claim already uses. Unavailable too with nobody chosen or
+                    nothing typed, which are not refusals but a form that has not been filled in,
+                    and greyed for a figure beyond the balance, which is a hint and not the rule. */}
+                <button
+                  type="submit"
+                  disabled={giving || recipient === null || typed === '' || beyondTheBalance}
+                >
+                  {giving ? (
+                    <>
+                      <span className="spinner" />
+                      Giving…
+                    </>
+                  ) : beyondTheBalance ? (
+                    `${points.format(short)} to go`
+                  ) : (
+                    'Give points'
+                  )}
+                </button>
+              </div>
+              {refusal !== null && <Refusal reason={refusal} />}
+            </form>
+          </div>
+        ))}
+
+      <Gifts
+        gifts={gifts}
+        problem={giftsError}
+        landedId={celebrated === null ? null : celebrated.id}
+      />
+    </section>
+  )
+}
+
+/**
+ * Every gift this customer was part of, sent and received in one list, newest first.
+ *
+ * <p>One list rather than two, because which end of a gift they were on is a property of who is
+ * reading it: the whole story reads chronologically, and the direction is a chip on the row. Drawn
+ * as stubs rather than as table rows for the reason the claimed vouchers are — a gift is a small
+ * thing that happened between two people, not a figure in a column.
+ *
+ * <p>Each row names the other person, because the customer already knows which one they are.
+ */
+function Gifts({
+  gifts,
+  problem,
+  landedId,
+}: {
+  gifts: Gift[] | null
+  problem: string | null
+  landedId: number | null
+}) {
+  return (
+    <div className="history">
+      <h3>Gifts</h3>
+      {problem !== null && <Refusal reason={problem} />}
+      {gifts === null && problem === null && (
+        <Waiting label="Loading your gifts…" bars={['100%', '100%', '70%']} />
+      )}
+      {gifts !== null &&
+        (gifts.length === 0 ? (
+          <p className="nothing">No points given or received yet.</p>
+        ) : (
+          <ul className="vouchers">
+            {gifts.map((gift, place) => {
+              const sent = gift.direction === 'SENT'
+              return (
+                <li
+                  key={gift.id}
+                  className={gift.id === landedId ? 'voucher landed' : 'voucher'}
+                  style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+                >
+                  <span className="voucher-icon" aria-hidden="true">
+                    <GivingIcon />
+                  </span>
+                  <div className="voucher-words">
+                    <strong>
+                      {sent ? `To ${gift.recipientName}` : `From ${gift.senderName}`}
+                    </strong>
+                    <span className="when">{dateAndTime.format(new Date(gift.givenAt))}</span>
+                  </div>
+                  {/* The direction as a chip and the points as a badge, in the two dresses the
+                      money ledger and the deposits table already gave those two things. Points
+                      leaving are the quiet badge a claim's are, and points arriving are the warm
+                      one a deposit's are: the sign is a word here, not a minus on a figure. */}
+                  <span className="gift-outcome">
+                    <span className={sent ? 'movement out' : 'movement in'}>
+                      {sent ? 'Sent' : 'Received'}
+                    </span>
+                    <span className={sent ? 'earnings spent' : 'earnings'}>
+                      {sent ? '−' : '+'}
+                      {points.format(gift.points)}
+                    </span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        ))}
+    </div>
+  )
+}
+
+/** The gift, the moment it exists, said back in the backend's own figures. */
+function Given({ gift }: { gift: Gift }) {
+  return (
+    <>
+      <p className="reward voucher-flash">
+        <GivingIcon />
+        {points.format(gift.points)} points to {gift.recipientName}
+      </p>
+      <Confetti />
+    </>
+  )
+}
+
+/**
  * How a past deposit's points were arrived at: the euros, the uplift the run of weeks added, and the
  * rate it was paid at — under the total they add up to.
  *
@@ -1507,7 +2288,90 @@ function WhatItEarned({ deposit }: { deposit: RecordedDeposit }) {
       {points.format(deposit.basePoints)} base + {points.format(deposit.streakBonusPoints)} bonus{' '}
       {/* The rate and its × stay on one line: a × alone at the start of a line reads as a figure
           with something snapped off it, the way the rate beside the week does. */}
-      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>
+      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>{' '}
+      {/* Last, and only when there is one. It is the only part of this sum that arrived after the
+          money did, so it reads as something added to a settled arithmetic rather than as a third
+          thing the deposit was paid on the day — which is what it is. It also keeps the rate next
+          to the bonus it is the rate of; "at 1,30×" after a loyalty figure would read as the rate
+          of the loyalty, and the loyalty deliberately has no rate.
+
+          The space before it is the one above, outside both spans, and that placement is the whole
+          break opportunity between the rate and the loyalty: JSX drops the newline between an
+          element and the expression after it, so a space held inside a nowrap span would leave
+          "at 1,30× + 30 loyalty" a single unbreakable run — wider than the third of a row this
+          cell gets, and the opposite of what .breakdown-rate keeps whole for. */}
+      {deposit.loyaltyBonusPoints > 0 && (
+        <span className="breakdown-loyalty">
+          + {points.format(deposit.loyaltyBonusPoints)} loyalty
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * When this deposit next pays a loyalty bonus, and what that day is worth at what it holds now.
+ *
+ * <p>The one thing on this page that is about the future. Everything else in a history row is a
+ * record of something that happened; this is a promise, and it is here because it is the figure a
+ * customer would decide against — what leaving the money alone pays them, which is the same number
+ * as what taking it out would cost. Stated once and left alone: a row of a history is not the place
+ * to argue for anything, so there is no "don't miss out" and no arrow pointing at it.
+ *
+ * <p>**"due", never "next".** The date the backend sends is the day this deposit next *pays*, and
+ * that is not always the next date its calendar reaches — between an anniversary falling and the
+ * overnight sweep paying it, the day reported is the one just gone. "Next anniversary: yesterday"
+ * is a contradiction on a page; "50 points due on 9 september" is true whichever side of the date
+ * today falls, so the word carries both readings and the page needs no opinion about which one it
+ * is looking at. It has none to offer either: the clock this promise is kept by is the
+ * application's, which a trainer winds forward by years, and the browser's would say the deposit
+ * pays in 2029 while the application was already three anniversaries behind on it. Nothing here
+ * calls `new Date()` for today, and that is deliberate rather than an omission.
+ *
+ * <p>Three states arrive here and three different things are said, because they say different
+ * things:
+ *
+ * - both null, and only ever together: the deposit has been emptied. Nothing is drawn at all. There
+ *   is no anniversary left for money that has gone to reach, and a row saying "nothing due" would
+ *   be making a promise about a deposit that has none to make.
+ * - a date, worth nothing: the deposit still holds money, but under ten euros of it, and a tenth of
+ *   nine euros rounds down. The date is real, so it is shown, with the figure named as nothing
+ *   rather than drawn as a 0 beside a date — and the rule it follows from is stated over the list,
+ *   so a customer reading this row can see why it says what it says rather than suspecting the
+ *   application of a fault.
+ * - a date and a figure: the promise itself.
+ *
+ * <p>Neither figure is worked out here, and the date least of all. Twelve months, a tenth, and the
+ * rounding all live in the backend, which is the only place they can be checked against what it
+ * actually paid.
+ */
+function NextAnniversary({ deposit }: { deposit: RecordedDeposit }) {
+  const on = deposit.nextAnniversaryOn
+  const worth = deposit.nextAnniversaryPoints
+  // Together, always, and the check says so rather than trusting one of them: the pair is the
+  // backend's way of saying "this deposit is empty", and half of it would be a promise with no date
+  // or a date with no promise.
+  if (on === null || worth === null) {
+    return null
+  }
+  if (worth === 0) {
+    return (
+      <span className="anniversary none">
+        {/* Only "due on <date>" is kept whole, the way the expiry deadline's is and the way the
+            paid branch below keeps its own: a date alone at the start of a wrapped line reads as a
+            heading rather than as the end of this sentence. "Nothing" is left outside it so the
+            line can break after the word — the state that is meant to say less must not be the
+            widest unbreakable string in the table. */}
+        Nothing <span className="anniversary-when">due on {asADay(on)}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="anniversary">
+      <span className="anniversary-count">
+        {points.format(worth)} {worth === 1 ? 'point' : 'points'}
+      </span>{' '}
+      <span className="anniversary-when">due on {asADay(on)}</span>
     </span>
   )
 }
@@ -2106,6 +2970,99 @@ function GiftIcon() {
         d="M12 9S10.5 4.5 8.5 4.5a2 2 0 0 0 0 4.5M12 9s1.5-4.5 3.5-4.5a2 2 0 0 1 0 4.5"
         stroke="currentColor"
         strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * Points on their way to somebody else: an arrow into a person.
+ *
+ * <p>Its own icon rather than the wrapped box above, which is already spoken for as the picture a
+ * reward gets when this page has never heard of its code. A gift here is not a parcel — it is a
+ * figure moving from one customer to another — and drawing it as one would have the same square
+ * mean two things on the same screen.
+ */
+function GivingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      {/* The person it is going to. */}
+      <circle cx="16" cy="7" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M10.4 20.5a5.6 5.6 0 0 1 11.2 0"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* The points, on their way there. */}
+      <path
+        d="M2.5 12.5h6.2M5.8 9.6l2.9 2.9-2.9 2.9"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * A bell, and nothing hanging off it. The count is a badge drawn beside it in the markup rather
+ * than a dot inside the picture, so that the number is text a browser can size and read out.
+ */
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 9a6 6 0 0 1 12 0c0 4 1.2 5.4 2 6.4H4c.8-1 2-2.4 2-6.4Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M10 18.5a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** A balance that has climbed past something: the line it stood on, and an arrow off the top. */
+function RisingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 16h16"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 13V4m0 0L8 8m4-4 4 4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** The same picture the other way up: a balance that no longer reaches the line it did. */
+function FallingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 8h16"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeDasharray="2.5 2.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 11v9m0 0 4-4m-4 4-4-4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
