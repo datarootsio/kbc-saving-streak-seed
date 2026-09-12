@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: kbc-saving-streak
+  datasource:
+    url: jdbc:sqlite:${SAVING_STREAK_DB:data/saving-streak.db}
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.SQL: warn

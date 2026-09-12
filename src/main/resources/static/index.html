@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#004a8f">
+  <title>KBC Saving Streak</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/kbc.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23004a8f'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='13' font-weight='bold' fill='%23fff' text-anchor='middle'%3EKBC%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="#" aria-label="KBC Saving Streak">
+        <span class="brand__mark">KBC</span>
+        <span class="brand__name">Saving&nbsp;Streak</span>
+      </a>
+
+      <nav class="tabs" id="tabs" aria-label="Hoofdnavigatie">
+        <button class="tab is-active" data-view="overview" type="button">
+          <svg class="tab__icon" aria-hidden="true"><use href="#i-home"></use></svg>
+          <span>Overview</span>
+        </button>
+        <button class="tab" data-view="transfer" type="button">
+          <svg class="tab__icon" aria-hidden="true"><use href="#i-transfer"></use></svg>
+          <span>Transfer</span>
+        </button>
+        <button class="tab" data-view="rewards" type="button">
+          <svg class="tab__icon" aria-hidden="true"><use href="#i-gift"></use></svg>
+          <span>Rewards</span>
+        </button>
+        <button class="tab" data-view="gifts" type="button">
+          <svg class="tab__icon" aria-hidden="true"><use href="#i-send"></use></svg>
+          <span>Gifts</span>
+        </button>
+        <button class="tab" data-view="history" type="button">
+          <svg class="tab__icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+          <span>History</span>
+        </button>
+        <span class="tabs__glider" id="tabsGlider" aria-hidden="true"></span>
+      </nav>
+
+      <div class="topbar__right">
+        <div class="bell-wrap">
+          <button class="bell" id="bellToggle" type="button" aria-expanded="false" aria-controls="bellPanel"
+                  aria-label="Notifications">
+            <svg aria-hidden="true"><use href="#i-bell"></use></svg>
+            <span class="bell__count" id="bellCount" hidden>0</span>
+          </button>
+
+          <div class="bell-panel" id="bellPanel" hidden>
+            <div class="bell-panel__head">
+              <h2>Notifications</h2>
+              <button class="link link--small" id="markRead" type="button">Mark all read</button>
+            </div>
+            <ul class="notes" id="noteList"></ul>
+            <div class="bell-panel__foot">
+              <button class="link link--small" id="alertsToggle" type="button"
+                      aria-expanded="false" aria-controls="alertSettings">Alert me when…</button>
+              <div class="alerts" id="alertSettings" hidden></div>
+            </div>
+          </div>
+        </div>
+        <span class="points-pill" id="pointsPill" title="Your points balance">
+          <svg class="points-pill__icon" aria-hidden="true"><use href="#i-star"></use></svg>
+          <strong data-count="0">0</strong>
+          <span class="points-pill__label">points</span>
+        </span>
+        <span class="avatar" id="avatar" aria-hidden="true">--</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div class="hero__wash" aria-hidden="true"></div>
+    <div class="hero__inner">
+      <p class="hero__eyebrow">Saving pays off</p>
+      <h1 class="hero__title">Hello <span id="heroName">…</span>, <span id="heroStreakLine">…</span></h1>
+      <p class="hero__sub">Every euro you move to a savings account earns points. Trade them in for a coffee, a cinema ticket or a donation.</p>
+      <button class="btn btn--primary hero__cta" type="button" data-goto="transfer">
+        Transfer money <svg aria-hidden="true" class="btn__chevron"><use href="#i-chevron"></use></svg>
+      </button>
+    </div>
+    <div class="hero__art" aria-hidden="true">
+      <div class="coinstack">
+        <span class="coin coin--1"></span>
+        <span class="coin coin--2"></span>
+        <span class="coin coin--3"></span>
+        <span class="coin coin--4"></span>
+      </div>
+    </div>
+  </div>
+
+  <main id="main" class="wrap">
+
+    <!-- ── Overview ────────────────────────────────────────────── -->
+    <section class="view is-active" id="view-overview">
+      <div class="grid grid--overview">
+        <article class="card card--total reveal">
+          <h2 class="card__title">Total balance</h2>
+          <p class="amount amount--xl" id="totalBalance" data-money="0">€0.00</p>
+          <dl class="split">
+            <div>
+              <dt>In your current account</dt>
+              <dd id="currentBalance" data-money="0">€0.00</dd>
+            </div>
+            <div>
+              <dt>Saved</dt>
+              <dd id="totalSaved" data-money="0">€0.00</dd>
+            </div>
+            <div>
+              <dt>Savings peak</dt>
+              <dd id="savingsPeak">€0.00</dd>
+            </div>
+          </dl>
+          <div class="weekbar">
+            <div class="weekbar__head">
+              <span>Weekly minimum <strong id="weeklyGoal">€50.00</strong></span>
+              <span id="weeklyGoalState" class="weekbar__state">—</span>
+            </div>
+            <div class="progress"><span class="progress__fill" id="weeklyGoalFill" style="width:0%"></span></div>
+          </div>
+        </article>
+
+        <article class="card card--navy reveal" style="--delay:60ms">
+          <div class="streak">
+            <div class="streak__flame" aria-hidden="true">
+              <svg><use href="#i-flame"></use></svg>
+            </div>
+            <div>
+              <h2 class="card__title card__title--light">Saving streak</h2>
+              <p class="streak__weeks"><strong id="streakWeeks" data-count="0">0</strong> <span id="streakWeeksLabel">weeks in a row</span></p>
+            </div>
+          </div>
+          <p class="points-big"><span id="pointsBalance" data-count="0">0</span> <small>points</small></p>
+          <p class="points-expiry" id="pointsExpiry" hidden></p>
+          <ul class="navy-facts">
+            <li><span>Points multiplier</span><strong id="multiplier">1.00×</strong></li>
+            <li><span>Next week</span><strong id="nextMultiplier">1.10×</strong></li>
+            <li><span>Best streak</span><strong id="bestStreak">0 weeks</strong></li>
+            <li><span>Earned in total</span><strong id="pointsTotal">0 points</strong></li>
+            <li id="loyaltyRow" hidden><span>Loyalty bonuses</span><strong id="loyaltyEarned">0 points</strong></li>
+            <li id="giftedToYouRow" hidden><span>Gifted to you</span><strong id="giftedToYou">0 points</strong></li>
+            <li id="giftedAwayRow" hidden><span>Gifted away</span><strong id="giftedAway">0 points</strong></li>
+            <li id="lapsedRow" hidden><span>Lapsed unused</span><strong id="pointsLapsed">0 points</strong></li>
+          </ul>
+          <div class="streak__dots" id="streakDots" aria-hidden="true"></div>
+        </article>
+      </div>
+
+      <div class="section-head">
+        <h2>Your accounts</h2>
+        <button class="link" type="button" data-goto="transfer">Transfer money <svg aria-hidden="true"><use href="#i-chevron"></use></svg></button>
+      </div>
+      <div class="legend" id="timelineLegend">
+        <span class="legend__group">
+          <span class="legend__item"><span class="legend__bar legend__bar--in"></span>money in</span>
+          <span class="legend__item"><span class="legend__bar legend__bar--out"></span>money out</span>
+        </span>
+        <span class="legend__group">
+          <span class="legend__item"><span class="tline__dot tline__dot--bonus"></span>bonus paid</span>
+          <span class="legend__item"><span class="tline__dot tline__dot--bonus-due"></span>bonus due</span>
+          <span class="legend__item"><span class="tline__dot tline__dot--expiring"></span>points expiring</span>
+          <span class="legend__item"><span class="tline__dot tline__dot--lapsed"></span>points lapsed</span>
+        </span>
+      </div>
+      <div class="grid grid--accounts" id="accountList"></div>
+
+      <div class="section-head">
+        <h2>Rewards within reach</h2>
+        <button class="link" type="button" data-goto="rewards">All rewards <svg aria-hidden="true"><use href="#i-chevron"></use></svg></button>
+      </div>
+      <div class="grid grid--rewards" id="rewardTeaser"></div>
+    </section>
+
+    <!-- ── Transfer ────────────────────────────────────────────── -->
+    <section class="view" id="view-transfer">
+      <div class="grid grid--transfer">
+        <article class="card card--transfer reveal">
+          <h2 class="card__title">Transfer money</h2>
+          <form id="transferForm" novalidate>
+            <div class="switcher">
+              <div class="switcher__slot">
+                <label for="fromAccount">From</label>
+                <div class="select"><select id="fromAccount" name="fromAccount"></select></div>
+              </div>
+              <button class="swap" id="swapBtn" type="button" aria-label="Swap accounts">
+                <svg aria-hidden="true"><use href="#i-swap"></use></svg>
+              </button>
+              <div class="switcher__slot">
+                <label for="toAccount">To</label>
+                <div class="select"><select id="toAccount" name="toAccount"></select></div>
+              </div>
+            </div>
+
+            <div class="amount-field">
+              <label for="amount">Amount</label>
+              <div class="amount-input">
+                <span class="amount-input__euro">€</span>
+                <input id="amount" name="amount" type="text" inputmode="decimal" value="50.00" autocomplete="off">
+              </div>
+              <input class="range" id="amountRange" type="range" min="5" max="1000" step="5" value="50" aria-label="Choose an amount">
+              <div class="chips" id="amountChips">
+                <button class="chip" type="button" data-amount="10">€10</button>
+                <button class="chip" type="button" data-amount="25">€25</button>
+                <button class="chip" type="button" data-amount="50">€50</button>
+                <button class="chip" type="button" data-amount="100">€100</button>
+                <button class="chip" type="button" data-amount="250">€250</button>
+              </div>
+            </div>
+
+            <div class="preview" id="pointsPreview">
+              <svg class="preview__icon" aria-hidden="true"><use href="#i-star"></use></svg>
+              <p class="preview__text">You earn <strong id="previewPoints">+100</strong> points
+                <span class="preview__hint" id="previewHint">1 point per euro × 1.00 multiplier</span></p>
+            </div>
+
+            <p class="form-error" id="transferError" role="alert" hidden></p>
+
+            <button class="btn btn--primary btn--block" id="transferSubmit" type="submit">
+              <span class="btn__label">Transfer</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+        </article>
+
+        <aside class="card card--flow reveal" style="--delay:60ms">
+          <h2 class="card__title">How it works</h2>
+          <ol class="steps">
+            <li><span class="steps__n">1</span><div><strong>Grow your savings</strong><p>1 point for every euro above your highest savings total ever.</p></div></li>
+            <li><span class="steps__n">2</span><div><strong>Add €50 of new savings in a week</strong><p>That secures the week. Each week in a row adds 10% bonus points, up to 1.50×.</p></div></li>
+            <li><span class="steps__n">3</span><div><strong>Leave it untouched</strong><p>Every year a deposit stays put, it pays another 10% of its points. Take it out early and you miss that year.</p></div></li>
+            <li><span class="steps__n">4</span><div><strong>Trade in your points</strong><p>Coffee, a snack, cinema, a museum or a donation. Points stay valid for 12 months.</p></div></li>
+          </ol>
+          <div class="flowviz" aria-hidden="true">
+            <div class="flowviz__box flowviz__box--from"><span>Current account</span></div>
+            <div class="flowviz__pipe"><span class="flowviz__coin"></span></div>
+            <div class="flowviz__box flowviz__box--to"><span>Savings account</span></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ── Rewards ─────────────────────────────────────────────── -->
+    <section class="view" id="view-rewards">
+      <div class="rewards-head">
+        <div>
+          <h2>Trade in your points</h2>
+          <p class="muted">You have <strong id="rewardsPoints">0</strong> points. Rewards are issued as a voucher
+            straight away, and the points closest to expiry are spent first.</p>
+        </div>
+        <div class="filters" id="rewardFilters">
+          <button class="chip is-active" type="button" data-filter="ALL">All</button>
+          <button class="chip" type="button" data-filter="FOOD_DRINK">Food &amp; drink</button>
+          <button class="chip" type="button" data-filter="ENTERTAINMENT">Days out</button>
+          <button class="chip" type="button" data-filter="FAMILY">Family</button>
+          <button class="chip" type="button" data-filter="DONATION">Donation</button>
+        </div>
+      </div>
+      <div class="grid grid--rewards" id="rewardList"></div>
+
+      <div class="section-head">
+        <h2>Your vouchers</h2>
+      </div>
+      <div class="vouchers" id="voucherList"></div>
+    </section>
+
+    <!-- ── Gifts ───────────────────────────────────────────────── -->
+    <section class="view" id="view-gifts">
+      <div class="grid grid--transfer">
+        <article class="card reveal">
+          <h2 class="card__title">Send points to someone</h2>
+          <p class="muted card__lead">Gift as often and as much as you like. The points keep the expiry
+            date they already had, so they never gain extra life by changing hands.</p>
+          <form id="giftForm" novalidate>
+            <div class="switcher__slot">
+              <div class="slot__head">
+                <label for="giftTo">To</label>
+                <button class="link link--small" id="addContactToggle" type="button"
+                        aria-expanded="false" aria-controls="addContact">+ Add someone</button>
+              </div>
+              <div class="select"><select id="giftTo" name="giftTo"></select></div>
+            </div>
+
+            <div class="adder" id="addContact" hidden>
+              <div class="adder__fields">
+                <input class="text-input" id="contactFirst" type="text" maxlength="40"
+                       placeholder="First name" autocomplete="off">
+                <input class="text-input" id="contactLast" type="text" maxlength="40"
+                       placeholder="Last name" autocomplete="off">
+              </div>
+              <div class="adder__actions">
+                <button class="btn btn--ghost btn--small" id="contactSave" type="button">Add to contacts</button>
+                <button class="link link--small" id="contactCancel" type="button">Cancel</button>
+              </div>
+              <p class="form-error" id="contactError" role="alert" hidden></p>
+            </div>
+
+            <div class="amount-field">
+              <label for="giftPoints">Points</label>
+              <div class="amount-input">
+                <svg class="amount-input__star" aria-hidden="true"><use href="#i-star"></use></svg>
+                <input id="giftPoints" name="giftPoints" type="text" inputmode="numeric" value="100" autocomplete="off">
+              </div>
+              <div class="chips" id="giftChips">
+                <button class="chip" type="button" data-points="25">25</button>
+                <button class="chip" type="button" data-points="50">50</button>
+                <button class="chip" type="button" data-points="100">100</button>
+                <button class="chip" type="button" data-points="250">250</button>
+                <button class="chip" type="button" data-points="all">Everything</button>
+              </div>
+            </div>
+
+            <div class="amount-field">
+              <label for="giftMessage">Message <span class="muted">(optional)</span></label>
+              <input class="text-input" id="giftMessage" name="giftMessage" type="text" maxlength="140"
+                     placeholder="Thanks for the dinner!" autocomplete="off">
+            </div>
+
+            <div class="preview" id="giftPreview">
+              <svg class="preview__icon" aria-hidden="true"><use href="#i-send"></use></svg>
+              <p class="preview__text">You have <strong id="giftBalance">0</strong> points
+                <span class="preview__hint" id="giftHint">Pick someone to send points to.</span></p>
+            </div>
+
+            <p class="form-error" id="giftError" role="alert" hidden></p>
+
+            <button class="btn btn--primary btn--block" id="giftSubmit" type="submit">
+              <span class="btn__label">Send points</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+        </article>
+
+        <aside class="card reveal" style="--delay:60ms">
+          <div class="section-head section-head--tight">
+            <h2>Gift history</h2>
+            <button class="link" id="demoIncoming" type="button">Simulate a gift to you</button>
+          </div>
+          <ul class="gifts" id="giftList"></ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ── History ─────────────────────────────────────────────── -->
+    <section class="view" id="view-history">
+      <div class="card reveal">
+        <div class="section-head section-head--tight">
+          <h2>History</h2>
+          <button class="link" id="resetDemo" type="button">Reset demo</button>
+        </div>
+        <ul class="timeline" id="transferList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>KBC Saving Streak · demo application · balances and rewards are fictional</p>
+  </footer>
+
+  <!-- Savings account detail -->
+  <div class="modal" id="accountSheet" hidden>
+    <div class="modal__backdrop" data-close-sheet></div>
+    <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="sheetName">
+      <button class="modal__close" type="button" data-close-sheet aria-label="Close">
+        <svg aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+      <div class="card sheet" id="sheetBody"></div>
+    </div>
+  </div>
+
+  <!-- Voucher modal -->
+  <div class="modal" id="voucherModal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="voucherTitle">
+      <button class="modal__close" type="button" data-close aria-label="Close">
+        <svg aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+      <div class="ticket">
+        <div class="ticket__top">
+          <svg class="ticket__icon" aria-hidden="true"><use href="#i-gift"></use></svg>
+          <p class="ticket__eyebrow">Redeemed</p>
+          <h3 id="voucherTitle">—</h3>
+        </div>
+        <div class="ticket__perf" aria-hidden="true"></div>
+        <div class="ticket__bottom">
+          <p class="ticket__label">Your code</p>
+          <p class="ticket__code" id="voucherCode">—</p>
+          <button class="btn btn--ghost" id="copyCode" type="button">Copy code</button>
+          <p class="ticket__meta" id="voucherMeta">—</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <canvas class="confetti" id="confetti" aria-hidden="true"></canvas>
+  <div class="coinfly" id="coinfly" aria-hidden="true"></div>
+
+  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.2 12 4l9 7.2V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M4 8h13l-3-3m3 3-3 3M20 16H7l3-3m-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24"><path d="M3 9h18v3H3zM4.5 12v8.5h15V12M12 9v11.5M8.6 9a2.3 2.3 0 1 1 1.6-3.9C11.4 6.2 12 9 12 9s.6-2.8 1.8-3.9A2.3 2.3 0 1 1 15.4 9" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.4V12l3.4 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.4 2.7 5.6 6.1.8-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.8l6.1-.8z" fill="currentColor"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M13 2.5s1 3.2-1.2 5.4C9.6 10.1 7 10.9 7 14.4A6.2 6.2 0 0 0 13.2 21c3.6 0 6.3-2.6 6.3-6.4 0-4.9-4.3-6.4-4.3-6.4s.6 2.6-.9 3.6c0 0 .4-5.9-1.3-9.3" fill="currentColor"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-swap" viewBox="0 0 24 24"><path d="M8 4v13m0 3-3.2-3.2M8 20l3.2-3.2M16 20V7m0-3 3.2 3.2M16 4l-3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 4-1.5 5.5-1.5 5.5h14s-1.5-1.5-1.5-5.5A5.5 5.5 0 0 0 12 3zM10 17.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4.5 21 20H3zM12 10v4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12 20.5 4l-4 16.5-4.2-5.9zm8.3 2.6L20.5 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V6m0-2 6 6m-6-6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v13m0 2 6-6m-6 6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-coffee" viewBox="0 0 32 32"><path d="M6 11h16v9a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6zM22 13h3a3.5 3.5 0 0 1 0 7h-3M6 29h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 7c0-2 2-2 2-4M17 7c0-2 2-2 2-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-snack" viewBox="0 0 32 32"><path d="M4 18c0-6.6 5.4-12 12-12s12 5.4 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 18h26v3H3zM6 21c0 3 3 5 10 5s10-2 10-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-ticket" viewBox="0 0 32 32"><path d="M4 9h24v5a3 3 0 0 0 0 6v5H4v-5a3 3 0 0 0 0-6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 11v3m0 4v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-museum" viewBox="0 0 32 32"><path d="M3 12 16 5l13 7M6 12v13m6-13v13m8-13v13m6-13v13M3 27h26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-family" viewBox="0 0 32 32"><circle cx="10" cy="9" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="22" cy="11" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 27v-3a7 7 0 0 1 14 0v3M19 27v-2a6 6 0 0 1 10-4.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 32 32"><path d="M16 27S4 20.2 4 13.2A6.2 6.2 0 0 1 16 10a6.2 6.2 0 0 1 12 3.2C28 20.2 16 27 16 27z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+      <symbol id="i-piggy" viewBox="0 0 32 32"><path d="M20 8h1a7 7 0 0 1 7 7v2h2v4h-2.6A7 7 0 0 1 21 24v3h-4v-2h-4v2H9v-3a7 7 0 0 1-4-6.3V15a7 7 0 0 1 7-7h1" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 8a4 4 0 0 1 8 0" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="22" cy="15" r="1.2" fill="currentColor"/></symbol>
+      <symbol id="i-card" viewBox="0 0 32 32"><rect x="3" y="7" width="26" height="18" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 13h26M7 20h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    </defs>
+  </svg>
+
+  <script src="js/animations.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
