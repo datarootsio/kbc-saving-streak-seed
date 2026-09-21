@@ -12,6 +12,17 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23003665'/%3E%3Cpath d='M18 4 8 18h6l-2 10 12-15h-7l1-9Z' fill='%230097db'/%3E%3C/svg%3E"
     />
     <title>Saving Streak</title>
+    <script>
+      // Relative URLs resolve against the document's *directory*, so this page only finds its
+      // bundle when its own path ends in a slash. Served at "/" it always does. Reached through
+      // code-server's port proxy it may not: "/proxy/80" loads this HTML but then asks for
+      // "/proxy/assets/...", which is not there, and the page stays blank with no clue why.
+      // Adding the slash and reloading is the whole fix, and it cannot loop: after the redirect
+      // the path ends in one.
+      if (!location.pathname.endsWith('/')) {
+        location.replace(location.pathname + '/' + location.search + location.hash)
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

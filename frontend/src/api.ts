@@ -1,3 +1,15 @@
+/**
+ * Where the backend is, worked out from the page rather than assumed to be the server root.
+ *
+ * <p>A URL that starts with "/" throws away whatever path prefix the app is mounted under, so
+ * `/api/customers` only ever works when the app is served at "/". It is also served under
+ * `/proxy/80/` when it is reached through code-server's port proxy, and there a leading slash asks
+ * code-server for the endpoint rather than this app's backend. Resolving against `document.baseURI`
+ * keeps one prefix for the page and its API wherever it is mounted, and resolves to exactly the old
+ * `/api/...` when that prefix is "/".
+ */
+const apiUrl = (path: string) => new URL(`api/${path}`, document.baseURI).toString()
+
 export type Customer = {
   id: number
   name: string
@@ -116,7 +128,7 @@ export class SignInFailed extends Error {
  * into a log or a browser history on its way here.
  */
 export async function signIn(contactDetails: string): Promise<Customer> {
-  const response = await fetch('/api/customers/sign-in', {
+  const response = await fetch(apiUrl('customers/sign-in'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contactDetails }),
@@ -132,7 +144,7 @@ export async function signIn(contactDetails: string): Promise<Customer> {
 
 // All backend endpoints sit under /api, which the dev server proxies to the backend.
 export async function fetchCustomers(): Promise<Customer[]> {
-  const response = await fetch('/api/customers')
+  const response = await fetch(apiUrl('customers'))
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load the customer list'))
   }
@@ -143,7 +155,7 @@ export async function fetchAccounts(
   customerId: number,
   signal?: AbortSignal,
 ): Promise<CustomerAccounts> {
-  const response = await fetch(`/api/customers/${customerId}/accounts`, { signal })
+  const response = await fetch(apiUrl(`customers/${customerId}/accounts`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load this customer’s accounts'))
   }
@@ -246,7 +258,7 @@ export async function fetchSavingsAccount(
   savingsAccountId: number,
   signal?: AbortSignal,
 ): Promise<SavingsAccountBalances> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}`, { signal })
+  const response = await fetch(apiUrl(`savings-accounts/${savingsAccountId}`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load this savings account'))
   }
@@ -261,7 +273,7 @@ export async function fetchDeposits(
   savingsAccountId: number,
   signal?: AbortSignal,
 ): Promise<RecordedDeposit[]> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/deposits`, { signal })
+  const response = await fetch(apiUrl(`savings-accounts/${savingsAccountId}/deposits`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load this account’s deposits'))
   }
@@ -272,7 +284,7 @@ export async function fetchWithdrawals(
   savingsAccountId: number,
   signal?: AbortSignal,
 ): Promise<RecordedWithdrawal[]> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/withdrawals`, { signal })
+  const response = await fetch(apiUrl(`savings-accounts/${savingsAccountId}/withdrawals`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load this account’s withdrawals'))
   }
@@ -303,7 +315,7 @@ export type ClaimedReward = {
 
 /** The catalogue is the same for everybody, so it hangs off nothing but itself. */
 export async function fetchRewards(signal?: AbortSignal): Promise<Reward[]> {
-  const response = await fetch('/api/rewards', { signal })
+  const response = await fetch(apiUrl('rewards'), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load the rewards catalogue'))
   }
@@ -319,7 +331,7 @@ export async function fetchClaimed(
   customerId: number,
   signal?: AbortSignal,
 ): Promise<ClaimedReward[]> {
-  const response = await fetch(`/api/customers/${customerId}/redemptions`, { signal })
+  const response = await fetch(apiUrl(`customers/${customerId}/redemptions`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load what you have claimed'))
   }
@@ -335,7 +347,7 @@ export async function fetchClaimed(
  * could name the wrong one.
  */
 export async function claimReward(customerId: number, reward: string): Promise<ClaimedReward> {
-  const response = await fetch(`/api/customers/${customerId}/redemptions`, {
+  const response = await fetch(apiUrl(`customers/${customerId}/redemptions`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reward }),
@@ -357,7 +369,7 @@ export async function makeDeposit(
   amount: string,
   fromCurrentAccountId: number,
 ): Promise<RecordedDeposit> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/deposits`, {
+  const response = await fetch(apiUrl(`savings-accounts/${savingsAccountId}/deposits`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ amount, fromCurrentAccountId }),
@@ -374,7 +386,7 @@ export async function makeWithdrawal(
   amount: string,
   toCurrentAccountId: number,
 ): Promise<RecordedWithdrawal> {
-  const response = await fetch(`/api/savings-accounts/${savingsAccountId}/withdrawals`, {
+  const response = await fetch(apiUrl(`savings-accounts/${savingsAccountId}/withdrawals`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ amount, toCurrentAccountId }),
@@ -426,7 +438,7 @@ export async function fetchMoneyMovements(
   customerId: number,
   signal?: AbortSignal,
 ): Promise<MoneyMovement[]> {
-  const response = await fetch(`/api/customers/${customerId}/money-movements`, { signal })
+  const response = await fetch(apiUrl(`customers/${customerId}/money-movements`), { signal })
   if (!response.ok) {
     throw new Error(await reasonRefused(response, 'Could not load your money history'))
   }
