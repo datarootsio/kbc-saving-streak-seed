@@ -6,16 +6,6 @@ Take the **loyalty-rate bonus** through Module 2. Carry its implementation, chec
 
 ## Module 2 — Delivery loop
 
-### 2.1 Shared context
-
-**Goal:** Give a fresh agent the context it needs.
-
-1. Ask the agent to explain the deposit-to-redemption flow, citing relevant code and tests.
-2. Add missing repository guidance and domain definitions. Separate project rules from task-specific instructions.
-3. Start a fresh session. Ask where the loyalty bonus would fit and check its answer.
-
-**Done when:** You can distinguish the system prompt, repository instructions and task context, and show which information helped the agent.
-
 ### 2.2 Intentionality and ambiguity
 
 Ask the agent to interview you and resolve the key decisions about the loyalty-rate bonus feature.
