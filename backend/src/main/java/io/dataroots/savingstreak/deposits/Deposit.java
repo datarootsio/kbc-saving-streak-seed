@@ -107,6 +107,14 @@ class Deposit {
         return id;
     }
 
+    /**
+     * Whose saving this was, which is what anything counting one person's money reads it by — a
+     * week, a run of weeks, and now the pot a reward for money staying put is credited into.
+     */
+    long getCustomerId() {
+        return customerId;
+    }
+
     /** Which savings account the money landed in, which is what a ledger of one is assembled by. */
     long getSavingsAccountId() {
         return savingsAccountId;

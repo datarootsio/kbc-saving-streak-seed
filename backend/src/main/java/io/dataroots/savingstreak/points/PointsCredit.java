@@ -104,6 +104,24 @@ class PointsCredit {
     }
 
     /**
+     * A tenth of the euros a deposit still held on one of its anniversaries, paid for the money
+     * having stayed where it was put.
+     *
+     * <p>An ordinary batch, and that is the whole of what this ledger knows about it: spendable on
+     * any reward, spent oldest-first alongside everything else, and gone twelve months after the
+     * moment it was earned. Nothing here can tell it from a deposit's own credit except the reason
+     * written on it.
+     *
+     * <p>Dated at the anniversary rather than at the moment the sweep that paid it ran, which the
+     * caller supplies. A batch for an anniversary long past therefore arrives already beyond its own
+     * twelve months and is swept away by the expiry job the same night — the honest outcome of both
+     * rules holding at once, and visible in the log rather than special-cased here.
+     */
+    static PointsCredit loyaltyBonusFor(long customerId, long depositId, long points, Instant earnedAt) {
+        return new PointsCredit(customerId, points, PointsReason.LOYALTY_BONUS, depositId, earnedAt);
+    }
+
+    /**
      * How much of this batch has neither been spent nor expired — or, once {@link #expiredAt} is
      * set, how much of it was left when its twelve months ran out.
      */

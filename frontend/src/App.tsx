@@ -1209,7 +1209,10 @@ function Withdrawals({
               >
                 <td className="when">{dateAndTime.format(new Date(made.withdrawnAt))}</td>
                 <td className="amount">{euros.format(made.amount)}</td>
-                <td>
+                {/* Named for the same reason the deposits' points cell is: the stylesheet folds
+                    this row into a block at a phone's width and needs to say which cell goes
+                    where without counting columns. */}
+                <td className="returned">
                   {ibans.get(made.toCurrentAccountId) ?? `Current account ${made.toCurrentAccountId}`}
                 </td>
               </tr>
@@ -1222,8 +1225,16 @@ function Withdrawals({
 }
 
 /**
- * The deposits behind the balances above, newest first, each with what it earned. Together they are
- * what makes the two figures checkable: the amounts add up to the one, the points to the other.
+ * The deposits behind the balances above, newest first, each with what it earned and when it next
+ * pays. Together they are what makes the two figures checkable: the amounts add up to the one, the
+ * points to the other.
+ *
+ * <p>The rule behind the loyalty part of a row is written once, over the list, rather than on every
+ * row that shows it. A row is then free to be as short as a fact — "30 points due on 30 september
+ * 2028" — and the sentence a customer needs in order to read it, including why a small deposit is
+ * plainly worth nothing on its anniversary rather than mysteriously worth nothing, is stated where
+ * it belongs to the whole list. Repeating it per row would turn a history into an advertisement,
+ * which is exactly what a promise on this page must not become.
  */
 function Deposits({
   deposits,
@@ -1238,36 +1249,46 @@ function Deposits({
       {deposits.length === 0 ? (
         <p className="nothing">No deposits yet.</p>
       ) : (
-        <table className="deposits">
-          <thead>
-            <tr>
-              <th scope="col">When</th>
-              <th scope="col">Amount</th>
-              <th scope="col">Points earned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {deposits.map((made, place) => (
-              <tr
-                key={made.id}
-                className={made.id === landedId ? 'landed' : undefined}
-                // Rows arrive one after another rather than all at once, which reads as a list
-                // being filled in. Only the first handful are staggered; past that it is a wait.
-                style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
-              >
-                <td className="when">{dateAndTime.format(new Date(made.depositedAt))}</td>
-                <td className="amount">{euros.format(made.amount)}</td>
-                <td>
-                  <span className={made.pointsEarned > 0 ? 'earnings' : 'earnings none'}>
-                    {made.pointsEarned > 0 && <SparkIcon />}
-                    {points.format(made.pointsEarned)}
-                  </span>
-                  <WhatItEarned deposit={made} />
-                </td>
+        <>
+          <p className="explanation rule">
+            A deposit earns again every year it stays: a tenth of the euros still in it, rounded
+            down.
+          </p>
+          <table className="deposits">
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Points earned</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {deposits.map((made, place) => (
+                <tr
+                  key={made.id}
+                  className={made.id === landedId ? 'landed' : undefined}
+                  // Rows arrive one after another rather than all at once, which reads as a list
+                  // being filled in. Only the first handful are staggered; past that it is a wait.
+                  style={{ '--row-delay': `${Math.min(place, 8) * 45}ms` } as CSSProperties}
+                >
+                  <td className="when">{dateAndTime.format(new Date(made.depositedAt))}</td>
+                  <td className="amount">{euros.format(made.amount)}</td>
+                  {/* Named so the stylesheet can lay the row out as a block at a phone's width
+                      without counting columns, the way the money history's cells are. This one
+                      holds three things now and is the reason the row has to fold at all. */}
+                  <td className="gained">
+                    <span className={made.pointsEarned > 0 ? 'earnings' : 'earnings none'}>
+                      {made.pointsEarned > 0 && <SparkIcon />}
+                      {points.format(made.pointsEarned)}
+                    </span>
+                    <WhatItEarned deposit={made} />
+                    <NextAnniversary deposit={made} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
@@ -1507,7 +1528,90 @@ function WhatItEarned({ deposit }: { deposit: RecordedDeposit }) {
       {points.format(deposit.basePoints)} base + {points.format(deposit.streakBonusPoints)} bonus{' '}
       {/* The rate and its × stay on one line: a × alone at the start of a line reads as a figure
           with something snapped off it, the way the rate beside the week does. */}
-      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>
+      <span className="breakdown-rate">at {rate.format(deposit.multiplierApplied)}×</span>{' '}
+      {/* Last, and only when there is one. It is the only part of this sum that arrived after the
+          money did, so it reads as something added to a settled arithmetic rather than as a third
+          thing the deposit was paid on the day — which is what it is. It also keeps the rate next
+          to the bonus it is the rate of; "at 1,30×" after a loyalty figure would read as the rate
+          of the loyalty, and the loyalty deliberately has no rate.
+
+          The space before it is the one above, outside both spans, and that placement is the whole
+          break opportunity between the rate and the loyalty: JSX drops the newline between an
+          element and the expression after it, so a space held inside a nowrap span would leave
+          "at 1,30× + 30 loyalty" a single unbreakable run — wider than the third of a row this
+          cell gets, and the opposite of what .breakdown-rate keeps whole for. */}
+      {deposit.loyaltyBonusPoints > 0 && (
+        <span className="breakdown-loyalty">
+          + {points.format(deposit.loyaltyBonusPoints)} loyalty
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * When this deposit next pays a loyalty bonus, and what that day is worth at what it holds now.
+ *
+ * <p>The one thing on this page that is about the future. Everything else in a history row is a
+ * record of something that happened; this is a promise, and it is here because it is the figure a
+ * customer would decide against — what leaving the money alone pays them, which is the same number
+ * as what taking it out would cost. Stated once and left alone: a row of a history is not the place
+ * to argue for anything, so there is no "don't miss out" and no arrow pointing at it.
+ *
+ * <p>**"due", never "next".** The date the backend sends is the day this deposit next *pays*, and
+ * that is not always the next date its calendar reaches — between an anniversary falling and the
+ * overnight sweep paying it, the day reported is the one just gone. "Next anniversary: yesterday"
+ * is a contradiction on a page; "50 points due on 9 september" is true whichever side of the date
+ * today falls, so the word carries both readings and the page needs no opinion about which one it
+ * is looking at. It has none to offer either: the clock this promise is kept by is the
+ * application's, which a trainer winds forward by years, and the browser's would say the deposit
+ * pays in 2029 while the application was already three anniversaries behind on it. Nothing here
+ * calls `new Date()` for today, and that is deliberate rather than an omission.
+ *
+ * <p>Three states arrive here and three different things are said, because they say different
+ * things:
+ *
+ * - both null, and only ever together: the deposit has been emptied. Nothing is drawn at all. There
+ *   is no anniversary left for money that has gone to reach, and a row saying "nothing due" would
+ *   be making a promise about a deposit that has none to make.
+ * - a date, worth nothing: the deposit still holds money, but under ten euros of it, and a tenth of
+ *   nine euros rounds down. The date is real, so it is shown, with the figure named as nothing
+ *   rather than drawn as a 0 beside a date — and the rule it follows from is stated over the list,
+ *   so a customer reading this row can see why it says what it says rather than suspecting the
+ *   application of a fault.
+ * - a date and a figure: the promise itself.
+ *
+ * <p>Neither figure is worked out here, and the date least of all. Twelve months, a tenth, and the
+ * rounding all live in the backend, which is the only place they can be checked against what it
+ * actually paid.
+ */
+function NextAnniversary({ deposit }: { deposit: RecordedDeposit }) {
+  const on = deposit.nextAnniversaryOn
+  const worth = deposit.nextAnniversaryPoints
+  // Together, always, and the check says so rather than trusting one of them: the pair is the
+  // backend's way of saying "this deposit is empty", and half of it would be a promise with no date
+  // or a date with no promise.
+  if (on === null || worth === null) {
+    return null
+  }
+  if (worth === 0) {
+    return (
+      <span className="anniversary none">
+        {/* Only "due on <date>" is kept whole, the way the expiry deadline's is and the way the
+            paid branch below keeps its own: a date alone at the start of a wrapped line reads as a
+            heading rather than as the end of this sentence. "Nothing" is left outside it so the
+            line can break after the word — the state that is meant to say less must not be the
+            widest unbreakable string in the table. */}
+        Nothing <span className="anniversary-when">due on {asADay(on)}</span>
+      </span>
+    )
+  }
+  return (
+    <span className="anniversary">
+      <span className="anniversary-count">
+        {points.format(worth)} {worth === 1 ? 'point' : 'points'}
+      </span>{' '}
+      <span className="anniversary-when">due on {asADay(on)}</span>
     </span>
   )
 }
