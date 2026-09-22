@@ -11,8 +11,10 @@ The repository needs an Actions secret named `OPENROUTER_API_KEY`. Add it under
 **Settings → Secrets and variables → Actions**. GitHub supplies `GITHUB_TOKEN` automatically.
 Copies and forks of this seed need their own secret; secrets are not copied with the source.
 
-The default review model is `openrouter/anthropic/claude-sonnet-4.6`, with
-`openrouter/google/gemini-2.5-flash` as a fallback. Set the optional Actions variable
+The default review model is `openrouter/deepseek/deepseek-v4.1-flash`. Automatic model fallback
+is disabled so a failed DeepSeek request is reported instead of using a different model.
+Extended reasoning is disabled and the output limit is 16,000 tokens to leave room for review text.
+Set the optional Actions variable
 `PR_AGENT_MODEL` to another PR-Agent model ID beginning with `openrouter/` to change the primary
 model. Model calls are billed to the OpenRouter key. The selected model must support the configured
 context and output limits in `.pr_agent.toml`.
@@ -55,8 +57,8 @@ are sent to OpenRouter and the selected model provider for review.
 ## Troubleshooting
 
 - **Missing key:** the preflight step reports that `OPENROUTER_API_KEY` must be configured.
-- **Provider error:** check the key's credit, model access and the Actions logs. A fallback is
-  configured, but both models require a valid OpenRouter key.
+- **Provider error:** check the key's credit, model access and the Actions logs. The run fails
+  rather than silently switching models.
 - **No response to a command:** use a new comment in the PR conversation, start it with one of the
   supported slash commands, and check that the author has one of the permitted associations.
 - **No automatic run:** check the PR is not a draft, its branch belongs to this repository, and

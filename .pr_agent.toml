@@ -6,8 +6,8 @@ output_run_details = true
 enable_auto_approval = false
 
 [openrouter]
-max_tokens = 8000
-reasoning_effort = "low"
+max_tokens = 16000
+reasoning_effort = "none"
 
 [pr_description]
 publish_description_as_comment = true

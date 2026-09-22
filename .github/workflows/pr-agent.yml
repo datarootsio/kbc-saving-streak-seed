@@ -61,8 +61,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || 'openrouter/anthropic/claude-sonnet-4.6' }}
-          CONFIG__FALLBACK_MODELS: '["openrouter/google/gemini-2.5-flash"]'
+          CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || 'openrouter/deepseek/deepseek-v4.1-flash' }}
+          CONFIG__FALLBACK_MODELS: '[]'
           CONFIG__RESTRICTED_MODE: 'true'
           GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: 'true'
           GITHUB_ACTION_CONFIG__AUTO_REVIEW: 'true'
