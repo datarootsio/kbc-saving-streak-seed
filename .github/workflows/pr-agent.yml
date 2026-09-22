@@ -1,0 +1,71 @@
+name: AI pull request review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+# Review via the GitHub API; never check out or execute the PR branch.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-agent-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: PR-Agent review
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      ((github.event_name == 'pull_request_target' &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+       (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check command and credentials
+        id: preflight
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          with open(os.environ["GITHUB_EVENT_PATH"]) as event_file:
+              event = json.load(event_file)
+          if os.environ["GITHUB_EVENT_NAME"] == "issue_comment":
+              words = event["comment"]["body"].strip().split()
+              if not words or words[0] not in {"/review", "/describe", "/improve", "/ask"}:
+                  print("No PR-Agent command; skipping.")
+                  sys.exit(0)
+          if not os.environ.get("OPENROUTER_API_KEY"):
+              print("::error::Add OPENROUTER_API_KEY under Settings > Secrets and variables > Actions.")
+              sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("run_review=true\n")
+          PY
+
+      - name: Summarize and review the pull request
+        if: steps.preflight.outputs.run_review == 'true'
+        # pragent/pr-agent:0.46.0-github_action, pinned to its published image digest.
+        uses: docker://pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || 'openrouter/anthropic/claude-sonnet-4.6' }}
+          CONFIG__FALLBACK_MODELS: '["openrouter/google/gemini-2.5-flash"]'
+          CONFIG__RESTRICTED_MODE: 'true'
+          GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: 'true'
+          GITHUB_ACTION_CONFIG__AUTO_REVIEW: 'true'
+          GITHUB_ACTION_CONFIG__AUTO_IMPROVE: 'false'
+          GITHUB_ACTION_CONFIG__PR_ACTIONS: '["opened", "reopened", "ready_for_review", "synchronize"]'
+          GITHUB_ACTION_CONFIG__HANDLE_PUSH_TRIGGER: 'false'

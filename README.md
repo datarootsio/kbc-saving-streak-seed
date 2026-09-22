@@ -5,6 +5,8 @@ euro moved earns a point that can be spent on a reward.
 
 Follow the [workshop exercises](exercises.md) to work through the delivery loop and platform guardrails.
 
+Pull requests receive [automated AI reviews](docs/ai-pr-review.md) through PR-Agent and OpenRouter.
+
 - `backend/` — Spring Boot 3.5 (Java 17, Maven wrapper), SQLite at `data/saving-streak.db`
 - `frontend/` — React 18 + Vite 6, dev server on 5173 proxying `/api` to the backend
 
