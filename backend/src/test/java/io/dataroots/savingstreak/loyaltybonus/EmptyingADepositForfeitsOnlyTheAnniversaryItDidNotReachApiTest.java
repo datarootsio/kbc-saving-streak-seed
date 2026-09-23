@@ -1,0 +1,183 @@
+package io.dataroots.savingstreak.loyaltybonus;
+
+import java.time.LocalDate;
+
+import io.dataroots.savingstreak.streaks.SavingsWeek;
+import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
+import io.dataroots.savingstreak.support.ApiIntegrationTest;
+import io.dataroots.savingstreak.support.DepositView;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Taking the money out costs the customer the coming year's bonus and nothing else. An anniversary
+ * the money did not reach pays nothing; an anniversary it did reach was paid, and is theirs.
+ *
+ * <p>The forfeit and its limit in one narrative, because they are one rule read from both ends.
+ * Two identical EUR 500 deposits land on the same afternoon into two of the same customer's savings
+ * accounts, and the only difference between them is when the money left:
+ *
+ * <ul>
+ *   <li>the first is emptied a month in, well inside its twelve months, and pays nothing on the
+ *       anniversary it never reached — that is the forfeit;
+ *   <li>the second is left alone, is paid on its first anniversary, and is emptied the moment
+ *       afterwards. The 50 points it was paid are not taken back, and its second anniversary — an
+ *       anniversary its money did not reach — pays nothing.
+ * </ul>
+ *
+ * <p>Two accounts rather than two test methods, for the reason the rest of this package gives: the
+ * clock only goes forward, so a second method would find the year already moved on. Two accounts of
+ * one customer rather than two customers, because the points are the customer's and one balance is
+ * then the whole of the arithmetic: a sweep that paid the emptied deposit on what it originally held
+ * rather than on what is left in it would put that balance at 1100, both deposits paying 50, where
+ * this test expects 1050. What one balance cannot tell apart is an emptied deposit merely being let
+ * back into the sweep's query — a tenth of nothing is nothing, so the balance reads the same either
+ * way and no customer is a point worse off. It is the figure that is guarded here, not the query.
+ *
+ * <p>Nothing here needed a rule of its own to be written. What an anniversary pays is worked out
+ * from what is still in the deposit at that moment, so a deposit drawn down to nothing is worth
+ * nothing on the anniversaries that follow, and a payment already made is a row nobody rewrites.
+ * This test exists so that ceasing to be true would fail something.
+ *
+ * <p>Its own application and its own database, for the reason {@link AnApplicationWithAClockToMove}
+ * gives and then some: this test winds the clock past two anniversaries.
+ */
+class EmptyingADepositForfeitsOnlyTheAnniversaryItDidNotReachApiTest extends ApiIntegrationTest {
+
+    /** The job by the name a trainer types into the development jobs endpoint. */
+    private static final String THE_LOYALTY_SWEEP = "payLoyaltyBonuses";
+
+    /** The sweep that ends points twelve months old, by the same name a trainer types. */
+    private static final String THE_EXPIRY_SWEEP = "expireOldPoints";
+
+    /** A month in: comfortably inside the twelve months, so what the money did not do is stay. */
+    private static final int DAYS_WELL_INSIDE_THE_YEAR = 30;
+
+    /**
+     * A fortnight past a year. Comfortably the far side of the first anniversary whatever day of
+     * whatever month the run happens on, and comfortably short of the second.
+     */
+    private static final int DAYS_WELL_PAST_A_YEAR = 379;
+
+    /** A fortnight past two years, on the same reasoning, so the second anniversary has arrived. */
+    private static final int DAYS_WELL_PAST_TWO_YEARS = 744;
+
+    private static AnApplicationWithAClockToMove app;
+
+    @BeforeAll
+    static void startAnApplicationWhoseYearsThisTestMovesOn() {
+        app = new AnApplicationWithAClockToMove(
+                aDatabaseFileThatDoesNotExistYet("saving-streak-emptying-forfeits-one-anniversary"));
+    }
+
+    @AfterAll
+    static void stopTheApplication() {
+        if (app != null) {
+            app.close();
+        }
+    }
+
+    @Test
+    void an_anniversary_the_money_did_not_reach_pays_nothing_and_one_it_did_stands() {
+        long leftAlone = app.savingsAccountOf(ANKE);
+        long emptiedEarly = app.otherSavingsAccountOf(ANKE);
+
+        // Two deposits alike in everything but what happens to them next, so that the only thing
+        // this test can be measuring is when the money left.
+        DepositView stays = app.deposit(leftAlone, ANKE, "500.00");
+        DepositView goes = app.deposit(emptiedEarly, ANKE, "500.00");
+        // Read off the deposit's own moment rather than off the clock beside it: the expiry date
+        // asserted at the end of this test is derived from exactly this instant, and a clock read
+        // taken separately can fall on the other side of a Brussels midnight from the deposit and
+        // put the expected day out by one for a reason that has nothing to do with loyalty.
+        LocalDate paidInOn = stays.depositedAt()
+                .atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate();
+        assertThat(stays.pointsEarned()).isEqualTo(500);
+        assertThat(goes.pointsEarned()).isEqualTo(500);
+        assertThat(app.pointsBalanceOf(ANKE)).isEqualTo(1000);
+
+        // One of them is emptied a month in, which is the forfeit being set up: this money will not
+        // be there when its anniversary is judged.
+        app.daysPass(DAYS_WELL_INSIDE_THE_YEAR);
+        app.withdraw(emptiedEarly, ANKE, "500.00");
+        assertThat(app.balancesOf(emptiedEarly).moneyBalance())
+                .as("nothing is left in it, and nothing ever comes back into a deposit")
+                .isEqualByComparingTo("0.00");
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("what a deposit earned on the day it landed is not taken back by a withdrawal")
+                .isEqualTo(1000);
+
+        // The far side of both deposits' first anniversary. One of them still holds its money.
+        app.daysPass(DAYS_WELL_PAST_A_YEAR - DAYS_WELL_INSIDE_THE_YEAR);
+
+        app.runJob(THE_LOYALTY_SWEEP);
+
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("a tenth of the 500 euros that stayed, and nothing at all for the 500 that left "
+                        + "— a sweep reading each deposit's original 500 rather than what is "
+                        + "left in it would be 100 here, not 50")
+                .isEqualTo(1000 + 50);
+
+        // And now the second one is emptied too, the moment after being paid — the clock does not
+        // move between that sweep and this withdrawal. That order is the load-bearing fact here:
+        // swept first, so the deposit still held its money when the anniversary was judged, and
+        // emptied afterwards. This is the half of the rule that says a bonus already paid is the
+        // customer's: the money going does not unmake the year it stayed for.
+        app.withdraw(leftAlone, ANKE, "500.00");
+        assertThat(app.balancesOf(leftAlone).moneyBalance()).isEqualByComparingTo("0.00");
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("the withdrawal takes back none of the 50 the anniversary paid")
+                .isEqualTo(1000 + 50);
+
+        // Nor does a sweep run after the money left find anything to undo. Both deposits hold
+        // nothing by now, so DepositRepository.stillHoldingMoneyThatLandedBefore leaves them out
+        // and this sweep considers no deposit at all: there is nothing here for it to pay and
+        // nothing for it to take back, which is the outcome the withdrawal has to leave behind.
+        // That an anniversary already paid is not paid a second time is a different rule and is
+        // guarded where the sweep can still see the deposit — ticket 01's
+        // AnAnniversaryPaysATenthOfTheDepositsEurosApiTest, which sweeps the same anniversary
+        // twice with the money still in it.
+        app.runJob(THE_LOYALTY_SWEEP);
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("a sweep with no deposit left to look at pays nothing and claws nothing back")
+                .isEqualTo(1000 + 50);
+
+        // The batch that past anniversary paid survives the withdrawal untouched — at the figure it
+        // was paid and at the moment it was earned. Both are read here through the expiry report,
+        // which is the only place this seam says either out loud: ending the two year-old batches
+        // the deposits earned on the day they landed leaves exactly the bonus behind, and what is
+        // then reported as going next is its own 50 points, dated twelve months after the
+        // anniversary rather than twelve months after the withdrawal. The euros the anniversary was
+        // worked out from are recorded too, but nothing serves them yet; the deposit's own loyalty
+        // figures arrive in ticket 04, and asserting on them belongs there.
+        app.runJob(THE_EXPIRY_SWEEP);
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("the points the deposits earned when they landed have reached twelve months; the "
+                        + "bonus was earned a year later and has not")
+                .isEqualTo(50);
+        assertThat(app.pointsExpiringNextOf(ANKE))
+                .as("the bonus the first anniversary paid, still the figure it was paid at")
+                .isEqualTo(50);
+        assertThat(app.pointsExpiringNextOnOf(ANKE))
+                .as("twelve months after the anniversary that paid it, which is two years after the "
+                        + "money landed — so the moment it was earned at is unchanged by the "
+                        + "withdrawal")
+                .isEqualTo(paidInOn.plusYears(2));
+
+        // The second anniversary of a deposit holding nothing. This is the forfeit for a second
+        // time, and the last word on how far it reaches: the coming year, never a year already
+        // served.
+        app.daysPass(DAYS_WELL_PAST_TWO_YEARS - DAYS_WELL_PAST_A_YEAR);
+
+        app.runJob(THE_LOYALTY_SWEEP);
+
+        assertThat(app.pointsBalanceOf(ANKE))
+                .as("neither emptied deposit pays a second anniversary, and the first anniversary's "
+                        + "50 are still the customer's")
+                .isEqualTo(50);
+    }
+}

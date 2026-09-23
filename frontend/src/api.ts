@@ -224,12 +224,38 @@ export type SavingsAccountBalances = {
 }
 
 /**
- * A deposit that was made, and what it earned when it was made.
+ * A deposit that was made, what it has earned since, and when it next pays.
  *
  * <p>`pointsEarned` is everything it earned however it earned it, which is what it has always meant:
- * `basePoints` and `streakBonusPoints` are the two parts of that figure and always add up to it, so
- * nine points against a seven-euro deposit is an arithmetic a customer can check rather than a number
- * they have to take on trust.
+ * `basePoints`, `streakBonusPoints` and `loyaltyBonusPoints` are the three parts of that figure and
+ * always add up to it, so nine points against a seven-euro deposit is an arithmetic a customer can
+ * check rather than a number they have to take on trust.
+ *
+ * <p>`loyaltyBonusPoints` is every anniversary this deposit has been paid, added up. It is the one
+ * figure here that grows after the money moved — a deposit left alone is paid a tenth of its euros
+ * again every twelve months — so the total answers "what has this deposit been worth to me" while
+ * the base and the streak bonus still answer "what did it earn when it landed", unchanged.
+ *
+ * <p>`nextAnniversaryOn` and `nextAnniversaryPoints` are the promise rather than the record: the day
+ * this deposit next pays, and what that day is worth at what the deposit holds today. Three states,
+ * and the page draws each of them differently because they say different things:
+ *
+ * - both `null`, and only ever together: the deposit has been emptied, and money that has gone has
+ *   no anniversary left to reach. There is no promise to make, so the page makes none.
+ * - a date with `0`: the deposit is still holding money, but under ten euros of it — a tenth of nine
+ *   euros rounds down to nothing. The date is real and the figure is honest, which is a different
+ *   statement from having no anniversary at all.
+ * - a date with a figure: what leaving the money alone pays on that day, and what taking it out
+ *   would cost. The figure falls when the customer withdraws from the deposit.
+ *
+ * <p>The date is the day this deposit next *pays*, which is not always the next date its calendar
+ * reaches: between an anniversary falling and the overnight sweep paying it, the day reported is the
+ * one just gone. A date in the past here means a bonus is owed and coming — under a day of it in
+ * normal running, and arbitrarily long on a clock a trainer has wound forward without sweeping. That
+ * is why the page never writes the word "next" in front of it and says "due" instead, which is true
+ * on either side of the date and needs no opinion about what day it is today. This page has no such
+ * opinion and wants none: the clock this promise is kept by is the application's, and the browser's
+ * would disagree with it by years on a demonstration.
  *
  * <p>`multiplierApplied` is the rate this deposit was in fact paid at, decided when the money moved
  * and never worked out again. Not the rate on `SavingsAccountBalances`, which is what the *next*
@@ -242,8 +268,13 @@ export type RecordedDeposit = {
   pointsEarned: number
   basePoints: number
   streakBonusPoints: number
+  loyaltyBonusPoints: number
   multiplierApplied: number
   depositedAt: string
+  /** A plain `YYYY-MM-DD`, as the backend's own zone read it. Null exactly when the deposit is empty. */
+  nextAnniversaryOn: string | null
+  /** Null exactly when `nextAnniversaryOn` is, and `0` for a deposit holding under ten euros. */
+  nextAnniversaryPoints: number | null
 }
 
 /** Money returned from savings to a current account, newest first when read as history. */
