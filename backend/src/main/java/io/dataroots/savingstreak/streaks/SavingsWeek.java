@@ -46,9 +46,18 @@ public record SavingsWeek(LocalDate startsOn) {
      * instant on its own does not answer it.
      */
     public static SavingsWeek containing(Instant moment) {
-        return new SavingsWeek(moment.atZone(ZONE_WEEKS_ARE_COUNTED_IN)
-                .toLocalDate()
-                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
+        return containing(moment.atZone(ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate());
+    }
+
+    /**
+     * The week a given day falls in, for a caller that already holds a day rather than a moment.
+     *
+     * <p>No zone is applied, deliberately. A {@link LocalDate} is already the answer to "which day
+     * is it, where somebody is standing"; whoever worked it out read the zone above to get it, and
+     * reading one again here would be converting a day that has no time of day to convert.
+     */
+    public static SavingsWeek containing(LocalDate day) {
+        return new SavingsWeek(day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
     }
 
     /** The Sunday the week ends on, for saying which week this is rather than for comparing against. */

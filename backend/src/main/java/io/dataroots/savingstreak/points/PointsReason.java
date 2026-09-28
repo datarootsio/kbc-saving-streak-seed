@@ -60,5 +60,68 @@ public enum PointsReason {
      * number of points, the gift that caused them, and the moment they were originally earned —
      * the same three things a loyalty bonus arrives with.
      */
-    GIFT_RECEIVED
+    GIFT_RECEIVED,
+
+    /**
+     * What a rung of a challenge paid for being reached. The customer took something on, their
+     * saving carried them past a threshold that challenge named, and the points the threshold is
+     * worth were credited once and for good.
+     *
+     * <p>Pointedly not one of the reasons a deposit can have earned under, and that absence is the
+     * whole of what keeps this reason out of every existing figure — the same argument {@link
+     * #GIFT_RECEIVED} makes, for a closely related reason. A rung is not paid for by a deposit: it
+     * is paid for by a reading over the whole of somebody's saving clearing a mark, and one deposit
+     * may clear three rungs at once while the next clears none. So no deposit's breakdown grows a
+     * field, nothing a deposit says it earned changes, and a batch credited under this reason
+     * references an award rather than a deposit.
+     *
+     * <p>Which rung of which challenge, when, and what reading won it is the Challenges module's
+     * record. The award is written down before these points are credited and is never revoked,
+     * never re-priced and never deleted afterwards, whatever becomes of the money or of the batch
+     * this reason wrote. What arrives here is a number of points, the award that caused them, and
+     * the moment they were earned — the same three things a loyalty bonus and a gift arrive with.
+     *
+     * <p>And nothing else about them is special, which is the whole point of crediting them this
+     * way. They are an ordinary dated batch: gone twelve months after the moment given, spent
+     * oldest-first alongside every other batch, counted in what the customer is told goes next,
+     * giftable, and good for anything in the catalogue. A challenge pays in a currency the customer
+     * already understands, and this ledger did not have to learn a second kind of point in order to
+     * let it.
+     */
+    CHALLENGE_REWARD,
+
+    /**
+     * Points handed back because an administrator revoked the voucher they had paid for.
+     *
+     * <p><strong>A fresh batch under a new reason, and never the batches that were spent put
+     * back.</strong> That is the whole decision this reason exists to record, and it is worth
+     * reading as a refusal of the obvious alternative. Spending goes oldest-first, so the points
+     * a claim took came out of the batches nearest their own twelve months; by the time somebody
+     * notices a claim should never have been made, some of those batches may have expired, and
+     * topping a dead batch back up would put points somewhere they can never be spent from while
+     * reporting a balance that says they can. A refund that cannot be spent is worse than no
+     * refund, because only one of the two is visible. So the points arrive the way every other
+     * kind of point has ever arrived in this ledger — through the one door, as a dated batch,
+     * under a reason of its own — which is the pattern {@link #GIFT_RECEIVED} and
+     * {@link #CHALLENGE_REWARD} already set.
+     *
+     * <p><strong>The moment is the cancellation and not the earning behind it</strong>, which is
+     * the one place this reason differs from a gift. A gift inherits its date so that passing
+     * points back and forth cannot keep them alive for ever; a refund has nobody to pass to and
+     * nothing to keep alive. What it has is a customer who is being given back something they
+     * never got the use of, and dating the batch at the mistake rather than at their original
+     * deposit is what makes the refund worth what a refund should be worth: twelve months of its
+     * own, from today.
+     *
+     * <p>Pointedly not one of the reasons a deposit can have earned under, like the two reasons
+     * above it and for the same argument: no deposit earned these, so no deposit's breakdown
+     * grows a field and nothing a deposit says it earned changes. The reference is the claim that
+     * was cancelled — the only thing that says which voucher these points came back from.
+     *
+     * <p>An expiry is not here and never will be. A voucher that outlived its shelf life refunds
+     * nothing, because a deadline somebody is refunded for is not a deadline; that the two ends
+     * of a voucher's life are different states is exactly so that only one of them can reach this
+     * reason.
+     */
+    REDEMPTION_CANCELLED
 }

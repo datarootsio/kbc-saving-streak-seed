@@ -16,8 +16,18 @@ import java.util.Optional;
  * <p>It answers with the reason rather than refusing, because who refuses differs: Deposits raises a
  * {@link DepositRefused} and Withdrawals a {@link WithdrawalRefused}, and the web layer gives each
  * its status. This class owns the rule and the words for it, and decides nothing else.
+ *
+ * <p><strong>Public, although it lives in Deposits.</strong> It started package-private, and was
+ * widened when the Goals module needed to say the same thing about a goal's target: a target is an
+ * amount of money, so "more than zero, at most two decimal places" is the same rule and deserves the
+ * same sentence. Copying it into Goals is exactly the drift this class exists to prevent — the
+ * paragraph above is the argument, and it does not stop at the package boundary. It is safe to widen
+ * because there is nothing of Deposits in it: no repository, no entity, no state, nothing but a
+ * BigDecimal and two sentences, in the shape {@code AccountsService}'s own static sentences already
+ * set for a form of words several modules have to share. A module that called this is not reading
+ * Deposits; it is quoting a rule.
  */
-final class AmountOfMoney {
+public final class AmountOfMoney {
 
     /** Euros are quoted to the cent, so an amount carrying more places than this is not one. */
     static final int DECIMAL_PLACES = 2;
@@ -32,13 +42,28 @@ final class AmountOfMoney {
      * @param movement what the person was trying to do, so the sentence names it back to them —
      *                 "deposit" or "withdrawal"
      */
-    static Optional<String> whyItIsNotOne(String movement, BigDecimal amount) {
+    public static Optional<String> whyItIsNotOne(String movement, BigDecimal amount) {
         if (amount.signum() <= 0) {
             return Optional.of("A " + movement + " has to be an amount of more than zero, and "
                     + amount.toPlainString() + " is not.");
         }
-        // Refused rather than rounded. Rounding would move an amount nobody typed, and a bank that
-        // quietly decides what a figure was meant to say is worse than one that asks.
+        return whyItIsNotQuotedToTheCent(amount);
+    }
+
+    /**
+     * The second half of that rule on its own: whether the figure is quoted the way money is, said
+     * in the same sentence whoever asked the whole question would have got.
+     *
+     * <p>Split out for the one caller whose figure is not a movement of money and so is allowed to
+     * be nothing — a saving rule's sweep floor, where "everything above 0.00" is a customer asking
+     * for the account to be emptied. Only the objection to zero has to be skipped there; how finely
+     * the figure is quoted is still a fair question, and asking it through this rather than writing
+     * it out again is what keeps one wording for it.
+     *
+     * <p>Refused rather than rounded. Rounding would move an amount nobody typed, and a bank that
+     * quietly decides what a figure was meant to say is worse than one that asks.
+     */
+    public static Optional<String> whyItIsNotQuotedToTheCent(BigDecimal amount) {
         if (amount.scale() > DECIMAL_PLACES) {
             return Optional.of("An amount of money has at most two decimal places, and "
                     + amount.toPlainString() + " has " + amount.scale() + ".");
@@ -57,7 +82,7 @@ final class AmountOfMoney {
      * does by value rather than by how many places it is carrying, or formatted by whoever displays
      * it.
      */
-    static String asMoney(BigDecimal amount) {
+    public static String asMoney(BigDecimal amount) {
         return quotedToTheCent(amount).toPlainString();
     }
 
@@ -66,7 +91,7 @@ final class AmountOfMoney {
      * to print or to add up. The rounding lives here alone: two places that decided how many places
      * money has could decide differently.
      */
-    static BigDecimal quotedToTheCent(BigDecimal amount) {
+    public static BigDecimal quotedToTheCent(BigDecimal amount) {
         return amount.setScale(DECIMAL_PLACES, RoundingMode.HALF_UP);
     }
 }

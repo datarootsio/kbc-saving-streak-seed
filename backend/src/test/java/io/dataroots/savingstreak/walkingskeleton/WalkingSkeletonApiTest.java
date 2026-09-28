@@ -37,7 +37,14 @@ class WalkingSkeletonApiTest extends ApiIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody())
                 .extracting(CustomerView::name)
-                .containsExactlyInAnyOrderElementsOf(SEEDED_CUSTOMERS);
+                // Each seeded name once, rather than the list being those two and nothing else.
+                // This run shares one database and a test that opens a customer has every right to,
+                // so "who else is in here" is not this test's business — but "the seeded pair is
+                // here, and neither of them twice" still is, and that is the whole of what this
+                // test was ever asserting about seeding. The first-start test below keeps the
+                // exact form, because a database nobody else has touched is the one place it is
+                // still true.
+                .containsOnlyOnceElementsOf(SEEDED_CUSTOMERS);
     }
 
     @Test
@@ -67,7 +74,11 @@ class WalkingSkeletonApiTest extends ApiIntegrationTest {
         try (ConfigurableApplicationContext restart = startApplicationAgainst(databaseFile())) {
             assertThat(customersServedBy(restart))
                     .extracting(CustomerView::name)
-                    .containsExactlyInAnyOrderElementsOf(SEEDED_CUSTOMERS);
+                    // Once each is the assertion this test is named after, and it survives the
+                    // shared database intact: a restart that re-seeded would put a second "Anke
+                    // Peeters" in the list, and that is exactly what this fails on. Customers any
+                    // other test opened are somebody else's rows and are not duplicates of these.
+                    .containsOnlyOnceElementsOf(SEEDED_CUSTOMERS);
         }
     }
 

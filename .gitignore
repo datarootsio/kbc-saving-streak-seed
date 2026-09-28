@@ -30,3 +30,4 @@ data/*.db-shm
 # macOS Finder metadata. Machine-local and recreated whenever Finder looks at a directory;
 # left untracked it trips the clean-working-tree gate that every ticket branch switch needs.
 .DS_Store
+.claude/worktrees/

@@ -1,5 +1,6 @@
 package io.dataroots.savingstreak.points;
 
+import java.time.Instant;
 import java.util.List;
 
 import io.dataroots.savingstreak.accounts.AccountHolder;
@@ -32,12 +33,33 @@ import org.springframework.stereotype.Component;
  * repo has migrations that gap is filled here, where it is a statement with its reason next to it
  * rather than a surprise in a balance.
  *
+ * <p><strong>And every batch is stamped with the moment it expires.</strong> A batch used to be told
+ * every night how long it had left, against a constant; it is now stamped when it is earned, and the
+ * sweep reads the stamp. Every batch written before that release has no stamp, and a sweep that
+ * found one would have to either skip it for ever or make the figure up — so each of them is given
+ * the twelve months it already has. That is exactly what those rows compute today, so nothing moves,
+ * nothing expires early, and the first sweep after the upgrade does precisely what the last sweep
+ * before it did.
+ *
  * <p>Runs on every start, and is written so that all but the first do nothing.
  */
 @Component
 class PointsOnStartUp implements SmartInitializingSingleton {
 
     private static final Logger log = LoggerFactory.getLogger(PointsOnStartUp.class);
+
+    /**
+     * The lifetime every batch written before this release was promised, in months.
+     *
+     * <p><strong>The literal twelve, and deliberately not the scheme's figure.</strong> These rows
+     * were credited by code that added twelve months to the moment they were earned, every night,
+     * against a constant — so twelve months is what they have been computing and twelve months is
+     * what their owners were told. The scheme's version 1 says the same thing today, which is why
+     * nothing moves either way; but reading it from there would make this pass a statement about
+     * what the scheme happens to say rather than about what these particular rows were promised, and
+     * the whole reason the stamp exists is that those two can come apart.
+     */
+    private static final int THE_TWELVE_MONTHS_EVERY_EXISTING_BATCH_WAS_PROMISED = 12;
 
     private final PointsCreditRepository credits;
     private final AccountsService accounts;
@@ -58,6 +80,55 @@ class PointsOnStartUp implements SmartInitializingSingleton {
      */
     @Override
     public void afterSingletonsInstantiated() {
+        giveEveryBatchToTheCustomerWhoHoldsTheAccountThatEarnedIt();
+        stampEveryBatchWithTheTwelveMonthsItWasPromised();
+    }
+
+    /**
+     * Writes onto every unstamped batch the moment twelve months after it was earned.
+     *
+     * <p>A floor and never a reset, like every other start-up pass in this application: only the
+     * batches with no stamp are touched, so a start after the first finds nothing to do, and a stamp
+     * that is already there is never argued with. That last part is what makes the column worth
+     * having — a pass that corrected what it found would give every batch whatever the current rule
+     * says each morning, which is the nightly recomputation this ticket removed, moved to a worse
+     * hour.
+     *
+     * <p>Every batch, including the ones already spent to nothing and the ones already swept. Their
+     * stamps will never be read, but a column that is null on some rows and filled on others is a
+     * column the next reader has to have the history of a release explained to them.
+     *
+     * <p>The rule is applied rather than the months added here, so that twelve calendar months means
+     * in this pass exactly what it means in a credit — including the clamp that puts a batch earned
+     * on 29 February onto the 28th.
+     */
+    private void stampEveryBatchWithTheTwelveMonthsItWasPromised() {
+        List<PointsCredit> unstamped = credits.batchesNotYetCarryingWhenTheyExpire();
+        if (unstamped.isEmpty()) {
+            // The ordinary case, and worth a line all the same: it says the question was asked, so
+            // that a sweep that took nothing is not blamed on a step nobody can see.
+            log.debug("every batch of points already carries the moment it expires batches=0");
+            return;
+        }
+        int stamped = 0;
+        for (PointsCredit batch : unstamped) {
+            Instant promised = PointsExpiry.anniversaryOf(batch.getEarnedAt(),
+                    THE_TWELVE_MONTHS_EVERY_EXISTING_BATCH_WAS_PROMISED);
+            if (batch.stampExpiringAt(promised)) {
+                stamped++;
+            }
+        }
+        credits.saveAll(unstamped);
+        log.info("points credited before this release stamped with the twelve months they were "
+                        + "promised batches={} months={}",
+                stamped, THE_TWELVE_MONTHS_EVERY_EXISTING_BATCH_WAS_PROMISED);
+    }
+
+    /**
+     * Hands every batch credited before points belonged to a customer to whoever holds the savings
+     * account that earned it, and then takes the old column away.
+     */
+    private void giveEveryBatchToTheCustomerWhoHoldsTheAccountThatEarnedIt() {
         if (credits.batchesStillNameTheSavingsAccountTheyWereEarnedIn() == 0) {
             // The ordinary case, and worth a line all the same: it says the question was asked, so
             // that a balance that looks wrong on a restart is not blamed on a step nobody can see.

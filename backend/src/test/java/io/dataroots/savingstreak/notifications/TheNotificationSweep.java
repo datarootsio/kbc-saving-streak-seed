@@ -47,7 +47,11 @@ final class TheNotificationSweep {
     List<RaisedNotification> whatWasSaidAbout(long savingsAccountId, String customerName) {
         return app.theApplicationsOwn(NotificationsService.class)
                 .notificationsOf(app.customerIdOf(customerName)).stream()
-                .filter(raised -> savingsAccountId == raised.savingsAccountId())
+                // Null-safe, and not defensively: two of the reasons are about a current account
+                // and carry no savings account at all, so an unguarded unboxing here would throw
+                // the day a test's customer happened to miss a bill.
+                .filter(raised -> raised.savingsAccountId() != null
+                        && savingsAccountId == raised.savingsAccountId())
                 .toList();
     }
 
@@ -65,6 +69,22 @@ final class TheNotificationSweep {
         return whatWasSaidAbout(savingsAccountId, customerName).stream()
                 .filter(raised -> NotificationReason.THE_ANNIVERSARY_REASONS
                         .contains(raised.reason()))
+                .toList();
+    }
+
+    /**
+     * Only what was said about one savings account's balance and the rungs it has climbed or lost,
+     * newest first.
+     *
+     * <p>Separate from the read above for the reason the anniversary read gives, and one more of its
+     * own: a test that winds the clock across a Monday to bring a new version of the scheme into
+     * force has moved the calendar as well as the figures, and a maturity or an anniversary that
+     * came within its window on the way past is not a row that test is about.
+     */
+    List<RaisedNotification> whatWasSaidAboutTheBalanceOf(long savingsAccountId,
+                                                          String customerName) {
+        return whatWasSaidAbout(savingsAccountId, customerName).stream()
+                .filter(raised -> NotificationReason.THE_BALANCE_REASONS.contains(raised.reason()))
                 .toList();
     }
 

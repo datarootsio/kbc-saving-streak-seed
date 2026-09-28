@@ -1,15 +1,19 @@
 package io.dataroots.savingstreak.support;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestClientException;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Finds the seeded customers' accounts over the API, so that a test about depositing can start from
@@ -61,6 +65,56 @@ public class SeededAccounts {
      */
     public long pointsBalanceOf(String customerName) {
         return accountsOf(customerName).pointsBalance();
+    }
+
+    /**
+     * The most the customer has ever had in savings: the mark their next deposit is judged against.
+     * Read off the overview, which is where the figure belongs — the mark runs against everything
+     * they hold rather than against any one account.
+     */
+    public BigDecimal mostEverSavedOf(String customerName) {
+        return accountsOf(customerName).mostEverSaved();
+    }
+
+    /**
+     * Everything the customer currently holds in savings, across every account of theirs.
+     *
+     * <p>Summed here rather than asked for, because no endpoint answers it: the mark is the
+     * customer's and the balances are their accounts', and putting the two side by side is what says
+     * how far below their best they are.
+     */
+    public BigDecimal stillSavedBy(String customerName) {
+        return accountsOf(customerName).savingsAccounts().stream()
+                .map(SavingsAccountView::moneyBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Pays in whatever it takes to put the customer's savings back at the most they have ever held,
+     * and answers nothing, because a test that calls this is not measuring it.
+     *
+     * <p>Tests share one database, and an earlier test that withdrew leaves the next deposit filling
+     * a gap rather than saving anything new — which earns nothing, and rightly. A test measuring
+     * what a deposit earns has to start from savings at their peak, or it is measuring the order the
+     * test classes happened to run in.
+     *
+     * <p>Nothing at all is paid in for a customer already at their peak, which is the ordinary case:
+     * a deposit of nothing is refused, and rightly, so it is not made.
+     */
+    public void savingsBackAtTheirPeak(long savingsAccountId, String customerName) {
+        BigDecimal gap = mostEverSavedOf(customerName).subtract(stillSavedBy(customerName));
+        if (gap.signum() <= 0) {
+            return;
+        }
+        ResponseEntity<String> filled = http.postForEntity(
+                "/api/savings-accounts/{id}/deposits",
+                Map.of("amount", gap.setScale(2, RoundingMode.HALF_UP).toPlainString(),
+                        "fromCurrentAccountId", currentAccountOf(customerName)),
+                String.class, savingsAccountId);
+        assertThat(filled.getStatusCode())
+                .describedAs("topping " + customerName + "'s savings back up to EUR "
+                        + mostEverSavedOf(customerName) + " before measuring what a deposit earns")
+                .isEqualTo(HttpStatus.CREATED);
     }
 
     public long currentAccountOf(String customerName) {
@@ -122,8 +176,16 @@ public class SeededAccounts {
                 .orElse(0L) + 1;
     }
 
+    /**
+     * Walks every customer rather than only the seeded two, because a customer added by a test is
+     * a customer whose accounts are numbered above theirs. Asking the seeded pair alone would
+     * answer with an identifier that an added customer's account already holds, and the test that
+     * asked for one no account has would quietly be handed one that exists — a failure in whichever
+     * test happened to run second, about a row it never created.
+     */
     private long oneMoreThanTheHighestOf(Function<String, List<Long>> accountsOfCustomer) {
-        return Stream.of(ANKE, BRAM)
+        return Arrays.stream(read("/api/customers", CustomerView[].class))
+                .map(CustomerView::name)
                 .flatMap(customer -> accountsOfCustomer.apply(customer).stream())
                 .mapToLong(Long::longValue)
                 .max()
@@ -173,7 +235,8 @@ public class SeededAccounts {
     record CustomerView(Long id, String name, String contactDetails) {
     }
 
-    record AccountsView(long pointsBalance, Long pointsExpiringNext, LocalDate pointsExpiringNextOn,
+    record AccountsView(long pointsBalance, BigDecimal mostEverSaved,
+                        Long pointsExpiringNext, LocalDate pointsExpiringNextOn,
                         List<CurrentAccountView> currentAccounts,
                         List<SavingsAccountView> savingsAccounts) {
     }

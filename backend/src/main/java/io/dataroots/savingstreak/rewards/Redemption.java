@@ -2,6 +2,7 @@ package io.dataroots.savingstreak.rewards;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.LocalDate;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,8 +52,40 @@ class Redemption {
      */
     private Long customerId;
 
-    @Enumerated(EnumType.STRING)
-    private Reward reward;
+    /**
+     * The code of the reward that was claimed, as text.
+     *
+     * <p>Text rather than the enum it used to be, in the column that enum was already stored in and
+     * under the name it already had. That is deliberate and it is the whole storage argument of this
+     * step: {@code @Enumerated(STRING)} wrote the constant's name into a {@code varchar}, so a
+     * string writes exactly the same characters into exactly the same column, and SQLite sees no
+     * change to make. Every voucher in every database already out there goes on reading as the
+     * reward it was issued for, and the set of columns a claim fills — which
+     * {@link RedemptionTable} drops anything missing from — is untouched.
+     *
+     * <p>It is also the only shape a catalogue this module does not know at compile time can be
+     * stored in. An enum column can hold four things forever; a code column holds whatever the
+     * catalogue says, which is what a catalogue somebody runs requires of it.
+     */
+    private String reward;
+
+    /**
+     * What the offer was called on the day it was claimed, written down rather than looked up.
+     *
+     * <p>The price has always been snapshotted here and the reason is already written above; the
+     * title joins it now for a reason the catalogue has only just acquired. While the catalogue was
+     * four constants, reading a title off it was safe because nothing could ever rename or remove
+     * one. A catalogue somebody runs can do both, and a claim that asked it would answer a customer
+     * with a name nobody used when they bought the thing, or — for a withdrawn offer — with the
+     * bare code. A voucher whose own history rots behind it is worse than a column.
+     *
+     * <p>Nullable in the database, and only there. Schema generation cannot add a {@code not null}
+     * column to a table that already has rows, so a claim written before this release arrives with
+     * nothing in it; {@link RewardsOnStartUp} fills those in from the catalogue before the
+     * application serves a single request, the way the customer column above was filled in, and
+     * nothing that reads this ever sees a null.
+     */
+    private String title;
 
     private long pointsSpent;
 
@@ -66,17 +99,149 @@ class Redemption {
 
     private Instant claimedAt;
 
+    /**
+     * Where the voucher is in its life, and the column that gives it one.
+     *
+     * <p>The argument for the states themselves is on {@link VoucherState}. The argument for a
+     * column is that there is nothing else it could be: whether a voucher has been handed over is
+     * not derivable from anything — no window, no clock and no other row implies it — because it
+     * is a thing a person did at a counter, and the only record of it is the one made when they
+     * did. This application derives what it can, and stores what only happened.
+     *
+     * <p><strong>Nullable in the database, and only there.</strong> SQLite refuses
+     * {@code alter table … add column … not null} with no default, so a claim written before this
+     * release arrives with nothing in it, exactly as the title above did.
+     * {@link RewardsOnStartUp} writes {@code ISSUED} onto every one of them before the application
+     * serves a single request — which is the truth about all of them, since a voucher that could
+     * not be used, expired or cancelled has been doing nothing but existing — and nothing that
+     * reads this ever sees a null. A default on the column was the alternative and was not taken:
+     * a default is a promise the schema keeps making to every future insert, and this one is only
+     * true of the rows that are already there.
+     */
+    @Enumerated(EnumType.STRING)
+    private VoucherState voucherState;
+
+    /**
+     * The moment somebody at a counter pressed the button, and null while nobody has.
+     *
+     * <p>Beside the state rather than derived from it, because "used" and "used at half past four
+     * on Tuesday" are what the two people at the counter each need: the customer's own history
+     * shows the day, and the refusal a second attempt gets quotes it back, which is the whole of
+     * what stops one code being spent twice and being argued about afterwards.
+     */
+    private Instant usedAt;
+
+    /**
+     * Which counter took it, as free text, and null while nobody has.
+     *
+     * <p>Free text and not a reference to anything. There is no staff module, no list of branches
+     * and nothing that authenticates whoever is holding the screen — the counter surface says so in
+     * its own javadoc — so a foreign key here would be inventing a directory in order to look
+     * rigorous. What it is for is attribution: a voucher marked used by nobody is a redemption
+     * nobody can ask about, and a typed name is the difference between an auditable record and a
+     * timestamp.
+     */
+    private String usedByCounter;
+
+    /**
+     * The last day this voucher is good, and null when the offer it came from gave it no shelf
+     * life — which is every voucher this application had issued before this release.
+     *
+     * <p><strong>Written down at the moment of the claim rather than worked out when the voucher
+     * is read.</strong> That is a departure from the line this application otherwise holds — a
+     * points balance is a sum over unexpired batches, a goal's status is computed, an offer's
+     * window is derived — and it is the right one here for a reason the derived answers do not
+     * have: the shelf life lives on the offer, and an offer is a row somebody edits. A voucher
+     * that asked the catalogue how long it had would change its own deadline the afternoon an
+     * administrator changed the number, in either direction, for a code already in somebody's
+     * pocket. What a customer was promised when they spent their points is a fact about what
+     * happened, and it belongs beside the price they paid and the title they bought — which are
+     * both on this row for exactly the same argument, written out above.
+     *
+     * <p>The consequence is deliberate and is the rail this whole slice rests on: a voucher issued
+     * from an offer that named no shelf life has nothing in this column, so the sweep cannot see
+     * it whatever the clock says, and a shelf life added to that offer tomorrow does not reach
+     * back and retire it. Vouchers already out there go on meaning exactly what they meant.
+     *
+     * <p>A date rather than a moment, for the reason argued on {@link VoucherShelfLife}: it is a
+     * day the customer is told, and the last day the voucher is good rather than the first day it
+     * is not.
+     *
+     * <p>Nullable in the database and null in the domain, and here those are the same thing for
+     * once — unlike the title and the state above, where the null is a migration artefact that a
+     * start-up backfill removes. There is nothing to backfill: no shelf life is the honest and
+     * permanent answer for every claim ever written before this release, and for every claim
+     * against the four seeded offers after it. {@link RedemptionTable} has been told about the
+     * column on the same day all the same, which is the coupling that component's javadoc asks
+     * for.
+     */
+    private LocalDate expiresOn;
+
+    /**
+     * The moment an administrator revoked the voucher, and null while nobody has.
+     *
+     * <p>Beside the reason rather than derived from anything, because there is nothing to derive
+     * it from: a cancellation is a thing a person decided, at a time, and the only record of it
+     * is the one made when they did.
+     *
+     * <p><strong>A moment is recorded here although {@link #ranOut} records none, and the
+     * asymmetry is deliberate rather than an oversight to be tidied up.</strong> A voucher that
+     * expired already carries the day it expired — {@link #expiresOn}, written when it was issued
+     * and promised to the customer then — so a second date saying which night the sweep got round
+     * to it would be recording the job's timekeeping rather than the voucher's, and would be a
+     * date to explain to anybody who noticed the two differed. A cancellation has no such day
+     * anywhere: nothing about the claim predicts when somebody will notice it was a mistake. The
+     * customer is owed the date, because the points came back on it and they will be looking for
+     * both together.
+     *
+     * <p>Nullable in the database and null in the domain, and here those are the same thing:
+     * a voucher nobody cancelled has no moment of cancellation, which is true of every voucher
+     * this application has ever issued. There is nothing to backfill and
+     * {@link RewardsOnStartUp} is deliberately not asked to invent anything.
+     */
+    private Instant cancelledAt;
+
+    /**
+     * Why it was revoked, in whoever ran the scheme's own words, and null while nobody has.
+     *
+     * <p><strong>Required at the moment of the cancellation and stored for good.</strong> "So
+     * that a mistake can be undone <em>and explained</em>" is the whole of what this column is
+     * for: a claim that vanished with no sentence attached is a customer whose voucher stopped
+     * working and a scheme with nothing to tell them. There is no audit of administrative actions
+     * anywhere in this application, so this is not one record among several — it is the only one.
+     *
+     * <p>Free text, and not a code from a list. What went wrong with a claim is not a closed set:
+     * it is a duplicate, a test, somebody's finger, a reward that could not be fulfilled after
+     * all. A vocabulary would have to grow a value every time the scheme met a new kind of
+     * mistake, and an "other" in it would be this column with extra steps.
+     *
+     * <p>Nullable in the database, and only there — SQLite refuses
+     * {@code alter table … add column … not null} with no default, so a claim written before this
+     * release arrives with nothing in it. Unlike the title and the state, nothing backfills it:
+     * null is the honest and permanent answer for a voucher nobody cancelled, which is every
+     * voucher in every database this application has ever written, and a backfill would have to
+     * invent a sentence nobody said. {@link RedemptionTable} has been told about this column and
+     * the moment beside it on the same day, which is the coupling that component's javadoc asks
+     * for and the thing that stops the next start-up dropping them.
+     */
+    private String cancelledBecause;
+
     protected Redemption() {
         // for JPA
     }
 
-    private Redemption(long customerId, Reward reward, long pointsSpent, String voucherCode,
-                       Instant claimedAt) {
+    private Redemption(long customerId, String reward, String title, long pointsSpent,
+                       String voucherCode, Instant claimedAt, LocalDate expiresOn) {
         this.customerId = customerId;
         this.reward = reward;
+        this.title = title;
         this.pointsSpent = pointsSpent;
         this.voucherCode = voucherCode;
         this.claimedAt = claimedAt;
+        this.expiresOn = expiresOn;
+        // Issued, here rather than anywhere a caller could reach, because there is no other state
+        // a voucher can begin in and nothing outside this class should be able to say otherwise.
+        this.voucherState = VoucherState.ISSUED;
     }
 
     /**
@@ -84,20 +249,193 @@ class Redemption {
      * redemption is instant and final, so a record of a claim without one would be a moment in which
      * the points were gone and the customer had nothing.
      */
-    static Redemption issue(long customerId, Reward reward, long pointsSpent, Instant claimedAt) {
-        return new Redemption(customerId, reward, pointsSpent, aVoucherFor(reward), claimedAt);
+    static Redemption issue(long customerId, String rewardCode, String title, String voucherPrefix,
+                            long pointsSpent, Instant claimedAt, LocalDate expiresOn) {
+        return new Redemption(customerId, rewardCode, title, pointsSpent,
+                aVoucherWithPrefix(voucherPrefix), claimedAt, expiresOn);
     }
 
     /** Something like SS-CIN-7F3K2Q: the scheme, what it is for, and what makes it this one. */
-    private static String aVoucherFor(Reward reward) {
-        StringBuilder voucher = new StringBuilder("SS-").append(reward.voucherPrefix()).append('-');
+    private static String aVoucherWithPrefix(String voucherPrefix) {
+        StringBuilder voucher = new StringBuilder("SS-").append(voucherPrefix).append('-');
         for (int character = 0; character < VOUCHER_CHARACTERS; character++) {
             voucher.append(VOUCHER_ALPHABET.charAt(RANDOM.nextInt(VOUCHER_ALPHABET.length())));
         }
         return voucher.toString();
     }
 
+    /**
+     * The claim as the rest of the application reads it, answered out of itself.
+     *
+     * <p>The title used to be handed in by the service, because a claim kept no title of its own
+     * and the catalogue was a list of constants that could be asked at any time for ever. It is a
+     * column now — the argument is above, beside the column — and the consequence is here: nothing
+     * outside this class needs to know what a claim was for in order to read one out. The claim
+     * that was written down is the claim that comes back, whatever the catalogue has done since.
+     *
+     * <p>{@link RedemptionTable} has been told about the column on the same day, which is the
+     * coupling that component's own javadoc asks for and the thing that stops the next start-up
+     * from dropping it.
+     */
     ClaimedReward asClaimed() {
-        return new ClaimedReward(id, reward, pointsSpent, voucherCode, claimedAt);
+        return new ClaimedReward(id, reward, title, pointsSpent, voucherCode, claimedAt,
+                voucherState, usedAt, usedByCounter, expiresOn, cancelledAt, cancelledBecause);
+    }
+
+    /**
+     * The same claim read from the other side of the counter: what it is for, whose it is, and
+     * whether the person holding it should be given the thing.
+     *
+     * <p>A second reading rather than a second record. Nothing here is stored twice — it is the
+     * one row answering the one other question anybody asks of it — and keeping the two readings
+     * in the same class is what stops a column added for one of them from being invisible to the
+     * other.
+     */
+    AVoucherAtTheCounter atACounter() {
+        return new AVoucherAtTheCounter(voucherCode, reward, title, pointsSpent, customerId,
+                claimedAt, voucherState, usedAt, usedByCounter, expiresOn, cancelledAt,
+                cancelledBecause);
+    }
+
+    String voucherCode() {
+        return voucherCode;
+    }
+
+    /** The code of the offer it was claimed for, for the lines a sweep writes about it. */
+    String reward() {
+        return reward;
+    }
+
+    /** Whose it is, for the same reason: a voucher retired overnight is somebody's voucher. */
+    Long customerId() {
+        return customerId;
+    }
+
+    VoucherState voucherState() {
+        return voucherState;
+    }
+
+    /** When it was handed over, for the refusal that quotes the day back at a second attempt. */
+    Instant usedAt() {
+        return usedAt;
+    }
+
+    String usedByCounter() {
+        return usedByCounter;
+    }
+
+    /** The last day it is good, for the refusal that says so, and null when it never runs out. */
+    LocalDate expiresOn() {
+        return expiresOn;
+    }
+
+    /** What it cost, which is what a cancellation hands back and what the log line carries. */
+    long pointsSpent() {
+        return pointsSpent;
+    }
+
+    /** Its own identifier, which is what a refunded batch of points is credited against. */
+    Long id() {
+        return id;
+    }
+
+    /** Why it was revoked, for the refusal a counter gets and the line the customer reads. */
+    String cancelledBecause() {
+        return cancelledBecause;
+    }
+
+    /**
+     * Marks the voucher handed over, naming the counter and the moment.
+     *
+     * <p>It refuses to overwrite anything, and that refusal is the last line of defence rather
+     * than the first: {@link RewardsService} has already read the state and answered the counter
+     * in words before it gets here. This check exists because the alternative is a method that
+     * will silently move a terminal state the day somebody calls it from a second place, and
+     * because the whole value of a voucher's life is that no part of it can be rewritten. It is
+     * not a refusal a counter can provoke, so it is not a {@link VoucherRefused} — it is this
+     * class saying that the application has a bug.
+     *
+     * <p>Nothing about money or points is touched here, deliberately and by construction: using a
+     * voucher is somebody handing over a coffee, and the points that bought it were spent on the
+     * day it was claimed. A redemption that moved a balance would be charging for the same thing
+     * twice.
+     */
+    void handedOverAt(String counter, Instant moment) {
+        if (voucherState != VoucherState.ISSUED) {
+            throw new IllegalStateException("voucher " + voucherCode + " is " + voucherState
+                    + " and cannot be handed over");
+        }
+        this.voucherState = VoucherState.USED;
+        this.usedByCounter = counter;
+        this.usedAt = moment;
+    }
+
+    /**
+     * Retires a voucher that has outlived the shelf life its offer gave it.
+     *
+     * <p>Beside {@link #handedOverAt} because it is the same kind of thing — a one-way door out of
+     * {@code ISSUED} — and it refuses to overwrite anything for the same reason and with the same
+     * standing: the sweep has already read the state and skipped everything that is not issued
+     * before it gets here, so reaching this throw means the application has a bug rather than that
+     * anybody did anything wrong. It is not a {@link VoucherRefused} because nobody asked: a sweep
+     * has no counter to read a sentence out to.
+     *
+     * <p><strong>Nothing is recorded about when it happened, and that is not an omission.</strong>
+     * A voucher that was used needs the moment, because "used" is something a person did at a time
+     * and the refusal a second attempt gets quotes it back. A voucher that expired needs no such
+     * thing: the day it ran out is {@link #expiresOn}, which was written down when it was issued
+     * and which is the day the customer was promised. A column saying which night the sweep
+     * happened to get round to it would record the job's own timekeeping, not the voucher's, and
+     * it would be a second date to explain to anybody who noticed the two were not the same.
+     *
+     * <p><strong>Nothing about points or stock is touched here either, and that is the whole
+     * meaning of a shelf life.</strong> An expiry is the customer's own miss; refunding it would
+     * make the deadline mean nothing at all, and nobody would ever have a reason to use a voucher
+     * in time. It is the one thing that separates this from a cancellation, which is the scheme's
+     * own mistake and does refund.
+     */
+    void ranOut() {
+        if (voucherState != VoucherState.ISSUED) {
+            throw new IllegalStateException("voucher " + voucherCode + " is " + voucherState
+                    + " and cannot run out");
+        }
+        this.voucherState = VoucherState.EXPIRED;
+    }
+
+    /**
+     * Revokes the voucher, recording why and when — the third and last one-way door out of
+     * {@code ISSUED}, and the only one that gives anything back.
+     *
+     * <p>Beside {@link #handedOverAt} and {@link #ranOut} because it is the same kind of thing,
+     * and it refuses to overwrite anything for the same reason and with the same standing:
+     * {@link RewardsService} has already read the state and answered whoever asked in words
+     * before it gets here, so reaching this throw means the application has a bug rather than
+     * that an administrator did something wrong. It is not a {@link VoucherRefused} because by
+     * this point nobody is being refused.
+     *
+     * <p><strong>A moment and a reason, where an expiry needed neither.</strong> The asymmetry
+     * with {@link #ranOut} is argued beside the two columns and is worth not tidying away: an
+     * expiry's date was written onto the voucher the day it was issued, and a cancellation has no
+     * date anywhere until somebody decides. The reason is the half that makes a cancellation
+     * explicable at all, which is the difference between undoing a mistake and a voucher that
+     * simply stopped working.
+     *
+     * <p><strong>Nothing about points or stock happens here, and that is not because nothing
+     * happens.</strong> A cancellation does refund and does return the stock, unlike the two
+     * doors beside it — but the refund is a batch in another module's ledger and the stock is
+     * derived from this table rather than stored, so neither is a field this row could set. What
+     * this method does is the whole of what a cancellation <em>is</em> on this row: the state,
+     * the moment, and the sentence. {@link RewardsService#cancelTheVoucher} is where the three
+     * consequences are put in one transaction, and the stock returns simply by this row ceasing
+     * to count.
+     */
+    void cancelledBecause(String reason, Instant moment) {
+        if (voucherState != VoucherState.ISSUED) {
+            throw new IllegalStateException("voucher " + voucherCode + " is " + voucherState
+                    + " and cannot be cancelled");
+        }
+        this.voucherState = VoucherState.CANCELLED;
+        this.cancelledBecause = reason;
+        this.cancelledAt = moment;
     }
 }

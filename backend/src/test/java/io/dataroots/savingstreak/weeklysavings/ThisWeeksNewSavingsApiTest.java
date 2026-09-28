@@ -80,12 +80,15 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     }
 
     /**
-     * Gross, not net. A withdrawal takes the money back out without un-happening the deposit it came
-     * out of, so a week that took the money in has still taken it in — however much of it leaves
-     * again, and even if the account is emptied.
+     * Net, not gross. Money taken back out during the week comes off the week's progress, because a
+     * week is what the customer has actually put away by the end of it.
+     *
+     * <p>This is what stops the ladder being farmed. Counting gross, EUR 50 paid in on Monday and
+     * taken out on Tuesday secured the week, so the same fifty euros secured every week for ever and
+     * walked anybody who cared to up to the top multiplier without saving a cent.
      */
     @Test
-    void a_withdrawal_leaves_this_weeks_new_savings_where_it_was() {
+    void a_withdrawal_comes_back_off_this_weeks_new_savings() {
         long savingsAccount = seeded.otherSavingsAccountOf(ANKE);
         long currentAccount = seeded.currentAccountOf(ANKE);
         depositAccepted(savingsAccount, currentAccount, "60.00");
@@ -95,12 +98,16 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
 
         assertThat(withdrawn.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         BalancesView after = balancesOf(savingsAccount);
-        // The money has gone, which is what makes this worth asserting: the account holds less than
-        // it did and the week's progress is untouched.
         assertThat(after.moneyBalance())
                 .isEqualByComparingTo(before.moneyBalance().subtract(new BigDecimal("60.00")));
-        assertThat(after.newSavingsThisWeek()).isEqualByComparingTo(before.newSavingsThisWeek());
-        assertThat(after.stillNeededThisWeek()).isEqualByComparingTo(before.stillNeededThisWeek());
+        assertThat(after.newSavingsThisWeek())
+                .as("the sixty that went in and came out again in the same week put nothing away")
+                .isEqualByComparingTo(before.newSavingsThisWeek().subtract(new BigDecimal("60.00")));
+        // Worked out from the two figures the account itself reported, as every other test in this
+        // class does: the run shares one week and what else has landed in it is not this test's.
+        assertThat(after.stillNeededThisWeek())
+                .as("and the week asks for that much again")
+                .isEqualByComparingTo(stillNeededGiven(after));
     }
 
     /**
@@ -160,6 +167,10 @@ class ThisWeeksNewSavingsApiTest extends ApiIntegrationTest {
     @Test
     void counting_the_week_leaves_the_points_a_deposit_earns_alone() {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
+        // Savings back at their peak first. Euros that only fill a gap an earlier test's withdrawal
+        // left have been saved once already and earn nothing, so a deposit measured from below the
+        // peak would be measuring the order the test classes ran in.
+        seeded.savingsBackAtTheirPeak(savingsAccount, ANKE);
         BalancesView before = balancesOf(savingsAccount);
 
         DepositView made = depositAccepted(savingsAccount, seeded.currentAccountOf(ANKE), "7.60");

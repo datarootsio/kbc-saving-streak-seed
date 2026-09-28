@@ -110,7 +110,22 @@ class PointsBelongToTheCustomerApiTest extends ApiIntegrationTest {
     /**
      * What the customer has claimed is one list, so the two lists on their page account for the
      * balance between them: everything the deposits into every account earned, less everything the
-     * claims took out.
+     * claims took out, plus everything a cancelled claim gave back.
+     *
+     * <p><strong>The third term is a refund, which is earned points no deposit explains.</strong>
+     * The assertion read {@code earned - spent == balance} until this ticket and that stopped
+     * being an invariant the day a voucher could be cancelled: the refund arrives as a fresh
+     * batch of points under its own reason, so the balance rises and no deposit rises with it. It
+     * held only because every cancellation test opens a throwaway customer, which made it a trap
+     * rather than a rail — the next test to cancel one of this seeded customer's vouchers would
+     * have broken this file and the deposit-history one together, and neither failure would have
+     * mentioned a voucher.
+     *
+     * <p>What came back is readable from the very list this test already has: a cancelled claim
+     * stays in the customer's claims carrying what it cost, and what it cost is exactly what was
+     * credited, because a cancellation refunds the claim's own price. So the assertion is
+     * stronger than the one it replaces — it still says nothing may be missing from either list,
+     * and it now also says a revoked claim gives back precisely what it took.
      */
     @Test
     void what_the_customer_has_claimed_is_one_list_however_many_accounts_earned_it() {
@@ -127,15 +142,22 @@ class PointsBelongToTheCustomerApiTest extends ApiIntegrationTest {
         assertThat(theirClaims.getBody())
                 .extracting(ClaimedRewardView::id)
                 .contains(first.id(), second.id());
-        // Everything earned across every account they hold, less everything they have claimed, is
-        // the balance — the invariant that says the pot really is one.
+        // Everything earned across every account they hold, less everything they have claimed and
+        // plus everything a cancellation gave back, is the balance — the invariant that says the
+        // pot really is one.
         long earned = seeded.savingsAccountsOf(ANKE).stream()
                 .flatMap(account -> Arrays.stream(
                         http.getForObject("/api/savings-accounts/{id}/deposits", DepositView[].class, account)))
                 .mapToLong(DepositView::pointsEarned)
                 .sum();
         long spent = Arrays.stream(theirClaims.getBody()).mapToLong(ClaimedRewardView::pointsSpent).sum();
-        assertThat(earned - spent).isEqualTo(seeded.pointsBalanceOf(ANKE));
+        // Plus what any cancelled claim gave back, which is the one way points reach this
+        // customer without a deposit behind them.
+        long refunded = Arrays.stream(theirClaims.getBody())
+                .filter(claim -> "CANCELLED".equals(claim.state()))
+                .mapToLong(ClaimedRewardView::pointsSpent)
+                .sum();
+        assertThat(earned - spent + refunded).isEqualTo(seeded.pointsBalanceOf(ANKE));
     }
 
     private BalancesView balancesOf(long savingsAccountId) {

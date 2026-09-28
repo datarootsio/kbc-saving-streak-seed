@@ -24,9 +24,10 @@ import jakarta.persistence.Id;
  * which batch paid for what is a question about individual batches that a total could not answer.
  * What was earned is never written down again — a deposit's reward cannot change after the fact.
  *
- * <p>The age is what finishes a batch off. Twelve months after it was earned, whatever is left in it
- * expires, and the batch is the only thing that could have been asked: a total has no age to have
- * run out.
+ * <p>The age is what finishes a batch off. On the day it was promised it would go, whatever is left
+ * in it expires, and the batch is the only thing that could have been asked: a total has no age to
+ * have run out — and, since this release, no total could carry the promise either, because the day
+ * is written on the batch rather than worked out again every night.
  *
  * <p>Package-private, and that is the point of the module: no caller can learn that points are
  * stored this way, so no caller can come to depend on it.
@@ -55,7 +56,38 @@ class PointsCredit {
     private Instant earnedAt;
 
     /**
-     * When this batch's twelve months ran out, and null for every batch that still has them.
+     * When this batch's lifetime is up: the moment it was promised it would expire, written as it
+     * was earned and never written again.
+     *
+     * <p><strong>Stamped rather than recomputed, and that is the whole of this ticket.</strong> The
+     * sweep used to work out twelve months from {@link #earnedAt} every night against a constant, so
+     * the figure a batch lived by was whatever the constant said tonight rather than whatever it
+     * said the day the batch was earned. Shorten the scheme's lifetime to six months and every batch
+     * older than six months would die in that night's sweep — including every batch whose owner had
+     * been promised a year. A deposit already keeps the rate it was paid at; this is the same answer
+     * for the same reason, and it is the only way a change to the points lifetime can leave history
+     * alone.
+     *
+     * <p>The moment rather than the number of months. What a customer is owed is a date, and a
+     * column holding "12" would still need the rule applied to it on every read — which is the
+     * recomputation this column exists to stop. It also means a reader of the table can see when a
+     * batch goes without knowing any rule at all.
+     *
+     * <p>Nullable in the database only because a batch credited before this release has no value in
+     * it. {@link PointsOnStartUp} stamps those with the twelve months they were promised before the
+     * application serves a single request, so nothing that reads this ever sees a null — and the
+     * sweep says so out loud rather than falling over if it ever does.
+     */
+    private Instant expiresAt;
+
+    /**
+     * When this batch's lifetime ran out, and null for every batch that still has one.
+     *
+     * <p>Beside {@link #expiresAt} and emphatically not the same fact: one is the promise, made when
+     * the batch was earned, and the other is the promise having been kept. A batch that is past its
+     * expiry and has not yet been swept has the first and not the second, which is exactly the state
+     * a customer is in between an anniversary falling at lunchtime and the sweep running at three
+     * the next morning.
      *
      * <p>The anniversary rather than the moment the sweep noticed. The batch expired when its twelve
      * months were up whether or not anything was running at three that morning, and dating it by the
@@ -88,18 +120,21 @@ class PointsCredit {
     }
 
     private PointsCredit(long customerId, long points, PointsReason reason,
-                         long sourceReferenceId, Instant earnedAt) {
+                         long sourceReferenceId, Instant earnedAt, Instant expiresAt) {
         this.customerId = customerId;
         this.points = points;
         this.remainingPoints = points;
         this.reason = reason;
         this.sourceReferenceId = sourceReferenceId;
         this.earnedAt = earnedAt;
+        this.expiresAt = expiresAt;
     }
 
     /** The points a deposit earns simply by being made, all of them still there to be spent. */
-    static PointsCredit baseAccrualFor(long customerId, long depositId, long points, Instant earnedAt) {
-        return new PointsCredit(customerId, points, PointsReason.BASE_ACCRUAL, depositId, earnedAt);
+    static PointsCredit baseAccrualFor(long customerId, long depositId, long points,
+                                       Instant earnedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.BASE_ACCRUAL, depositId, earnedAt,
+                expiresAt);
     }
 
     /**
@@ -109,8 +144,10 @@ class PointsCredit {
      * a batch to everything that reads them: spending draws from the oldest first and neither knows
      * nor cares which reason wrote it, so a bonus is spendable exactly as the euros are.
      */
-    static PointsCredit streakBonusFor(long customerId, long depositId, long points, Instant earnedAt) {
-        return new PointsCredit(customerId, points, PointsReason.STREAK_BONUS, depositId, earnedAt);
+    static PointsCredit streakBonusFor(long customerId, long depositId, long points,
+                                       Instant earnedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.STREAK_BONUS, depositId, earnedAt,
+                expiresAt);
     }
 
     /**
@@ -127,8 +164,10 @@ class PointsCredit {
      * twelve months and is swept away by the expiry job the same night — the honest outcome of both
      * rules holding at once, and visible in the log rather than special-cased here.
      */
-    static PointsCredit loyaltyBonusFor(long customerId, long depositId, long points, Instant earnedAt) {
-        return new PointsCredit(customerId, points, PointsReason.LOYALTY_BONUS, depositId, earnedAt);
+    static PointsCredit loyaltyBonusFor(long customerId, long depositId, long points,
+                                        Instant earnedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.LOYALTY_BONUS, depositId, earnedAt,
+                expiresAt);
     }
 
     /**
@@ -152,21 +191,116 @@ class PointsCredit {
      * <p>The reference is the gift rather than a deposit. Nothing about this batch points at a
      * deposit, because no deposit of this customer's earned it.
      */
-    static PointsCredit giftReceivedFor(long customerId, long giftId, long points, Instant earnedAt) {
-        return new PointsCredit(customerId, points, PointsReason.GIFT_RECEIVED, giftId, earnedAt);
+    static PointsCredit giftReceivedFor(long customerId, long giftId, long points,
+                                        Instant earnedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.GIFT_RECEIVED, giftId, earnedAt,
+                expiresAt);
+    }
+
+    /**
+     * What a rung of a challenge paid the customer for reaching it: the points that rung is worth,
+     * dated at the moment the reading cleared it.
+     *
+     * <p>An ordinary batch, and that is the whole of what this ledger knows about a challenge.
+     * Spendable on any reward, spent oldest-first alongside everything else, counted in what the
+     * customer is told expires next, and gone twelve months after the moment it was earned —
+     * nothing here can tell it from a deposit's own credit except the reason written on it. What a
+     * rung asks for, what it pays and whether it has already been paid are the Challenges module's
+     * rule end to end, and a ledger that had an opinion about any of them would be a second opinion
+     * about a figure that has one.
+     *
+     * <p>The reference is the award rather than a deposit. No deposit of this customer's earned
+     * these points: a rung is cleared by a reading over the whole of their saving, one deposit may
+     * clear three rungs and the next may clear none, and the thing that says which rung was paid
+     * and what reading won it is the award. Reading this reference as a deposit is exactly what the
+     * reason beside it exists to prevent.
+     */
+    static PointsCredit challengeRewardFor(long customerId, long awardId, long points,
+                                           Instant earnedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.CHALLENGE_REWARD, awardId, earnedAt,
+                expiresAt);
+    }
+
+    /**
+     * What a claim cost, handed back because an administrator revoked the voucher it paid for:
+     * a new batch, dated at the moment of the cancellation.
+     *
+     * <p><strong>A new batch rather than the old ones topped back up, which is the whole of the
+     * decision and the reason this is a factory at all.</strong> Points are spent oldest-first,
+     * so a claim takes from the batches closest to their own twelve months — and by the time
+     * anybody notices the claim was a mistake, some of those batches may have gone. Putting the
+     * points back where they came from would put them into batches that have already expired,
+     * where the balance would not count them and nothing could ever spend them, while the
+     * customer had been told they had their points back. A refund nobody can spend is worse than
+     * no refund, because only one of the two is visible from the outside. Nothing here even knows
+     * which batches paid, and deliberately: this ledger has never recorded that, and inventing
+     * the record in order to reverse it would be building the wrong thing twice over.
+     *
+     * <p>Dated at the cancellation rather than inherited, which is where this parts company with
+     * {@link #giftReceivedFor} above. A gift inherits its date because two customers passing
+     * points back and forth would otherwise keep a balance alive for ever; a refund has nobody to
+     * pass to, and the customer is being handed back something they never had the use of. Twelve
+     * months of its own, from today, is what makes it worth what it should be worth — and it is
+     * the one thing that would be quietly wrong if this reused a factory above it.
+     *
+     * <p>An ordinary batch in every other respect, which is the point of crediting it this way:
+     * spendable on any reward, spent oldest-first alongside everything else, counted in what the
+     * customer is told expires next, giftable, and gone twelve months after the moment it was
+     * credited. Nothing in this ledger can tell it from a deposit's own credit except the reason
+     * written on it.
+     *
+     * <p>The reference is the claim that was cancelled. No deposit of this customer's earned
+     * these points, and the claim is the only thing that says which voucher they came back from.
+     */
+    static PointsCredit redemptionCancelledFor(long customerId, long redemptionId, long points,
+                                               Instant refundedAt, Instant expiresAt) {
+        return new PointsCredit(customerId, points, PointsReason.REDEMPTION_CANCELLED,
+                redemptionId, refundedAt, expiresAt);
     }
 
     /**
      * How much of this batch has neither been spent nor expired — or, once {@link #expiredAt} is
-     * set, how much of it was left when its twelve months ran out.
+     * set, how much of it was left when its lifetime ran out.
      */
     long getRemainingPoints() {
         return remainingPoints;
     }
 
-    /** When it was earned, which is what its twelve months are counted from. */
+    /** When it was earned, which is what its lifetime was counted from. */
     Instant getEarnedAt() {
         return earnedAt;
+    }
+
+    /**
+     * The moment this batch was promised it would go, which is the only thing anything reads to
+     * decide whether it has.
+     *
+     * <p>Null only for a batch written before this release and only until {@link PointsOnStartUp}
+     * has run, which is before the application answers anything.
+     */
+    Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    /**
+     * Writes the promise onto a batch credited before this release, and answers whether it had to.
+     *
+     * <p><strong>A floor and never a reset</strong>, which is the whole of the rule every
+     * {@code …OnStartUp} in this application follows: a batch that already carries an expiry keeps
+     * the one it carries, whatever this is offered. A start-up pass that corrected what it found
+     * would make every stamp last until the next restart, and a stamp that a restart can move is not
+     * a promise — it is the recomputation this column exists to replace, run once a morning instead
+     * of once a night.
+     *
+     * <p>The batch decides, so that the backfill cannot get it wrong by forgetting to ask first, in
+     * the same way {@link #expire} is the batch's own and not a caller's.
+     */
+    boolean stampExpiringAt(Instant promised) {
+        if (expiresAt != null) {
+            return false;
+        }
+        expiresAt = promised;
+        return true;
     }
 
     /** Why it was earned, which a sweep says out loud so a lost bonus is not read as lost euros. */
@@ -183,7 +317,7 @@ class PointsCredit {
     }
 
     /**
-     * Ends this batch as at the moment its twelve months ran out, and answers how many points that
+     * Ends this batch as at the moment it was promised it would go, and answers how many points that
      * cost the customer.
      *
      * <p>The batch decides, so that nothing outside can expire one twice: a batch that has already

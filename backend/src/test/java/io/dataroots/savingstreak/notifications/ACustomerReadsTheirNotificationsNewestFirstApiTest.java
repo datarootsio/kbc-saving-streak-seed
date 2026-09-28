@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static io.dataroots.savingstreak.support.SeededAccounts.ANKE;
-import static io.dataroots.savingstreak.support.SeededAccounts.BRAM;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -73,13 +72,20 @@ class ACustomerReadsTheirNotificationsNewestFirstApiTest extends ApiIntegrationT
     }
 
     /**
-     * Bram, whose accounts nothing in this test class ever pays into: an empty savings account
-     * stands on no rung and holds no deposit with an anniversary to reach, so the sweep has nothing
-     * to say about him however many times the test below runs it.
+     * A customer of this test's own, opened with nothing on them: no savings to stand on a rung, no
+     * deposit with an anniversary to reach, no budget to go over. So the sweep has nothing to say
+     * about them however many times the test below runs it, and "nothing has been said" stays a
+     * fact about this customer rather than a fact about whichever household the seed wrote.
+     *
+     * <p>It used to be Bram, and he is no longer such a customer: the seeded households arrive
+     * budgeted, and his groceries are over their envelope from the first sweep onwards. That is the
+     * demonstration working, and the claim here is not about the demonstration — it is that an
+     * inbox with nothing in it answers with an empty list rather than with a refusal, so the panel
+     * can be told apart from a page that failed to load.
      */
     @Test
     void a_customer_nothing_has_been_said_to_reads_an_empty_list_rather_than_an_error() {
-        assertThat(app.notificationsOf(BRAM))
+        assertThat(app.notificationsOf(app.aCustomerOfItsOwn("nothing said to them")))
                 .as("a quiet panel has to be tellable apart from a page that failed to load, so "
                         + "nothing to say is an empty list and not a refusal")
                 .isEmpty();

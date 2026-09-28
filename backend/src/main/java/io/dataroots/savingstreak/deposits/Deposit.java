@@ -3,10 +3,14 @@ package io.dataroots.savingstreak.deposits;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Version;
 
 /**
  * One movement of money out of a current account and into a savings account, and how much of it is
@@ -24,6 +28,14 @@ import jakarta.persistence.Id;
  * figures are identical until something can take money back out, which is the whole reason for
  * keeping them apart: the day a withdrawal draws a deposit down, "how much of this deposit is still
  * here" is a question about that deposit, and a balance cannot answer it.
+ *
+ * <p><strong>Not every row here is a deposit any more, and {@link #origin} is the whole of the
+ * difference.</strong> A month's interest is written as a row of this table with an origin of
+ * {@code INTEREST}, because interest is money in the savings account and this table is what says
+ * how much money is in a savings account. {@link DepositOrigin} argues that at length. What it
+ * costs is that three figures derived from this ledger have to ask for the customer's own rows —
+ * the mark a deposit is judged against, the week, and the anniversaries — and each of those asks in
+ * {@link DepositRepository}, in a query that says why.
  *
  * <p>Package-private, like the repository: what the Deposits module records, and how, is nobody
  * else's business.
@@ -52,7 +64,66 @@ class Deposit {
      */
     private Long customerId;
 
+    /**
+     * The everyday account the money came out of.
+     *
+     * <p><strong>There is no such account on a row the bank wrote</strong>, and
+     * {@link #getSourceCurrentAccountId} answers nothing at all for one. A month's interest was not
+     * moved out of an account of the customer's — it was added — so there is no second end to the
+     * movement, and a page drawing "from → to" from an identifier invented to fill the gap would be
+     * drawing a transfer that never happened.
+     *
+     * <p><strong>The column itself holds a nought rather than a null, and that is a decision about
+     * an existing database rather than about the model.</strong> This column was written as
+     * {@code not null} by every release before this one, SQLite writes that constraint into the
+     * table's own definition, and it has no statement for taking one back: relaxing it means
+     * rebuilding the table, which {@code SavingsAccountRepository} does for the savings accounts
+     * and which is a different proposition here — this is the one table in the application that
+     * holds everybody's money, and a rebuild of it would have to restate every column of it
+     * correctly on the morning of an upgrade and stay in step with them for ever after. So the row
+     * carries {@link #NO_CURRENT_ACCOUNT}, which is an identifier no account has ever had because
+     * identities here start at one, and the absence is read off {@link #origin} — which is the
+     * column that actually says what kind of row this is. Nothing reads the number without asking
+     * that first.
+     */
     private long sourceCurrentAccountId;
+
+    /**
+     * Whether the customer moved this money in or the bank added it.
+     *
+     * <p>The column that lets interest live in this ledger, and the one the three rules about it
+     * are kept by. {@link DepositOrigin} carries the whole argument.
+     *
+     * <p>Written as its name, which is a {@code check} constraint in the generated schema and the
+     * right one here: the two kinds are different behaviour rather than different numbers.
+     *
+     * <p>Nullable in the database only because a row recorded before this column existed has no
+     * value in it. Every one of those was money a customer paid in — there was no other kind then —
+     * and {@link DepositsOnStartUp} says so on them before the application serves a single request,
+     * so nothing that reads this ever sees a null. {@link #getOrigin} reads one as
+     * {@link DepositOrigin#CUSTOMER} all the same, because a figure that decides whether points are
+     * paid should not depend on a migration having run.
+     */
+    @Enumerated(EnumType.STRING)
+    private DepositOrigin origin;
+
+    /**
+     * The savings account these euros came out of, on a row that arrived by a move.
+     *
+     * <p><strong>The other end of a movement whose other end is not an everyday account.</strong>
+     * Every other row here either names a current account the money left or names none at all
+     * because the bank wrote it; a move is the third case, and the account it came from is a real
+     * account whose holder is the same person. Written down rather than derived from the withdrawal
+     * on the other side, because deriving it would mean matching two rows by amount and moment —
+     * which is precisely the pairing-up the ledger reports one row in order to spare a reader.
+     *
+     * <p>Null on every row that did not arrive by a move, which is every row written before this
+     * column existed and every deposit and interest payment written since. Nothing backfills it and
+     * nothing needs to: an absence here means "not a move", and {@link #getOrigin} says the same
+     * thing from the other side. The two are written in one breath by {@link #movedFrom} and there
+     * is no way to write one without the other.
+     */
+    private Long movedFromSavingsAccountId;
 
     private BigDecimal amount;
 
@@ -86,7 +157,126 @@ class Deposit {
      */
     private BigDecimal multiplierApplied;
 
+    /**
+     * What the account's savings product contributed to that rate, on its own — a plain multiple of
+     * one, so {@code 1.0000} is a product that changed nothing and {@code 1.2500} is a quarter more.
+     *
+     * <p><strong>The column beside the rate rather than instead of it, and both are history.</strong>
+     * The rate above is what the deposit was actually priced at and is the figure a reviewer
+     * multiplies the euros by; this is the part of it the product accounts for, so that the run of
+     * weeks and the agreement can be told apart on a history row years later. Neither can be
+     * recovered from the other — a rate of 1.375 is 1.10 times 1.25 and is equally 1.25 times 1.10,
+     * and the ladder has since moved anyway — so the only way to show the two apart is to have
+     * written both down at the moment the money moved.
+     *
+     * <p>Written a moment after the row is inserted, with the rate, and for the same reason: the two
+     * are one decision, and a deposit carrying one of them and not the other would be a history row
+     * that could not explain itself.
+     *
+     * <p><strong>Not a second answer to what the deposit earned.</strong> The ledger credits the
+     * euros as base points and the whole of the uplift over them as the bonus batch, exactly as it
+     * did before products existed, and no batch is split by which factor produced it. That is
+     * deliberate: a uplift of 125 points on a EUR 500 deposit at 1.00 × 1.25 is not divisible into
+     * "the streak's share" and "the product's share" without inventing an order for two factors
+     * that commute. What the two columns say is what each factor <em>was</em>, which is a fact, and
+     * the history row shows them apart on that footing.
+     *
+     * <p>Nullable in the database only because a deposit recorded before this column existed has no
+     * value in it. Those were all paid under no product at all — the catalogue did not exist — which
+     * is exactly the multiple that changes nothing, so {@link #getProductMultiplierApplied} reads a
+     * null as that rather than backfilling it. Unlike {@link #termsVersion}, there is an honest
+     * default here: a version nobody recorded cannot be guessed at, and a product that was not
+     * multiplying anything is a fact about every deposit in this application before this ticket.
+     */
+    private BigDecimal productMultiplierApplied;
+
+    /**
+     * How much of this deposit was new saving — the part of it that took its holder above the most
+     * they had ever had in savings, and therefore the part that earned points.
+     *
+     * <p>The whole amount for a customer who has never taken money back out, which is nearly every
+     * deposit ever made. Less than the amount only when an earlier withdrawal left a gap this
+     * deposit is filling back in: those euros have already been paid for once, and
+     * {@link TheMostEverSaved} says why they are not paid for again.
+     *
+     * <p>Written down rather than derived, for the reason the rate is: it was decided against what
+     * the customer held and had ever held at the moment the money moved, and neither of those can be
+     * reconstructed afterwards. Summed across a customer's deposits it is also the mark itself, so
+     * the figure that decides the next deposit is the same one this deposit recorded.
+     *
+     * <p>Nought on a row the bank wrote, and written there at the moment the row is made rather
+     * than left to a query to remember: none of a month's interest is money the customer put away,
+     * so none of it can take them above the most they ever put away. {@link #ofInterest} argues why
+     * the rule is stated twice.
+     *
+     * <p>Nullable in the database only because a deposit recorded before this column existed has no
+     * value in it. Those all earned on every euro they moved — there was no other rule then — and
+     * that is what {@link #getEarnedOnAmount} reads a null as, which is the same answer a backfill
+     * would have written.
+     */
+    private BigDecimal earnedOnAmount;
+
+    /**
+     * Which version of its savings account's product terms this deposit landed under.
+     *
+     * <p>History, for the reason the rate above is history: an account will one day take a
+     * product's newer terms, and what <em>this</em> deposit landed under must not move when it
+     * does. A withdrawal that has to price an early exit, an interest posting that has to explain
+     * itself and a customer reading back over their history all want the agreement in force on the
+     * day the money arrived, and the version is the address of it.
+     *
+     * <p>The number alone, never a copy of what the version says. It is meaningless without a
+     * product to belong to, and this row already names the savings account, which names exactly one
+     * agreement — so the pair is the address, and the terms are read from the row that has always
+     * held them.
+     *
+     * <p>Asked of {@link TheTermsADepositLandsUnder} rather than worked out here: which agreement
+     * an account is living under is another module's answer, and this one has no business knowing
+     * that savings products exist at all.
+     *
+     * <p>Nullable in the database, and in two cases rather than one. A deposit recorded before this
+     * column existed has no value in it, and {@code SavingsAccountsGetAProductOnStartUp} stamps
+     * those before the application serves a single request. A deposit into an account nothing has
+     * yet recorded an agreement for also has none, which is a window of milliseconds on the morning
+     * of an upgrade — it is left saying nothing rather than guessing, and the next start's
+     * migration stamps it too.
+     */
+    private Integer termsVersion;
+
     private Instant depositedAt;
+
+    /**
+     * What stops two changes to this deposit at once from both being written.
+     *
+     * <p>A withdrawal is a read, a decision and then a write: what the deposits of an account still
+     * hold is summed, the amount is checked against it, and the deposits are drawn down. Two of those interleaving
+     * would both pass the check and both be allowed — a deposit drawn down twice for one withdrawal, which is
+     * the worst thing this application could be asked to explain.
+     *
+     * <p>Nothing can interleave today, and that is precisely why this is here. One line of
+     * configuration keeps the connection pool at a single connection, so there is one transaction at
+     * a time; the guarantee is a property of a datasource setting rather than of the model, and it
+     * would leave with that line the day this runs on a database that serves more than one writer.
+     * With a version on the row, the second write of a pair fails and is rolled back instead.
+     *
+     * <p>The column is added with a default so that rows written before it existed carry a nought
+     * rather than a null, which is what lets an existing file be opened by this release without a
+     * migration.
+     */
+    @Version
+    @Column(columnDefinition = "integer not null default 0")
+    private long version;
+
+    /**
+     * What stands in the current account column of a row the bank wrote: an identifier no account
+     * has ever had, because identities in this application start at one.
+     *
+     * <p>A named constant rather than a nought in the middle of a factory, so that the one place it
+     * is written and the one place it is read say the same word — and so that a reader who wants to
+     * know what it means has somewhere to look. It never leaves this class: the getter turns it
+     * back into the absence it stands for.
+     */
+    private static final long NO_CURRENT_ACCOUNT = 0L;
 
     protected Deposit() {
         // for JPA
@@ -97,14 +287,106 @@ class Deposit {
         this.savingsAccountId = savingsAccountId;
         this.customerId = customerId;
         this.sourceCurrentAccountId = sourceCurrentAccountId;
+        this.origin = DepositOrigin.CUSTOMER;
         this.amount = amount;
         // All of it, because none of it has gone anywhere yet.
         this.remainingAmount = amount;
         this.depositedAt = depositedAt;
     }
 
+    /**
+     * A month's interest, landing in the account as money.
+     *
+     * <p>A factory rather than a second public constructor, so that the call site reads as the
+     * event it is and so that the one difference between the two kinds of row is impossible to
+     * forget: this one names no current account and carries an origin of
+     * {@link DepositOrigin#INTEREST}.
+     *
+     * <p><strong>It earned on nothing, and that is written down rather than left unsaid.</strong>
+     * What a row earned on is the part of it that was new saving, and none of a payment the bank
+     * made is money the customer put away — so the figure is nought, in the row, where the mark is
+     * summed from. The queries that sum the mark ask for the customer's rows as well, which is the
+     * same rule kept twice on purpose: the column says what is true of this row, and the query says
+     * what the rule is. Either on its own would be enough; both together mean a query written next
+     * year without this in mind still cannot pay a customer twice for a euro the bank added.
+     *
+     * <p>Nothing is written for the rate it was paid at, because it was not paid at one. A rate is
+     * what a run of weeks was worth when a deposit landed, and interest is not priced in points at
+     * all — {@link #getMultiplierApplied} answering nothing is the honest reading, and no history
+     * this module serves contains a row of this kind to read it.
+     *
+     * @param paidAt the moment the period it pays for ended, rather than the moment the sweep
+     *               noticed — the argument is the sweep's and it is the same one an anniversary
+     *               makes: the month had passed whether or not anything was running that night
+     */
+    static Deposit ofInterest(long savingsAccountId, long customerId, BigDecimal amount,
+                              Instant paidAt) {
+        Deposit interest = new Deposit();
+        interest.savingsAccountId = savingsAccountId;
+        interest.customerId = customerId;
+        interest.origin = DepositOrigin.INTEREST;
+        interest.sourceCurrentAccountId = NO_CURRENT_ACCOUNT;
+        interest.amount = amount;
+        interest.remainingAmount = amount;
+        interest.earnedOnAmount = BigDecimal.ZERO;
+        interest.depositedAt = paidAt;
+        return interest;
+    }
+
+    /**
+     * Money arriving from another savings account of the same customer's, as one half of a move.
+     *
+     * <p>A factory rather than a third public constructor, for the reason interest has one: the
+     * call site reads as the event it is, and the three things that make this row what it is
+     * — the origin, the account it came from and the earned-on figure it carries — cannot be
+     * forgotten one at a time.
+     *
+     * <p><strong>The earned-on figure is handed in rather than worked out, and that is the whole
+     * of what makes a move cost nothing and pay nothing.</strong> It is what the source rows gave
+     * up: the euros in them that had already taken their holder above the most they had ever
+     * saved, plus the euros the bank had added, which have never earned a point here and never
+     * will. Summed across the customer's rows, the mark is therefore exactly what it was before the
+     * move — the source rows are lighter by what this one is heavier by — so the arriving euros
+     * earn nothing they have already earned and nothing the bank paid for. Worked out here instead,
+     * this row would have to re-read a ledger it is in the middle of being written into.
+     *
+     * <p>Nothing is written for the rate it was paid at, because it was not paid at one: no points
+     * are credited for a move, so there is no rate to record and {@link #getMultiplierApplied}
+     * answering nothing is the honest reading.
+     *
+     * <p><strong>Its anniversary starts today, and that is the one thing a move does cost.</strong>
+     * The moment handed in is the moment of the move, so the loyalty clock these euros were part-way
+     * through is given up and a fresh twelve months begins. That is a real price, it is what the
+     * customer is asked to weigh before they press, and it is charged here by the plainest possible
+     * means: a new row with a new date on it.
+     *
+     * @param movedFromSavingsAccountId the account the euros left, which is another of the same
+     *                                  customer's — settled before this is called
+     * @param earnedOnCarriedAcross     what the source rows gave up, already worked out
+     */
+    static Deposit movedFrom(long savingsAccountId, long customerId,
+                             long movedFromSavingsAccountId, BigDecimal amount,
+                             BigDecimal earnedOnCarriedAcross, Instant movedAt) {
+        Deposit moved = new Deposit();
+        moved.savingsAccountId = savingsAccountId;
+        moved.customerId = customerId;
+        moved.origin = DepositOrigin.MOVED_FROM_ANOTHER_SAVINGS_ACCOUNT;
+        moved.sourceCurrentAccountId = NO_CURRENT_ACCOUNT;
+        moved.movedFromSavingsAccountId = movedFromSavingsAccountId;
+        moved.amount = amount;
+        moved.remainingAmount = amount;
+        moved.earnedOnAmount = earnedOnCarriedAcross;
+        moved.depositedAt = movedAt;
+        return moved;
+    }
+
     Long getId() {
         return id;
+    }
+
+    /** The savings account this row's euros came out of, and nothing at all unless it was a move. */
+    Long getMovedFromSavingsAccountId() {
+        return movedFromSavingsAccountId;
     }
 
     /**
@@ -120,9 +402,29 @@ class Deposit {
         return savingsAccountId;
     }
 
-    /** The everyday account it came out of, which is the other end of the movement. */
-    long getSourceCurrentAccountId() {
-        return sourceCurrentAccountId;
+    /**
+     * The everyday account it came out of, which is the other end of the movement — and nothing at
+     * all for a row the bank wrote, which has no other end.
+     *
+     * <p>Decided by the origin rather than by the number, which is the whole reason the column can
+     * go on being {@code not null} on a database written before interest existed. The field says
+     * what the database could accept; this says what is true.
+     */
+    Long getSourceCurrentAccountId() {
+        return getOrigin() == DepositOrigin.CUSTOMER ? sourceCurrentAccountId : null;
+    }
+
+    /**
+     * Whether the customer moved this money in or the bank added it, and the customer's own for a
+     * row recorded before there was a second kind.
+     *
+     * <p>Read that way rather than handed back as a null, for the reason the amount that remains
+     * and the amount that earned are: a row written before a column existed has an honest answer,
+     * and here it is that somebody paid the money in, because until interest existed there was no
+     * other way for a row to get here.
+     */
+    DepositOrigin getOrigin() {
+        return origin == null ? DepositOrigin.CUSTOMER : origin;
     }
 
     BigDecimal getAmount() {
@@ -159,6 +461,114 @@ class Deposit {
     /** The rate it was paid at, or nothing at all for a deposit recorded before the column existed. */
     BigDecimal getMultiplierApplied() {
         return multiplierApplied;
+    }
+
+    /**
+     * Records what the product contributed to that rate, once and never again — a deposit's reward
+     * cannot change after the fact, and neither can the account of how it was arrived at.
+     *
+     * @throws IllegalStateException if this deposit already says what its product paid, which would
+     *                               be a second answer to a question that has one
+     */
+    void theProductPaid(BigDecimal multiple) {
+        if (productMultiplierApplied != null) {
+            throw new IllegalStateException("deposit " + id + " was already priced with a product "
+                    + "multiple of " + productMultiplierApplied + " and cannot be repriced at "
+                    + multiple);
+        }
+        productMultiplierApplied = multiple;
+    }
+
+    /**
+     * What the product contributed, or nothing at all for a deposit recorded before the column
+     * existed.
+     *
+     * <p>Handed out raw, exactly as the rate beside it is, and read as the multiple that changes
+     * nothing by {@code DepositsService} where the history is assembled. That default is honest
+     * rather than invented — a deposit made before the catalogue existed was not priced by a
+     * product at a rate nobody recorded, it was not priced by a product at all, and {@code 1.0000}
+     * is what that means arithmetically — but where a default is applied is a decision about how
+     * this module reports itself, and it is taken in the one place the module reports itself.
+     */
+    BigDecimal getProductMultiplierApplied() {
+        return productMultiplierApplied;
+    }
+
+    /**
+     * Records how much of this deposit was new saving, once and never again — what a deposit earned
+     * on cannot change after the fact.
+     *
+     * @throws IllegalStateException if this deposit has already been judged, which would be a second
+     *                               answer to a question that has one
+     */
+    void earnedOn(BigDecimal newSaving) {
+        if (earnedOnAmount != null) {
+            throw new IllegalStateException("deposit " + id + " already earned on " + earnedOnAmount
+                    + " and cannot be judged again against " + newSaving);
+        }
+        earnedOnAmount = newSaving;
+    }
+
+    /**
+     * Records that some of what this row earned on has left it for another savings account, and
+     * answers nothing.
+     *
+     * <p><strong>The one thing in this application that reduces an earned-on figure, and it is
+     * allowed because the euros did not stop being saved.</strong> A withdrawal deliberately leaves
+     * this alone — the mark never falls, which is what makes taking money out free and stops it
+     * earning twice on the way back in. A move is the case where leaving it alone would be wrong in
+     * the other direction: the euros are still in savings, in the account next door, and the row
+     * that now holds them is carrying the same figure. Reduced here and added there, the customer's
+     * mark is exactly what it was, which is the whole of the rule.
+     *
+     * <p>Never below nothing, and never more than the row was judged on. A caller asking to carry
+     * away more than this row ever earned on would be claiming euros that were never paid for, and
+     * the mark would fall — so it is refused rather than clamped, because a clamp would hide the
+     * arithmetic mistake that produced it.
+     */
+    void carryEarnedOnAway(BigDecimal carried) {
+        BigDecimal judgedOn = getEarnedOnAmount();
+        if (carried.signum() < 0 || judgedOn.compareTo(carried) < 0) {
+            throw new IllegalArgumentException("deposit " + id + " earned on " + judgedOn
+                    + " and cannot carry " + carried + " of it away");
+        }
+        earnedOnAmount = judgedOn.subtract(carried);
+    }
+
+    /** What it earned on, and the whole of it for a deposit made before there was anything else. */
+    BigDecimal getEarnedOnAmount() {
+        return earnedOnAmount == null ? amount : earnedOnAmount;
+    }
+
+    /**
+     * Records which version of the account's terms this deposit landed under, once and never again
+     * — what a deposit was decided under cannot change after the fact.
+     *
+     * @throws IllegalStateException if this deposit already names a version, which would be a
+     *                               second answer to a question that has one
+     */
+    void landedUnder(int version) {
+        if (termsVersion != null) {
+            throw new IllegalStateException("deposit " + id + " landed under version "
+                    + termsVersion + " and cannot be moved to version " + version);
+        }
+        termsVersion = version;
+    }
+
+    /**
+     * The version it landed under, and nothing at all for a deposit recorded before there was a
+     * version to record.
+     *
+     * <p>Not read as a one, unlike the rate and the amount it earned on. Those two have an honest
+     * answer for a deposit that predates them — every deposit before the streak scheme was paid at
+     * the ordinary rate, and every deposit before the mark earned on the whole of itself — and this
+     * one does not: an account could have been on any version, and saying "version 1" of a deposit
+     * nobody stamped would be inventing the agreement it was priced under. The migration fills them
+     * in from the account's own record before anybody can read one, so the null is a window rather
+     * than a state.
+     */
+    Integer getTermsVersion() {
+        return termsVersion;
     }
 
     Instant getDepositedAt() {

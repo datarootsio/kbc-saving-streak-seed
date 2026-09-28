@@ -56,9 +56,17 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <!-- Running the app locally means demonstrating it, and a demo needs seed data. -->
+                    <!-- Running the app locally means demonstrating it, and a demo needs seed data.
+                         dev seeds the two households; demo adds the half of Anke that has already
+                         been lived in - deposits in weeks that have ended, a run of secured weeks, a
+                         mark she has fallen below, two dated goals and a standing rule - which is
+                         what makes the simulator worth opening in the first minute. It is a second
+                         profile rather than more of the first because the test suite counts a
+                         hundred first weeks from a seeded Anke with no history at all; see
+                         AHouseholdWithADecisionToMake. -->
                     <profiles>
                         <profile>dev</profile>
+                        <profile>demo</profile>
                     </profiles>
                 </configuration>
             </plugin>

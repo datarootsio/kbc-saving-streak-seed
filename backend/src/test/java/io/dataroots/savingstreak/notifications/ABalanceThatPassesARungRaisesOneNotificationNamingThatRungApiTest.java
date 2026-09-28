@@ -30,8 +30,9 @@ class ABalanceThatPassesARungRaisesOneNotificationNamingThatRungApiTest extends 
 
     /**
      * Exactly the lowest rung, which is also the boundary: a balance that reaches a round figure
-     * exactly has reached it. Which figures are rungs is asserted once, in
-     * {@link BalanceThresholdsTest}.
+     * exactly has reached it. Which figures are rungs is a fact about the version of the scheme this
+     * application is seeded at, and is asserted once, where that seed is tested; how the three
+     * readings behave on a ladder is asserted once, in {@link TheBalanceRungsTest}.
      */
     private static final String A_BALANCE_ON_THE_LOWEST_RUNG = "100.00";
 

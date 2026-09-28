@@ -96,9 +96,26 @@ class DepositHistoryApiTest extends ApiIntegrationTest {
      *
      * <p>The money balance is the account's own deposits and nothing else: claiming a reward spends
      * points, never euros. The points balance is the customer's and takes every account they hold to
-     * explain — everything earned, wherever it was earned, less what has been spent. Both sides are
-     * needed, and a page showing only one account's deposits would be showing a figure that does not
-     * follow from them.
+     * explain — everything earned, wherever it was earned, less what has been spent, plus what has
+     * been given back. Both sides are needed, and a page showing only one account's deposits would
+     * be showing a figure that does not follow from them.
+     *
+     * <p><strong>A refund is earned points that no deposit explains, and that is the third term
+     * here.</strong> This assertion used to read {@code earned - spent == balance} and that
+     * equation stopped being true the day a voucher could be cancelled: a cancellation credits the
+     * points back as a fresh batch under its own reason, so the balance rises without any deposit
+     * rising with it. It went on passing only because every test that cancels one opens a customer
+     * of its own — so the first test that ever cancels one of this seeded customer's vouchers would
+     * have broken a deposit-history test that has nothing to do with vouchers, and it would have
+     * looked like a regression in this file. The refund is observable from the same list the
+     * spending is: a cancelled claim is still in the customer's claims with what it cost, and what
+     * it cost is exactly what came back, because a cancellation refunds the claim's own price
+     * rather than a figure of its own.
+     *
+     * <p>Adding the term makes the assertion stronger rather than weaker. It still says the two
+     * lists add up to the balance and nothing may be missing from either; it now also says that a
+     * cancelled claim gives back precisely what it took, which is a thing the old equation could
+     * not have caught and this one fails on.
      *
      * <p>Asserted across the whole of both lists rather than this test's own two deposits, because
      * the claim is an invariant about the customer and not about what this test put in.
@@ -123,7 +140,14 @@ class DepositHistoryApiTest extends ApiIntegrationTest {
                 .mapToLong(DepositView::pointsEarned)
                 .sum();
         long spent = Arrays.stream(claimed).mapToLong(ClaimedRewardView::pointsSpent).sum();
-        assertThat(earned - spent).isEqualTo(balances.pointsBalance());
+        // And back again for every claim somebody revoked: a cancellation is the one way points
+        // arrive that no deposit accounts for, so the equation without this term is one a single
+        // cancelled voucher of this customer's would break.
+        long refunded = Arrays.stream(claimed)
+                .filter(claim -> "CANCELLED".equals(claim.state()))
+                .mapToLong(ClaimedRewardView::pointsSpent)
+                .sum();
+        assertThat(earned - spent + refunded).isEqualTo(balances.pointsBalance());
     }
 
     /**

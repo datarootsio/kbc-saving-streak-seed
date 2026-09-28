@@ -11,9 +11,10 @@ import io.dataroots.savingstreak.streaks.SavingsWeek;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * The twelve-month rule itself, at the rule rather than over HTTP.
+ * The lifetime rule itself, at the rule rather than over HTTP.
  *
  * <p>The one test in this repo that is not an API test, and it says why out loud. Every other test
  * drives the whole application over HTTP because that keeps them free of the storage decisions later
@@ -29,10 +30,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * calendar months rather than a count of days, and slack in the cut-off rather than exactness — and
  * both of those arguments are only worth having if something fails when they are undone. Reversing
  * either one fails a test below.
+ *
+ * <p>The lifetime is handed in everywhere below, because the constant it used to come from is gone:
+ * it is published in the scheme, stamped onto a batch as the batch is earned, and given to this rule
+ * by whoever applies it. Twelve is written out here as the figure the scheme publishes today, so
+ * that every boundary these tests have always pinned is pinned against exactly the arithmetic the
+ * application still does — and two tests at the bottom say what happens when the figure is something
+ * else, which is the whole reason it is an argument.
  */
 class PointsExpiryTest {
 
     private static final ZoneId BRUSSELS = SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN;
+
+    /** What version 1 of the scheme publishes, which is what this application has always paid. */
+    private static final int TWELVE_MONTHS = 12;
 
     /**
      * The spec's own worked example: twelve months lands on the same day of the month it started on.
@@ -80,7 +91,8 @@ class PointsExpiryTest {
                 .isEqualTo(LocalDate.of(2027, 1, 15));
         // The same moment, read in UTC, is the 14th. This is the day a page formatting the raw
         // moment in the browser's own zone would have shown a customer outside Brussels.
-        assertThat(PointsExpiry.anniversaryOf(justAfterMidnightInBrussels).atZone(ZoneId.of("UTC"))
+        assertThat(PointsExpiry.anniversaryOf(justAfterMidnightInBrussels, TWELVE_MONTHS)
+                .atZone(ZoneId.of("UTC"))
                 .toLocalDate())
                 .isEqualTo(LocalDate.of(2027, 1, 14));
     }
@@ -98,12 +110,13 @@ class PointsExpiryTest {
     @Test
     void the_cut_off_catches_the_leap_day_batch_on_its_anniversary() {
         Instant earnedOnTheLeapDay = brussels(2024, 2, 29, 12, 0);
-        Instant itsAnniversary = PointsExpiry.anniversaryOf(earnedOnTheLeapDay);
+        Instant itsAnniversary = PointsExpiry.anniversaryOf(earnedOnTheLeapDay, TWELVE_MONTHS);
 
         assertThat(earnedOnTheLeapDay)
                 .as("the sweep asks for batches earned before the cut-off, so a batch at its own "
                         + "anniversary has to fall on the early side of it")
-                .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(itsAnniversary));
+                .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(
+                        itsAnniversary, TWELVE_MONTHS));
     }
 
     /**
@@ -125,17 +138,18 @@ class PointsExpiryTest {
         int checked = 0;
         while (earned.isBefore(lastOne)) {
             Instant earnedAt = earned.toInstant();
-            Instant anniversary = PointsExpiry.anniversaryOf(earnedAt);
+            Instant anniversary = PointsExpiry.anniversaryOf(earnedAt, TWELVE_MONTHS);
             // The first moment the batch has expired, and the last moment it has not: the cut-off
             // has to catch it at the first and is under no obligation at the second.
             assertThat(earnedAt)
                     .as("a batch earned at " + earnedAt + " has its anniversary at " + anniversary
                             + ", and a sweep run then must be able to see it")
-                    .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(anniversary));
+                    .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(
+                            anniversary, TWELVE_MONTHS));
             assertThat(earnedAt)
                     .as("and a sweep run a year later must still see it")
                     .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(
-                            anniversary.plus(Duration.ofDays(365))));
+                            anniversary.plus(Duration.ofDays(365)), TWELVE_MONTHS));
             earned = earned.plusHours(1);
             checked++;
         }
@@ -154,18 +168,91 @@ class PointsExpiryTest {
         Instant earnedAt = brussels(2026, 3, 15, 12, 0);
         // A sweep run one day before this batch's anniversary. The cut-off's two days of slack reach
         // past it, so the query hands the batch over.
-        Instant aDayEarly = PointsExpiry.anniversaryOf(earnedAt).minus(Duration.ofDays(1));
+        Instant aDayEarly = PointsExpiry.anniversaryOf(earnedAt, TWELVE_MONTHS)
+                .minus(Duration.ofDays(1));
 
         assertThat(earnedAt)
                 .as("the slack means the query reads it")
-                .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(aDayEarly));
-        assertThat(PointsExpiry.anniversaryOf(earnedAt))
+                .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(
+                        aDayEarly, TWELVE_MONTHS));
+        assertThat(PointsExpiry.anniversaryOf(earnedAt, TWELVE_MONTHS))
                 .as("and the anniversary is what says it stays")
                 .isAfter(aDayEarly);
     }
 
+    /**
+     * The lifetime is the argument and nothing else, which is what makes the promise on a batch a
+     * promise rather than a reading of today's scheme.
+     *
+     * <p>Six months, twelve and twenty-four from one moment, each landing on the day a calendar
+     * would give — including the clamp, which has to hold for every span and not only for a year.
+     * A rule that had kept a constant anywhere in it would answer the same date three times.
+     */
+    @Test
+    void the_lifetime_handed_in_is_the_lifetime_counted() {
+        Instant earnedOnTheLeapDay = brussels(2024, 2, 29, 12, 0);
+
+        assertThat(PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedOnTheLeapDay, 6)))
+                .isEqualTo(LocalDate.of(2024, 8, 29));
+        assertThat(PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedOnTheLeapDay, 12)))
+                .as("clamped back onto the 28th, because 2025 has no 29 February")
+                .isEqualTo(LocalDate.of(2025, 2, 28));
+        assertThat(PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedOnTheLeapDay, 24)))
+                .as("and not clamped four years on, because 2026 is not the leap year — twenty-four "
+                        + "months added once is not twelve added twice")
+                .isEqualTo(LocalDate.of(2026, 2, 28));
+        assertThat(PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedOnTheLeapDay, 48)))
+                .as("and back onto the 29th in the next leap year, which is what a calendar says")
+                .isEqualTo(LocalDate.of(2028, 2, 29));
+    }
+
+    /**
+     * A lifetime of less than a month is refused, because no version of the scheme may publish one
+     * and a caller that has worked one out has worked something out wrongly.
+     *
+     * <p>Refused rather than clamped. A batch quietly given a lifetime of nought months would expire
+     * the moment it was earned, and the customer would be told they had points that had already
+     * gone.
+     */
+    @Test
+    void a_lifetime_shorter_than_a_month_is_refused() {
+        assertThatThrownBy(() -> PointsExpiry.anniversaryOf(brussels(2026, 1, 15, 9, 30), 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least a month");
+        assertThatThrownBy(
+                () -> PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(Instant.EPOCH, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least a month");
+    }
+
+    /**
+     * The cut-off is drawn from the shortest lifetime ever published, and that is what keeps a sweep
+     * from walking past a batch that was promised less than today's scheme promises.
+     *
+     * <p>A batch stamped under a six-month lifetime is due six months after it was earned. A window
+     * drawn from twelve months would not look at it for another half a year, and nothing would ever
+     * report the rows it never read. So the sweep is given the smallest figure the bank has ever
+     * published and the window widens to match — which, while twelve is the only figure there has
+     * ever been, is the window it has always had.
+     */
+    @Test
+    void the_cut_off_widens_to_the_shortest_lifetime_ever_published() {
+        Instant earnedAt = brussels(2026, 3, 15, 12, 0);
+        Instant itsSixMonths = PointsExpiry.anniversaryOf(earnedAt, 6);
+
+        assertThat(earnedAt)
+                .as("the window drawn from the shortest lifetime reaches the batch that was "
+                        + "promised it")
+                .isBefore(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(itsSixMonths, 6));
+        assertThat(earnedAt)
+                .as("and a window drawn from twelve would have walked straight past it, which is "
+                        + "why the shortest figure is the one the sweep is given")
+                .isAfter(PointsExpiry.nothingEarnedAfterThisCanHaveExpiredBy(
+                        itsSixMonths, TWELVE_MONTHS));
+    }
+
     private static LocalDate dayItExpires(Instant earnedAt) {
-        return PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedAt));
+        return PointsExpiry.dayOf(PointsExpiry.anniversaryOf(earnedAt, TWELVE_MONTHS));
     }
 
     private static Instant brussels(int year, int month, int day, int hour, int minute) {

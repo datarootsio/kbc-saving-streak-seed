@@ -16,6 +16,13 @@ import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
  * them. {@code basePoints}, {@code streakBonusPoints} and {@code loyaltyBonusPoints} always sum to
  * it, so a customer can check the arithmetic rather than take the total on trust.
  *
+ * <p>{@code newSavings} is how much of the amount was new saving, and so how much of it earned. It
+ * is the whole amount for anybody who has never taken money back out of savings, which is nearly
+ * every deposit there is. It is less when this deposit is filling a gap an earlier withdrawal left:
+ * those euros earned their points the first time they were saved, and a euro saved twice is one
+ * euro. It is sent on every deposit rather than only on the short ones, so that a screen can say why
+ * a deposit earned what it earned without working anything out for itself.
+ *
  * <p>{@code loyaltyBonusPoints} is every anniversary this deposit has been paid, added up. It is
  * the one figure here that grows after the money moved — a deposit left alone is paid again every
  * twelve months — so the total answers "what has this deposit been worth to me" while the base and
@@ -37,13 +44,41 @@ import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
  * are different statements — the same distinction the account's overview draws between having
  * nothing left to expire and having nothing expiring on some particular day.
  *
+ * <p>{@code productMultiplierApplied} is the part of that rate the account's savings product
+ * accounts for, on its own: {@code 1.00} where the product changes nothing, which is what free
+ * savings pays and what every deposit made before there were products was paid. The two are sent
+ * apart so that a customer reading a row can see which of the two schemes earned them what — a run
+ * of weeks is something they did, and a product is something they chose — and because neither
+ * figure can be worked out from the other: 1.375 is 1.10 times 1.25 and equally 1.25 times 1.10.
+ * Sent on every deposit rather than only where it is interesting, for the reason {@code newSavings}
+ * is: a history whose rows change shape is a history a page has to render defensively.
+ *
+ * <p>Neither rate says which points came from which factor, and no field here does. The base points
+ * are the euros and the streak bonus is the whole of the uplift over them, exactly as before, because
+ * two factors that multiply have no shares to divide an uplift into. The rates say what each factor
+ * was, which is a fact; the split of an uplift between them would be an invention.
+ *
+ * <p>{@code termsVersion} is which version of the account's savings product terms this deposit
+ * landed under. It is the same kind of statement as {@code multiplierApplied} beside it: what was
+ * in force when the money arrived, not what is in force now. The day an account takes its product's
+ * newer terms, every row already in this history goes on naming the agreement it was actually
+ * priced under, which is the whole reason the version is written on the deposit rather than read
+ * off the account.
+ *
+ * <p>It is null for a deposit nothing has stamped — one recorded before there were agreements and
+ * not yet reached by the start-up migration. Null rather than a one, because a version nobody
+ * recorded is not a version: reporting "version 1" would be inventing the agreement the money was
+ * priced under, which is a different kind of claim from reporting the ordinary rate for a deposit
+ * that really was paid at it.
+ *
  * <p>The day travels as a plain date rather than as a moment, for the reason the overview's expiry
  * date gives: which calendar day a moment falls on depends on the zone it is read in, and the
  * Loyalty module has already read it in the one zone this application counts calendars in.
  */
-record DepositResponse(Long id, BigDecimal amount, long pointsEarned, long basePoints,
-                       long streakBonusPoints, long loyaltyBonusPoints,
-                       BigDecimal multiplierApplied, Instant depositedAt,
+record DepositResponse(Long id, BigDecimal amount, BigDecimal newSavings, long pointsEarned,
+                       long basePoints, long streakBonusPoints, long loyaltyBonusPoints,
+                       BigDecimal multiplierApplied, BigDecimal productMultiplierApplied,
+                       Integer termsVersion, Instant depositedAt,
                        LocalDate nextAnniversaryOn, Long nextAnniversaryPoints) {
 
     /**
@@ -57,9 +92,11 @@ record DepositResponse(Long id, BigDecimal amount, long pointsEarned, long baseP
      */
     static DepositResponse of(RecordedDeposit deposit, NextAnniversaryOfADeposit nextAnniversary) {
         return new DepositResponse(
-                deposit.id(), deposit.amount(), deposit.pointsEarned(), deposit.basePoints(),
+                deposit.id(), deposit.amount(), deposit.newSavings(), deposit.pointsEarned(),
+                deposit.basePoints(),
                 deposit.streakBonusPoints(), deposit.loyaltyBonusPoints(),
-                deposit.multiplierApplied(), deposit.depositedAt(),
+                deposit.multiplierApplied(), deposit.productMultiplierApplied(),
+                deposit.termsVersion(), deposit.depositedAt(),
                 nextAnniversary == null ? null : nextAnniversary.on(),
                 nextAnniversary == null ? null : nextAnniversary.points());
     }

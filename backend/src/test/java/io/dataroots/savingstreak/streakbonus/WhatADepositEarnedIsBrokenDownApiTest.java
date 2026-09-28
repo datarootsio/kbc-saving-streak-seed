@@ -47,6 +47,10 @@ class WhatADepositEarnedIsBrokenDownApiTest extends ApiIntegrationTest {
     @Test
     void a_deposit_reports_its_base_points_its_bonus_the_rate_and_the_total() {
         long savingsAccount = seeded.savingsAccountOf(ANKE);
+        // Savings back at their peak first. Euros that only fill a gap an earlier test's withdrawal
+        // left have been saved once already and earn nothing, so a deposit measured from below the
+        // peak would be measuring the order the test classes ran in.
+        seeded.savingsBackAtTheirPeak(savingsAccount, ANKE);
         BalancesView before = balancesOf(savingsAccount);
 
         DepositView made = depositAccepted(savingsAccount, seeded.currentAccountOf(ANKE), "24.50");

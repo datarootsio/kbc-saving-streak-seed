@@ -1,0 +1,337 @@
+package io.dataroots.savingstreak.scheme;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import io.dataroots.savingstreak.deposits.AmountOfMoney;
+
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
+
+/**
+ * One published version of the scheme: the Monday it takes effect, every figure this bank has
+ * decided about saving, and one line saying what changed.
+ *
+ * <p><strong>A version is a row, and a row that has been written is never written again.</strong>
+ * There is no mutator on this class and nothing outside it can reach a field. Changing the scheme
+ * writes version <em>n+1</em>; it does not edit version <em>n</em>, because somebody's week was
+ * judged under version <em>n</em> and a week already judged cannot be re-judged. That is not a
+ * convention this class hopes callers will keep — there is simply nothing here to call.
+ *
+ * <p><strong>The shape is the products module's, and the two differences from it are the whole
+ * feature.</strong> {@code ProductTerms} is the same idea argued at length for a different set of
+ * numbers, so this class follows it row for row rather than inventing a second way to publish a
+ * version. It parts company twice. First, <em>nobody is pinned</em>: a product's terms are an
+ * agreement and an account is written under the version it was opened with, whereas the scheme is a
+ * promotion and there is one ladder for everybody from its date. Second, and consequently, <em>a
+ * version may never take effect in the past</em>. Backdating a product's terms is harmless because
+ * accounts pin and nothing already decided moves; backdating the scheme would change which weeks
+ * counted, which is exactly what this feature exists to prevent. The refusal that enforces it lives
+ * with the door that publishes a version and is a later ticket; the honesty of the seeded row —
+ * dated on a Monday long before any data — is what makes it true today.
+ *
+ * <p><strong>There is one scheme, so there is no code beside the version number.</strong> A
+ * product's version is unique per product, because "version 2" is not an address when four products
+ * each have one. The scheme has no plural, so the version number is the whole key, and
+ * {@code SchemeVersionRepository} is where that guarantee actually comes from — SQLite's dialect
+ * writes a unique clause from an annotation nowhere.
+ *
+ * <p><strong>Every rate is an {@code int} of basis points and every amount is a {@code long} of
+ * cents.</strong> {@link BasisPointsOfTheScheme} argues the unit and argues why it is a second copy
+ * of one; what matters here is that the integers stop at this class. Everything that leaves is a
+ * {@link BigDecimal} — a multiple, a percentage, or a euro amount quoted through the money
+ * vocabulary the rest of the application already speaks — inside {@link TheSchemeAsPublished}.
+ *
+ * <p><strong>Zero is not the absence of a rule in any figure here, and that is the sharpest
+ * difference from a product's terms.</strong> A product reads nought as no notice, no term, no
+ * floor, no penalty; every one of those is a real agreement. Not one figure on this row has an
+ * absence to read. A weekly threshold of nought is a scheme in which every week secures itself and
+ * every customer walks the whole ladder for nothing; an ordinary rate of nought is a deposit that
+ * silently earns no points; a points lifetime of nought is a batch that expires the moment it is
+ * earned. That is why the publishing door will require all of them boxed and refuse the ones left
+ * out, rather than reading an empty form as a scheme of noughts.
+ *
+ * <p><strong>Five columns are named explicitly, and the reason is a naming strategy rather than a
+ * preference.</strong> Spring's camel-case-to-underscores strategy runs a single-letter word into
+ * the word after it, so {@code daysBeforeAMaturityIsWorthSaying} becomes
+ * {@code days_beforeamaturity_is_worth_saying} and {@code theMostAStreakPaysBasisPoints} becomes
+ * {@code the_mostastreak_pays_basis_points}. Those are columns nobody can grep for and nobody can
+ * read in a query plan, and the names in this codebase are sentences precisely so that they can be
+ * read. Renaming the fields to dodge the article would be letting a naming strategy write the
+ * domain's vocabulary, so the column is named instead — the same move
+ * {@code SavingRule} and {@code RuleSplit} already make for their own columns.
+ *
+ * <p>Package-private, like the repository that reads it. {@link TheSchemeAsPublished} is what
+ * leaves this module.
+ */
+@Entity
+class SchemeVersion {
+
+    /** SQLite has no sequences, so identity values are generated by the database. */
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /**
+     * Which version of the scheme this is, counting from one.
+     *
+     * <p>Across the bank rather than per anything, because there is one scheme. It is also the
+     * tie-break that decides which of two versions sharing a Monday is in force, which is how a
+     * version announced for next Monday is corrected without an edit door existing:
+     * {@link TheSchemeInForceOn} takes the highest number whose day has come, so publishing another
+     * version for the same Monday supersedes the first.
+     */
+    @Column(nullable = false)
+    private int version;
+
+    /**
+     * The Monday it takes effect.
+     *
+     * <p>A {@link LocalDate} rather than an instant, for the reason every other window in this
+     * codebase is one: a change to the scheme is a thing announced, and an instant would start it an
+     * evening early for anybody reading west of here.
+     *
+     * <p><strong>Always a Monday, and that is a rule about the calendar rather than about
+     * storage.</strong> A savings week runs Monday to Sunday, so a threshold that changed on a
+     * Wednesday would either judge one week under two rules or move the goalposts on somebody who
+     * had already been told what their week asked for. The column cannot say so — a date column
+     * holds a Wednesday perfectly well — so it is said by the door that publishes a version and by
+     * the seed, which uses a literal Monday.
+     */
+    @Column(nullable = false)
+    private LocalDate effectiveFrom;
+
+    /**
+     * What a week has to take in, net, to secure itself — 5 000 is EUR 50.
+     *
+     * <p>Cents rather than euros, for the reason every other amount in this application is held in
+     * cents: what it is compared against is a sum of deposits less withdrawals, and a comparison
+     * that converted at the point of comparing is where an off-by-a-hundred goes unnoticed.
+     */
+    @Column(nullable = false)
+    private long weeklyThresholdCents;
+
+    /** What the first week of a run pays per euro, in basis points of a whole multiple — 10 000. */
+    @Column(nullable = false)
+    private int theOrdinaryRateBasisPoints;
+
+    /**
+     * What each further week of a run adds, in basis points of a whole multiple — 1 000 is 0,10×.
+     *
+     * <p>Nought is a legitimate scheme and not an absent rule: a bank that pays the same for one
+     * week as for twenty has published a flat ladder, which is a decision rather than a gap. It is
+     * worth saying because the reading differs from the one every figure on a product's terms row
+     * makes, and a reader arriving here from that class will expect the other one.
+     */
+    @Column(nullable = false)
+    private int extraForEachFurtherWeekBasisPoints;
+
+    /**
+     * Where the ladder stops climbing, in basis points of a whole multiple — 15 000 is 1,50×.
+     *
+     * <p>Never below {@link #theOrdinaryRateBasisPoints}, which would be a ladder that descends at
+     * the first step. Equal to it is a flat scheme and is allowed, for the reason the step above
+     * may be nought.
+     */
+    @Column(name = "the_most_a_streak_pays_basis_points", nullable = false)
+    private int theMostAStreakPaysBasisPoints;
+
+    /**
+     * How long a batch of points lasts, in whole months — 12.
+     *
+     * <p>Months rather than days, because that is how the promise is made to a customer ("your
+     * points last twelve months") and because a batch's expiry is worked out by adding a period to
+     * a date rather than by counting days: twelve months from the 29th of February is a calendar
+     * question that days cannot answer.
+     */
+    @Column(name = "how_long_a_batch_of_points_lasts_in_months", nullable = false)
+    private int howLongABatchOfPointsLastsInMonths;
+
+    /**
+     * The balance rungs a customer is congratulated on reaching, in cents, ascending.
+     *
+     * <p><strong>An owned ordered collection, and deliberately neither of the two obvious
+     * alternatives.</strong> A joined string — "10000,50000,100000" — would have to be parsed on
+     * every read, and the nightly notification sweep reads the scheme once per customer; a parse in
+     * that loop is a parse that can fail at two in the morning on a row somebody published at five
+     * the previous afternoon. A second entity with a repository of its own would be a table with a
+     * lifetime, an identifier and a door, for a list that has no existence apart from the version
+     * that published it. An element collection is the mapping for exactly this shape: an ordered
+     * list of one kind of thing, belonging wholly to its owner, written and deleted with it.
+     *
+     * <p><strong>Ordered by a column rather than sorted on read.</strong> The order is the ladder,
+     * so it is a fact about the row rather than a presentation of it, and a list that arrived in
+     * insertion order from SQLite and was sorted afterwards would hide the day somebody published
+     * the rungs out of order — which is a refusal the publishing door owes them, not a tidy-up.
+     *
+     * <p><strong>Fetched eagerly, which is the one place this module spends a query it could
+     * save.</strong> A version without its rungs is not a version: every reading that leaves this
+     * module carries them, and the alternative is a lazy list that throws the moment a caller
+     * touches it outside the transaction that loaded it. The scheme is a handful of rows, read a
+     * handful of times, so the extra select is not a cost anybody can measure — and a
+     * {@code LazyInitializationException} in a nightly sweep is one nobody can debug.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "scheme_balance_rung",
+            joinColumns = @JoinColumn(name = "scheme_version_id"))
+    @OrderColumn(name = "rung_ordinal")
+    @Column(name = "rung_cents", nullable = false)
+    private List<Long> balanceRungCents;
+
+    /**
+     * The share of a budget at which it is said to be running low, in basis points — 8 000 is 80%.
+     *
+     * <p>Basis points of a share rather than a fraction, so that the figure has one spelling and
+     * the same unit as every other rate here. Four fifths is 8 000 and there is no second way to
+     * write it.
+     */
+    @Column(name = "what_share_of_a_budget_is_running_low_basis_points", nullable = false)
+    private int whatShareOfABudgetIsRunningLowBasisPoints;
+
+    /** How many bills outstanding at once is arrears piling up — 3. */
+    @Column(name = "how_many_outstanding_is_a_spiral", nullable = false)
+    private int howManyOutstandingIsASpiral;
+
+    /** How many days before a maturity it is worth saying so — 30. */
+    @Column(name = "days_before_a_maturity_is_worth_saying", nullable = false)
+    private int daysBeforeAMaturityIsWorthSaying;
+
+    /** How many days before an anniversary it is worth saying so — 30. */
+    @Column(nullable = false)
+    private int daysBeforeAnAnniversaryIsWorthSaying;
+
+    /**
+     * One line saying what changed and why, for the customer whose rate moved this morning.
+     *
+     * <p><strong>Required, on every version including the first.</strong> This is where the scheme
+     * differs from a product's terms, which leave the line null on version 1 because a first
+     * version is the opening statement of an agreement somebody chose. Nobody chose the scheme: it
+     * applies from its Monday to every customer the bank has, so a version that arrived without a
+     * sentence would be a rate change with a date and no explanation — which is one of the three
+     * things this feature exists to fix. The seed writes its own line rather than leaving it empty.
+     *
+     * <p>Written down rather than computed from the previous row, and the two are not the same
+     * thing. A difference between two versions is a list of figures that moved, and this module
+     * will produce that list mechanically; what it cannot produce is the reason.
+     *
+     * <p>Long, because the sentence that matters here is the one that does not fit in six words.
+     */
+    @Column(nullable = false, length = 1000)
+    private String whatChanged;
+
+    protected SchemeVersion() {
+        // for JPA
+    }
+
+    private SchemeVersion(int version, LocalDate effectiveFrom, long weeklyThresholdCents,
+                          int theOrdinaryRateBasisPoints, int extraForEachFurtherWeekBasisPoints,
+                          int theMostAStreakPaysBasisPoints,
+                          int howLongABatchOfPointsLastsInMonths, List<Long> balanceRungCents,
+                          int whatShareOfABudgetIsRunningLowBasisPoints,
+                          int howManyOutstandingIsASpiral, int daysBeforeAMaturityIsWorthSaying,
+                          int daysBeforeAnAnniversaryIsWorthSaying, String whatChanged) {
+        this.version = version;
+        this.effectiveFrom = effectiveFrom;
+        this.weeklyThresholdCents = weeklyThresholdCents;
+        this.theOrdinaryRateBasisPoints = theOrdinaryRateBasisPoints;
+        this.extraForEachFurtherWeekBasisPoints = extraForEachFurtherWeekBasisPoints;
+        this.theMostAStreakPaysBasisPoints = theMostAStreakPaysBasisPoints;
+        this.howLongABatchOfPointsLastsInMonths = howLongABatchOfPointsLastsInMonths;
+        this.balanceRungCents = List.copyOf(balanceRungCents);
+        this.whatShareOfABudgetIsRunningLowBasisPoints = whatShareOfABudgetIsRunningLowBasisPoints;
+        this.howManyOutstandingIsASpiral = howManyOutstandingIsASpiral;
+        this.daysBeforeAMaturityIsWorthSaying = daysBeforeAMaturityIsWorthSaying;
+        this.daysBeforeAnAnniversaryIsWorthSaying = daysBeforeAnAnniversaryIsWorthSaying;
+        this.whatChanged = whatChanged;
+    }
+
+    /**
+     * A version as somebody publishing it describes it: every figure, the Monday it starts, and the
+     * line saying what changed.
+     *
+     * <p>Thirteen parameters, which is a smell everywhere except here. The scheme <em>is</em> this
+     * list of numbers — that is the design, and the alternative to naming them all at once is a
+     * half-built scheme that exists for a moment with some of its figures unset. There is no
+     * mutator to finish one with, so they arrive together or not at all, and the seed's call is
+     * written one figure per line with the spec's table beside it.
+     *
+     * <p>The only factory there is, and it takes no state: a version is published, always, because
+     * an unpublished one is a draft and this module has no drafts. The Monday it takes effect is
+     * the whole of what "not yet" means here, and a version dated ahead of today is one
+     * {@link TheSchemeInForceOn} simply does not answer with yet.
+     *
+     * <p>The rungs are copied on the way in rather than held by reference, because a caller that
+     * kept its list could otherwise reorder the ladder of a version that had already been
+     * published — which is the one thing this class exists to make impossible.
+     */
+    static SchemeVersion published(int version, LocalDate effectiveFrom, long weeklyThresholdCents,
+                                   int theOrdinaryRateBasisPoints,
+                                   int extraForEachFurtherWeekBasisPoints,
+                                   int theMostAStreakPaysBasisPoints,
+                                   int howLongABatchOfPointsLastsInMonths,
+                                   List<Long> balanceRungCents,
+                                   int whatShareOfABudgetIsRunningLowBasisPoints,
+                                   int howManyOutstandingIsASpiral,
+                                   int daysBeforeAMaturityIsWorthSaying,
+                                   int daysBeforeAnAnniversaryIsWorthSaying, String whatChanged) {
+        return new SchemeVersion(version, effectiveFrom, weeklyThresholdCents,
+                theOrdinaryRateBasisPoints, extraForEachFurtherWeekBasisPoints,
+                theMostAStreakPaysBasisPoints, howLongABatchOfPointsLastsInMonths, balanceRungCents,
+                whatShareOfABudgetIsRunningLowBasisPoints, howManyOutstandingIsASpiral,
+                daysBeforeAMaturityIsWorthSaying, daysBeforeAnAnniversaryIsWorthSaying,
+                whatChanged);
+    }
+
+    int version() {
+        return version;
+    }
+
+    /**
+     * This version of the scheme as the rest of the application reads it: the same numbers, in the
+     * units everything outside this module speaks.
+     *
+     * <p>The one door out, and there is deliberately no second one. The products module hands a few
+     * raw figures out of its entity for callers that multiply rather than print, because an
+     * interest sweep holding a set of terms wants basis points and would round badly from a
+     * percentage. Nothing here has that excuse yet: every figure the scheme carries is handed to a
+     * rule that already works in euros, in multiples or in counts, so a package-private reader per
+     * column would be twelve methods added against a need nobody has. If the arithmetic of a later
+     * ticket turns out to want an integer, this is the class that grows the method — with the
+     * reason written beside it, the way {@code ProductTerms} writes its four.
+     *
+     * <p>The amounts go out through {@code AmountOfMoney} rather than as a raw division, because
+     * how many places a euro amount has is a decision this application made once and this module
+     * has no business making again.
+     */
+    TheSchemeAsPublished asPublished() {
+        return new TheSchemeAsPublished(
+                version,
+                effectiveFrom,
+                asEuros(weeklyThresholdCents),
+                BasisPointsOfTheScheme.asAMultiple(theOrdinaryRateBasisPoints),
+                BasisPointsOfTheScheme.asAMultiple(extraForEachFurtherWeekBasisPoints),
+                BasisPointsOfTheScheme.asAMultiple(theMostAStreakPaysBasisPoints),
+                howLongABatchOfPointsLastsInMonths,
+                balanceRungCents.stream().map(SchemeVersion::asEuros).toList(),
+                BasisPointsOfTheScheme.asAPercentage(whatShareOfABudgetIsRunningLowBasisPoints),
+                howManyOutstandingIsASpiral,
+                daysBeforeAMaturityIsWorthSaying,
+                daysBeforeAnAnniversaryIsWorthSaying,
+                whatChanged);
+    }
+
+    /** Cents as the euros everything outside this module speaks, quoted the way money is. */
+    private static BigDecimal asEuros(long cents) {
+        return AmountOfMoney.quotedToTheCent(BigDecimal.valueOf(cents, 2));
+    }
+}

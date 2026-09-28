@@ -29,6 +29,15 @@ import org.springframework.stereotype.Component;
  * module's answer, and a query in here reading its table would be Deposits knowing something about
  * savings accounts that it has no business knowing.
  *
+ * <p>And then a deposit gained an origin, because a month's interest is now written into the same
+ * ledger as a row of another kind. Every query that asks for the customer's own money — the mark a
+ * deposit is judged against, the week, the anniversaries — asks the database for rows whose origin
+ * says so, and a row that says nothing is not one of them: comparing a null to a value leaves it
+ * out. A file written by the release before this one holds nothing but deposits and every one of
+ * them would drop out of all three answers at once, so somebody would open the application on the
+ * morning of the upgrade to find they had never saved anything and were owed no anniversary. Each
+ * of those rows is told what it has always been, which is money its customer moved in.
+ *
  * <p>Schema generation adds the columns; only the values are this class's business. The schema is
  * generated from the entity model rather than migrated ({@code ddl-auto=update}), which adds columns
  * but has no opinion about what should be in them for the rows that were already there. Until this
@@ -63,6 +72,7 @@ class DepositsOnStartUp implements SmartInitializingSingleton {
     public void afterSingletonsInstantiated() {
         giveEveryDepositWhatRemainsOfIt();
         sayWhoseSavingEveryDepositWas();
+        sayWhereEveryRecordedDepositCameFrom();
     }
 
     private void giveEveryDepositWhatRemainsOfIt() {
@@ -75,6 +85,19 @@ class DepositsOnStartUp implements SmartInitializingSingleton {
         }
         log.info("deposits recorded before this release given what remains of them deposits={} "
                 + "remainingAmount=theirOwnAmount", filledIn);
+    }
+
+    private void sayWhereEveryRecordedDepositCameFrom() {
+        int said = deposits.sayThatEveryRecordedDepositWasTheCustomersOwnMoney();
+        if (said == 0) {
+            // The ordinary case, and worth a line all the same: it says the question was asked, so
+            // that a mark or a week that looks wrong on a restart is not blamed on a step nobody
+            // can see.
+            log.debug("no deposit was missing where its money came from deposits=0");
+            return;
+        }
+        log.info("deposits recorded before this release told where their money came from "
+                + "deposits={} origin=CUSTOMER", said);
     }
 
     private void sayWhoseSavingEveryDepositWas() {

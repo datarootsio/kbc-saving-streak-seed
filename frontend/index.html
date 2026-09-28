@@ -4,12 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Deposit money into a savings account and earn a point for every whole euro." />
-    <!-- Both colours, so the browser chrome around the page matches whichever the page is showing. -->
-    <meta name="theme-color" content="#eef4f9" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#04223b" media="(prefers-color-scheme: dark)" />
+    <!-- The sticky white bar is what sits against the browser's own chrome on every screen behind
+         the sign-in gate, so that is the colour the chrome is asked to take. One value, because
+         this identity has one theme: dark type on white cards on a grey canvas, and no dark
+         version of itself.
+
+         It is honestly a compromise on one screen. Signed out there is no bar — the gate is the
+         sky gradient from its top pixel down — so a signed-out phone paints a white band above a
+         pale blue page. The alternative is a blue band above every white-barred screen the
+         customer is actually in, for the sake of the one they pass through once. -->
+    <meta name="theme-color" content="#ffffff" />
+    <!-- The chip from the top bar, at sixteen pixels: navy ground, the light blue laid inside its
+         bottom edge, and the name in white. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23003665'/%3E%3Cpath d='M18 4 8 18h6l-2 10 12-15h-7l1-9Z' fill='%230097db'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%2310375c'/%3E%3Crect y='26' width='32' height='6' fill='%234a9bd6'/%3E%3Ctext x='16' y='21' font-family='Helvetica,Arial,sans-serif' font-size='13' font-weight='bold' letter-spacing='0.6' fill='%23fff' text-anchor='middle'%3EKBC%3C/text%3E%3C/svg%3E"
     />
     <title>Saving Streak</title>
   </head>

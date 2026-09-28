@@ -29,6 +29,11 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
  * What the week asks for travels with what has landed in it, so a page showing progress towards
  * EUR 50 never writes the 50 into its own markup.
  *
+ * <p>One of them is the most they have ever had in savings: the mark a deposit is judged against,
+ * since euros above it are new saving and euros below it have been saved and paid for before. It is
+ * the customer's across every account they hold, for the same reason the points are — a euro moved
+ * from one of their savings accounts to another is not new saving in either.
+ *
  * <p>Two of the nine are what the customer stands to lose next: how many points expire soonest and
  * the day they do. Both are null where there is nothing left to lose, rather than zero on no date.
  * The day is a plain date rather than a moment, for the reason a savings account's own resource
@@ -36,6 +41,7 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
  * backend's to know.
  */
 record CustomerAccountsResponse(long pointsBalance,
+                                BigDecimal mostEverSaved,
                                 Long pointsExpiringNext,
                                 LocalDate pointsExpiringNextOn,
                                 BigDecimal newSavingsThisWeek,
@@ -54,11 +60,12 @@ record CustomerAccountsResponse(long pointsBalance,
      * time.
      */
     static CustomerAccountsResponse of(long pointsBalance,
+                                       BigDecimal mostEverSaved,
                                        Optional<PointsExpiringNext> expiringNext,
                                        WeekAndStreak saving,
                                        List<CurrentAccountResponse> currentAccounts,
                                        List<SavingsAccountResponse> savingsAccounts) {
-        return new CustomerAccountsResponse(pointsBalance,
+        return new CustomerAccountsResponse(pointsBalance, mostEverSaved,
                 expiringNext.map(PointsExpiringNext::points).orElse(null),
                 expiringNext.map(PointsExpiringNext::on).orElse(null),
                 saving.week().newSavings(), saving.week().weeklyMinimum(), saving.week().stillNeeded(),
@@ -76,10 +83,36 @@ record CustomerAccountsResponse(long pointsBalance,
     }
 
     /**
-     * A savings account in an overview: what it holds, the same figure the account's own endpoint
-     * reports and read the same way. There is no factory for it, because the balance comes from
-     * another module and is assembled by whoever asked.
+     * A savings account in an overview: what it holds, and which savings product it is on. Both are
+     * the same figures the account's own endpoint reports and read the same way. There is no
+     * factory for it, because neither comes from this module and both are assembled by whoever
+     * asked.
+     *
+     * <p><strong>The product is named here rather than left to the account's own page</strong>,
+     * because the overview is where a customer holding two accounts finds out that they are not the
+     * same kind of account. A list of savings accounts distinguished only by a number and a balance
+     * is a list that hides the single most important thing about them the moment more than one
+     * product exists — which of them the money can actually come back out of.
+     *
+     * <p>The name rather than only the code, so that a card reads "Free savings" without the page
+     * keeping a table of what each code is called. The code travels with it because it is what
+     * everything else is addressed by, and a page that wanted to group or link by product would
+     * otherwise have to match on words meant for a person.
+     *
+     * <p>Both are null for an account nothing has recorded an agreement for, which is a database
+     * that has not been through the start-up migration. The card then says nothing about a product
+     * rather than saying something invented.
+     *
+     * <p><strong>A closed account is still on this list, and says the day it closed.</strong> It is
+     * not on it to be saved into — nothing may be, and nothing is in it — but leaving it out would
+     * make the overview disagree with the money history hanging off the same screen, which reads
+     * every euro that moved through every account this customer holds. A screen that showed those
+     * euros with no account to attribute them to would have lost the customer's own record. So the
+     * account stays, {@code closedOn} says what it is, and where to draw it is the page's decision
+     * rather than this record's — exactly as a product closed to new accounts stays in the
+     * catalogue marked closed.
      */
-    record SavingsAccountResponse(Long id, BigDecimal moneyBalance) {
+    record SavingsAccountResponse(Long id, BigDecimal moneyBalance, String productCode,
+                                  String productName, LocalDate closedOn) {
     }
 }

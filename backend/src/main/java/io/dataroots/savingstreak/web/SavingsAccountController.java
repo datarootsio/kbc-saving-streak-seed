@@ -12,7 +12,9 @@ import io.dataroots.savingstreak.deposits.WithdrawalsService;
 import io.dataroots.savingstreak.loyalty.LoyaltyService;
 import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
 import io.dataroots.savingstreak.points.PointsService;
+import io.dataroots.savingstreak.products.ProductsService;
 import io.dataroots.savingstreak.streaks.StreaksService;
+import io.dataroots.savingstreak.timeline.TimelineService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -56,17 +58,27 @@ class SavingsAccountController {
     private final PointsService points;
     private final StreaksService streaks;
     private final LoyaltyService loyalty;
+    /**
+     * What each savings account is living under, for the one part of this reading that is about the
+     * account's rules rather than its figures. A sixth module beside the five, and asked the same
+     * way: it answers what this account is on, and nothing here decides any of it.
+     */
+    private final ProductsService products;
+    private final TimelineService timeline;
 
     SavingsAccountController(AccountsService accounts, DepositsService deposits, WithdrawalsService withdrawals,
                              PointsService points,
                              StreaksService streaks,
-                             LoyaltyService loyalty) {
+                             LoyaltyService loyalty, ProductsService products,
+                             TimelineService timeline) {
         this.accounts = accounts;
         this.deposits = deposits;
         this.withdrawals = withdrawals;
         this.points = points;
         this.streaks = streaks;
         this.loyalty = loyalty;
+        this.products = products;
+        this.timeline = timeline;
     }
 
     /**
@@ -92,12 +104,30 @@ class SavingsAccountController {
                 // reported beside this balance because that is the connection the page is about —
                 // but they are the same figure whichever of the customer's accounts is open.
                 points.balanceOf(holder.customerId()),
+                // And the most they have ever had in savings, which is also theirs rather than this
+                // account's: it is the mark a deposit into any of their accounts is judged against,
+                // and beside the balance it says whether paying in here will earn anything.
+                deposits.mostEverSavedBy(holder.customerId()),
                 // And what the holder stands to lose next, for the same reason: the twelve months
                 // run against their points rather than against this account's saving.
                 points.whatExpiresNextFor(holder.customerId()),
                 // And their week and their run of weeks, for the same reason: a week counts what
                 // they put away, wherever they put it.
-                streaks.weekAndStreakOf(holder.customerId()));
+                streaks.weekAndStreakOf(holder.customerId()),
+                // And the agreement the account itself is living under, which is the one figure
+                // here that is the account's rather than the holder's and is not a figure at all.
+                // Empty for an account nothing has recorded one for, which is a database that has
+                // not been through the start-up migration: the panel is then simply absent, rather
+                // than filled in with an agreement nobody wrote.
+                products.theAgreementOf(savingsAccountId),
+                // And whether that product has published anything newer than the version above,
+                // with what the difference would be. Read here rather than on a door of its own so
+                // that the two arrive together: an agreement panel drawn a moment before the
+                // comparison beside it would say "version 1" without saying that version 2 exists.
+                // Nothing about it moves anything — taking the newer terms is a separate press, on
+                // a separate door, because nothing in this application adopts terms on anybody's
+                // behalf.
+                products.theNewerTermsFor(savingsAccountId));
     }
 
     /**
@@ -136,6 +166,36 @@ class SavingsAccountController {
         return history.stream()
                 .map(deposit -> DepositResponse.of(deposit, nextAnniversaries.get(deposit.id())))
                 .toList();
+    }
+
+    /**
+     * The year this account has ahead of it: the days its points go, the days its deposits pay, and
+     * the window they are drawn in.
+     *
+     * <p>Its own resource rather than more fields on the overview above. The overview is read on
+     * every visit to every screen and is already assembling five modules; this is wanted by one
+     * screen, it is the only caller of two module reads that exist for it, and a resource that can be
+     * asked for on its own is one a trainer can curl while demonstrating what a wound-forward clock
+     * does to a bar.
+     *
+     * <p>Asked whether the account exists first, so that an account nobody has heard of is refused
+     * rather than answered with the empty year of an account that has simply never been paid into —
+     * the same order, and the same refusal, the deposit history above uses. The Timeline module
+     * cannot draw that distinction itself: both are a list of no deposits, and who holds which
+     * account is the Accounts module's answer.
+     *
+     * <p>No read transaction is opened here, because the module opens its own around the three reads
+     * that have to describe one instant of the ledger. That is a rule about the answer's consistency
+     * rather than about this endpoint, so it lives with the rule.
+     */
+    @GetMapping("/{savingsAccountId}/timeline")
+    SavingsAccountTimelineResponse timelineOf(@PathVariable long savingsAccountId) {
+        if (!accounts.savingsAccountExists(savingsAccountId)) {
+            log.warn("timeline rejected savingsAccountId={} reason={}", savingsAccountId,
+                    AccountsService.noSuchSavingsAccount(savingsAccountId));
+            throw noSuchSavingsAccount(savingsAccountId);
+        }
+        return SavingsAccountTimelineResponse.of(timeline.timelineOf(savingsAccountId));
     }
 
     @PostMapping("/{savingsAccountId}/deposits")
@@ -178,6 +238,44 @@ class SavingsAccountController {
             throw noSuchSavingsAccount(savingsAccountId);
         }
         return withdrawals.withdrawalsFrom(savingsAccountId).stream().map(WithdrawalResponse::of).toList();
+    }
+
+    /**
+     * Closes a savings account its holder has emptied, and answers with the agreement as it now
+     * reads — the product, the version, the day it began, and the day it ended.
+     *
+     * <p><strong>A POST to a door, and deliberately not a DELETE.</strong> Nothing goes away.
+     * Every deposit, every withdrawal, every goal and every allocation on this account stays
+     * readable afterwards, and so does the agreement itself: a closed account still names the
+     * product and the version every one of those rows was decided under. A DELETE would promise the
+     * opposite of what happens, and this application has already drawn that line once — withdrawing
+     * a reward offer is a press on a door for the same reason, because vouchers point at it.
+     *
+     * <p><strong>The account has to exist and has to be held by somebody</strong>, both settled
+     * here before anything is asked of the catalogue. An account nobody holds belongs to a shared
+     * pot, and a pot's account is closed by closing the pot — which settles the members' money
+     * first. Letting this door reach one would be a way to close a pot's account out from under the
+     * pot, so it answers what every other reading in this class answers for an account nobody
+     * holds: there is no such savings account here.
+     *
+     * <p>Whether it may be closed is the catalogue's rule and is refused in the catalogue's words:
+     * an account with money still in it, and an account closed already, are both conflicts rather
+     * than anything to correct on a form. Nothing about that judgement is repeated here.
+     */
+    @PostMapping("/{savingsAccountId}/close")
+    AnAgreementResponse close(@PathVariable long savingsAccountId) {
+        AccountHolder holder = accounts.holderOfSavingsAccount(savingsAccountId)
+                .orElseThrow(() -> {
+                    log.warn("closing a savings account rejected savingsAccountId={} reason={}",
+                            savingsAccountId, AccountsService.noSuchSavingsAccount(savingsAccountId));
+                    return noSuchSavingsAccount(savingsAccountId);
+                });
+        AnAgreementResponse closed =
+                AnAgreementResponse.of(products.closeTheSavingsAccount(savingsAccountId));
+        log.info("a savings account was closed over HTTP savingsAccountId={} customerId={} "
+                        + "product={} closedOn={}",
+                savingsAccountId, holder.customerId(), closed.productCode(), closed.closedOn());
+        return closed;
     }
 
     /**

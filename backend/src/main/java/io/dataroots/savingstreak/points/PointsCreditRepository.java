@@ -25,6 +25,33 @@ interface PointsCreditRepository extends JpaRepository<PointsCredit, Long> {
     long remainingPointsOf(@Param("customerId") long customerId);
 
     /**
+     * Everything this customer has ever been credited, whatever became of it. Zero for somebody
+     * who has earned nothing, which is an answer rather than an absence.
+     *
+     * <p><strong>The credited figure and never what is left of it</strong>, which is the whole
+     * difference between this and the balance above. A lifetime is a record of behaviour: it
+     * counts a batch that was spent on a reward and a batch whose twelve months ran out, because
+     * both of them were earned and neither of them un-happened. Summing what remains would be
+     * asking the same question the balance already answers, and it would mean a customer's
+     * lifetime went <em>down</em> every time they claimed something — which would make a reward
+     * gated behind a lifetime a reward you lose the right to by using the scheme.
+     *
+     * <p>Expired batches are therefore included, deliberately and unlike every other sum here.
+     * An expiry is points going out of reach rather than points never having been earned, and
+     * the reason a batch is kept after it is swept — rather than emptied — is precisely so that
+     * the figure it was survives.
+     *
+     * <p>Every reason, and no filter on one. A gift received was earned by whoever received it as
+     * far as this figure is concerned, in the same way a challenge reward was: they are points
+     * that arrived through the one door this ledger has, and picking which reasons count would
+     * be this query deciding what behaviour the scheme wants to reward — which is the
+     * administrator's decision and is made by setting a threshold, not by filtering a sum.
+     */
+    @Query("select coalesce(sum(credit.points), 0) from PointsCredit credit "
+            + "where credit.customerId = :customerId")
+    long everEarnedBy(@Param("customerId") long customerId);
+
+    /**
      * The batches a spend can draw from, oldest first, skipping those with nothing left in them.
      *
      * <p>Oldest first is the rule the whole batch structure exists for: points earned earliest are
@@ -88,6 +115,54 @@ interface PointsCreditRepository extends JpaRepository<PointsCredit, Long> {
             + "where credit.reason in :reasons and credit.sourceReferenceId in :sourceReferenceIds")
     List<EarnedPoints> earnedBy(@Param("reasons") Collection<PointsReason> reasons,
                                 @Param("sourceReferenceIds") Collection<Long> sourceReferenceIds);
+
+    /**
+     * The batches the given deposits earned that are still there: nothing expired, nothing spent
+     * down to zero, and only the reasons a deposit can have earned under.
+     *
+     * <p>The same set {@link #unspentOldestFirst} answers from, narrowed to what a named handful of
+     * deposits earned rather than to one customer. So the days a deposit's points go and the day the
+     * customer's next points go are read off the same rows, and the two cannot come to disagree
+     * about what is still there.
+     *
+     * <p>The reasons are named for the reason {@link #earnedBy} gives, and it is load bearing here
+     * for a second time: a batch credited for a gift references the gift rather than a deposit, and
+     * a query that matched on the reference alone would put somebody else's points on the account of
+     * whichever deposit happened to share a number with that gift.
+     *
+     * <p>Unordered, because the caller groups these by the day they expire and the order rows arrive
+     * in cannot survive that. {@link PointsService#whenThePointsEarnedByDepositsGo} sorts the days
+     * it produces, which is the only order anybody reads.
+     */
+    @Query("select credit from PointsCredit credit "
+            + "where credit.reason in :reasons and credit.sourceReferenceId in :sourceReferenceIds "
+            + "and credit.remainingPoints > 0 and credit.expiredAt is null")
+    List<PointsCredit> survivingBatchesEarnedBy(@Param("reasons") Collection<PointsReason> reasons,
+                                                @Param("sourceReferenceIds") Collection<Long> sourceReferenceIds);
+
+    /**
+     * Every batch credited before this release, which is every batch that does not yet carry the
+     * moment it expires.
+     *
+     * <p>Everybody's at once and whatever became of them: a batch already spent to nothing and a
+     * batch already swept are stamped alongside the living ones. Neither of them will ever be read
+     * for its expiry — the sweep asks only for batches that have not gone, and a balance sums only
+     * what is left — but a column that is null on some rows and not others is a column the next
+     * reader has to ask a question about, and the answer would be a story about a release rather
+     * than about the ledger.
+     *
+     * <p>The rows themselves rather than an update statement. The promise is twelve calendar months
+     * in the zone this application counts calendars in, clamped at the end of February the way
+     * {@link PointsExpiry} clamps it, and SQLite's own date arithmetic is a second implementation of
+     * that rule which would disagree with the first on one day in four years. So the rows come back,
+     * the rule is applied to each of them in Java, and there is still exactly one place that knows
+     * what a lifetime means.
+     *
+     * <p>Only the unstamped ones, which is what makes the pass a floor: a start after the first
+     * finds nothing and writes nothing.
+     */
+    @Query("select credit from PointsCredit credit where credit.expiresAt is null")
+    List<PointsCredit> batchesNotYetCarryingWhenTheyExpire();
 
     /**
      * Whether batches are still stored against the savings account they were earned in, which is how

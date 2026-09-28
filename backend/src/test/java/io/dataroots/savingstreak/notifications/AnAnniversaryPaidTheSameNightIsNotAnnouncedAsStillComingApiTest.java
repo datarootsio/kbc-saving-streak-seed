@@ -1,5 +1,7 @@
 package io.dataroots.savingstreak.notifications;
 
+import java.time.Period;
+
 import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
 import org.junit.jupiter.api.AfterAll;
@@ -46,6 +48,14 @@ class AnAnniversaryPaidTheSameNightIsNotAnnouncedAsStillComingApiTest extends Ap
     private static final int DAYS_UNTIL_THE_FIRST_ANNIVERSARY_HAS_ARRIVED = 366;
 
     private static final String THE_SWEEP_THAT_PAYS = "payLoyaltyBonuses";
+
+    /**
+     * The anniversary window version 1 of the scheme publishes, written out rather than read off the
+     * rule: the rule holds no constant any more, because the bank publishes the figure and the sweep
+     * is handed the one in force on the night it runs. Thirty days is what this application is
+     * seeded at, and this test is running under the seeded scheme.
+     */
+    private static final Period THE_WINDOW_THE_SCHEME_PUBLISHES = Period.ofDays(30);
 
     private static AnApplicationWithAClockToMove app;
     private static TheNotificationSweep sweep;
@@ -95,7 +105,7 @@ class AnAnniversaryPaidTheSameNightIsNotAnnouncedAsStillComingApiTest extends Ap
                 .as("what it next pays is the anniversary a year on, which is why the window "
                         + "reaches nothing")
                 .isAfter(app.theDateTheClockReads()
-                        .plus(AnAnniversaryComingSoon.HOW_LONG_BEFORE_AN_ANNIVERSARY_IS_WORTH_SAYING));
+                        .plus(THE_WINDOW_THE_SCHEME_PUBLISHES));
 
         assertThat(sweep.whatWasSaidAboutAnAnniversaryIn(stillWeeksOff, ANKE))
                 .as("the same run announced the pot whose anniversary the night did not settle, so "

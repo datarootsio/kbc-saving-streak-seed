@@ -27,10 +27,18 @@ import io.dataroots.savingstreak.streaks.SavingsWeek;
  * about the same span: 365 days would put a deposit made on 29 February one day early in three
  * years out of four.
  *
- * <p>Package-private, like the record it dates: the clock is the Loyalty module's rule, and what it
- * says out loud is the bonus it produced.
+ * <p>The clock is the Loyalty module's rule and what it ordinarily says out loud is the bonus it
+ * produced, which is why this was package-private. It is public for one caller: the simulator's
+ * fold, which walks a year one night at a time and has to know which nights a deposit pays on. A
+ * fold that counted twelve months of its own would be a second statement of this clock, free to
+ * drift from it the moment either is repriced — and it would get the February clamping wrong, which
+ * is the whole reason the counting here is a walk rather than a division. Calling it is what makes
+ * the projection and the sweep it predicts the same arithmetic.
+ *
+ * <p>{@link #nothingLandedAfterThisCanHaveAnAnniversaryBy} stays this module's own, because it is
+ * the sweep's query cut-off rather than the rule, and a caller wanting it would be writing a sweep.
  */
-final class LoyaltyAnniversary {
+public final class LoyaltyAnniversary {
 
     /** How often a deposit pays for the money still sitting in it, in one place. */
     static final Period HOW_OFTEN_A_DEPOSIT_PAYS = Period.ofMonths(12);
@@ -52,7 +60,7 @@ final class LoyaltyAnniversary {
      * @throws IllegalArgumentException if asked for an anniversary before the first, which nobody
      *                                  types and so can only be a mistake in the caller
      */
-    static Instant anniversaryOf(Instant landedAt, int ordinal) {
+    public static Instant anniversaryOf(Instant landedAt, int ordinal) {
         if (ordinal < 1) {
             throw new IllegalArgumentException(
                     "a deposit's first anniversary is its first, and this one was asked for " + ordinal);
@@ -79,7 +87,7 @@ final class LoyaltyAnniversary {
      * question asked of that answer. It runs once per deposit per sweep and takes one step per year
      * the deposit has been open.
      */
-    static int anniversariesPassedBy(Instant landedAt, Instant now) {
+    public static int anniversariesPassedBy(Instant landedAt, Instant now) {
         int passed = 0;
         while (!anniversaryOf(landedAt, passed + 1).isAfter(now)) {
             passed++;
@@ -144,7 +152,7 @@ final class LoyaltyAnniversary {
      * whoever renders the date: a page turning a moment into a day would pick the zone of the
      * machine it happened to be running on, and a customer in London would be told a date a day out.
      */
-    static LocalDate dayOf(Instant anniversary) {
+    public static LocalDate dayOf(Instant anniversary) {
         return anniversary.atZone(SavingsWeek.ZONE_WEEKS_ARE_COUNTED_IN).toLocalDate();
     }
 }

@@ -1,6 +1,7 @@
 package io.dataroots.savingstreak.moneymovements;
 
 import java.util.Arrays;
+import java.util.List;
 
 import io.dataroots.savingstreak.support.AnApplicationWithAClockToMove;
 import io.dataroots.savingstreak.support.ApiIntegrationTest;
@@ -27,6 +28,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Its own application on a database nothing has been written to, because "newest first" and "every
  * account" are claims about the whole of a customer's ledger and a shared database would have other
  * tests' deposits in it.
+ *
+ * <p><strong>Nothing has been written to it and it is still not empty.</strong> The seeded household
+ * arrives with a few weeks of its own spending already recorded, which is the demonstration's doing
+ * and not this test's, so what this test counts from zero is the savings half of the ledger — what
+ * was paid in and what was taken out. The spends beneath are left asserted rather than filtered
+ * away everywhere, because "one list tells me where my money went" is the claim this class exists
+ * for and a ledger holding only savings movements would not be it.
  */
 class TheMoneyMovementLedgerApiTest extends ApiIntegrationTest {
 
@@ -52,13 +60,20 @@ class TheMoneyMovementLedgerApiTest extends ApiIntegrationTest {
     void every_movement_across_every_account_is_in_the_ledger_newest_first() {
         long onePot = app.savingsAccountOf(ANKE);
 
-        // Empty before anything has moved, rather than refused: somebody who has never paid anything
-        // in has moved nothing, which is an answer, and being told there is no such customer would
-        // not be. Asserted here rather than in a test of its own because this application's ledger is
-        // only empty once, and a second test would be asserting whichever order the runner chose.
-        assertThat(app.moneyMovementsOf(ANKE))
-                .as("nothing has moved yet")
+        // Nothing paid in and nothing taken out before anything has moved, rather than refused:
+        // somebody who has never paid anything in has saved nothing, which is an answer, and being
+        // told there is no such customer would not be. Asserted here rather than in a test of its
+        // own because this application's ledger starts once, and a second test would be asserting
+        // whichever order the runner chose.
+        MoneyMovementView[] beforeAnythingMoved = app.moneyMovementsOf(ANKE);
+        assertThat(savingsMovementsIn(beforeAnythingMoved))
+                .as("nothing has moved into or out of savings yet")
                 .isEmpty();
+        assertThat(beforeAnythingMoved)
+                .as("and what is already in it is the seeded household's own spending, in the same "
+                        + "one list — which is the whole point of there being one list")
+                .isNotEmpty();
+        int seeded = beforeAnythingMoved.length;
 
         long theOtherPot = app.otherSavingsAccountOf(ANKE);
 
@@ -77,9 +92,12 @@ class TheMoneyMovementLedgerApiTest extends ApiIntegrationTest {
 
         MoneyMovementView[] ledger = app.moneyMovementsOf(ANKE);
 
-        // Three movements, both accounts, both directions, and no fourth thing invented.
-        assertThat(ledger).hasSize(3);
-        assertThat(Arrays.stream(ledger).map(MoneyMovementView::savingsAccountId).distinct())
+        // Three movements, both accounts, both directions, and no fourth thing invented — on top of
+        // the spending that was already there, which nothing here has touched.
+        assertThat(ledger).hasSize(3 + seeded);
+        assertThat(savingsMovementsIn(ledger)).hasSize(3);
+        assertThat(savingsMovementsIn(ledger).stream()
+                .map(MoneyMovementView::savingsAccountId).distinct())
                 .as("both of the customer's savings accounts are in one ledger")
                 .containsExactlyInAnyOrder(onePot, theOtherPot);
 
@@ -122,15 +140,33 @@ class TheMoneyMovementLedgerApiTest extends ApiIntegrationTest {
         assertThat(Arrays.stream(hers).map(MoneyMovementView::savingsAccountId))
                 .as("her ledger is hers, and Bram's pot is not one of her accounts")
                 .doesNotContain(bramsPot);
-        assertThat(hers).hasSize(3);
+        assertThat(savingsMovementsIn(hers)).hasSize(3);
         MoneyMovementView[] his = app.moneyMovementsOf(BRAM);
-        assertThat(his).hasSize(1);
-        assertThat(his[0].savingsAccountId()).isEqualTo(bramsPot);
+        assertThat(savingsMovementsIn(his)).hasSize(1);
+        assertThat(his[0].savingsAccountId())
+                .as("newest first, so the deposit just made is at the top of his own ledger")
+                .isEqualTo(bramsPot);
         assertThat(his[0].amount()).isEqualByComparingTo("13.00");
 
         // And the moments are in the order the list claims, which is the assertion a merge of two
         // sorted lists most easily gets wrong.
         assertThat(Arrays.stream(ledger).map(MoneyMovementView::movedAt).toList())
                 .isSortedAccordingTo((one, another) -> another.compareTo(one));
+    }
+
+    /**
+     * The savings half of a ledger: what was paid in and what was taken out, and nothing the
+     * customer spent out of their current account.
+     *
+     * <p>Here because every count in this test is a count of what this test itself moved, and the
+     * seeded household's spending is in the same list by design. Filtering on the direction rather
+     * than on a null savings account, because the direction is the word the endpoint actually sends
+     * and a reader of the assertion should not have to know which fields a spend leaves empty.
+     */
+    private static List<MoneyMovementView> savingsMovementsIn(MoneyMovementView[] ledger) {
+        return Arrays.stream(ledger)
+                .filter(moved -> INTO_SAVINGS.equals(moved.direction())
+                        || OUT_OF_SAVINGS.equals(moved.direction()))
+                .toList();
     }
 }
