@@ -2,14 +2,14 @@
 
 A small reminder app for the **specification swap** exercise. Java 17 and Spring Boot serve an AngularJS 1.8.3 frontend from a single process. Reminders are saved to a local JSON file; no database server or frontend build is needed.
 
-This application lives on the `reminder-app` branch of `kbc-saving-streak-seed`.
+This application lives on the `exercise/reminder-app` branch of `kbc-saving-streak-seed`.
 
 ## Run
 
 Switch to the reminder app before running it:
 
 ```sh
-git switch reminder-app
+git switch exercise/reminder-app
 ```
 
 Install a Java 17+ JDK, then run from this directory:

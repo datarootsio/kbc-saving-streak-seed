@@ -24,12 +24,12 @@ The exercise succeeds when the receiving pair's implementation matches the produ
 
 ## Start here
 
-Use the trainer-provided checkout and running app, or set it up locally. The starter lives on the `reminder-app` branch of `kbc-saving-streak-seed`.
+Use the trainer-provided checkout and running app, or set it up locally. The starter lives on the `exercise/reminder-app` branch of `kbc-saving-streak-seed`.
 
 For a local setup, install Java 17+ and run:
 
 ```sh
-git clone --single-branch --branch reminder-app \
+git clone --single-branch --branch exercise/reminder-app \
   https://github.com/datarootsio/kbc-saving-streak-seed.git kbc-reminder-exercise
 cd kbc-reminder-exercise
 git switch -c feature/snooze
