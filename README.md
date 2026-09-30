@@ -38,7 +38,7 @@ This is a single-user, local workshop application. Notifications are **in-page h
 
 **Daily reminders:** completing an occurrence schedules the next future occurrence at the same local time in its saved time zone. Renaming a reminder preserves that time zone and daily schedule, including when the browser is in another time zone. Creating a reminder or changing its **When** or **Repeat** value sets the schedule in the browser's time zone, as displayed below the form. Missed days are skipped. Daily reminders stay active; the starter does not keep completion history for each occurrence. Spring daylight-saving gaps move that occurrence forward; the following day returns to the original local time. A repeated request to complete an old occurrence returns `409` instead of advancing the schedule twice.
 
-**Snooze is the student feature.** The starter deliberately leaves its behavior open for the product-owner interview. See [the exercise brief](EXERCISE.md).
+**Snooze is the student feature.** The starter deliberately leaves its behavior open for the product-owner interview. See [the exercise brief](exercises.md).
 
 ## Check
 
