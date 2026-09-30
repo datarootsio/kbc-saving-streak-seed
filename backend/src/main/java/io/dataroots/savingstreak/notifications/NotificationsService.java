@@ -294,7 +294,7 @@ public class NotificationsService {
         BigDecimal balance = deposits.moneyBalanceOf(savingsAccountId);
         Optional<BigDecimal> standsOn = BalanceThresholds.theRungStoodOnWith(balance);
         Optional<Notification> lastSaid = notifications
-                .findFirstBySavingsAccountIdAndReasonInOrderByRaisedAtDescIdDesc(
+                .findFirstBySavingsAccountIdAndReasonInAndReadAtIsNullOrderByRaisedAtDescIdDesc(
                         savingsAccountId, NotificationReason.THE_BALANCE_REASONS);
         Optional<BigDecimal> stoodOn = theRungThatWasLastSaidToBeStoodOn(lastSaid);
         // The inputs behind the decision, before it is taken: the balance, where that puts the

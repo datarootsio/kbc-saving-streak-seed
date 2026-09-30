@@ -36,7 +36,7 @@ interface NotificationRepository extends JpaRepository<Notification, Long> {
      * <p>By reason rather than by everything about the account, because the anniversary rows in the
      * same table are about a deposit's own occasion and say nothing about where a balance stands.
      */
-    Optional<Notification> findFirstBySavingsAccountIdAndReasonInOrderByRaisedAtDescIdDesc(
+    Optional<Notification> findFirstBySavingsAccountIdAndReasonInAndReadAtIsNullOrderByRaisedAtDescIdDesc(
             long savingsAccountId, Collection<NotificationReason> reasons);
 
     /**
