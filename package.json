@@ -1,0 +1,13 @@
+{
+  "name": "remind-browser-checks",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

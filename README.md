@@ -1,154 +1,114 @@
-# Saving Streak
+# Remind — reminder app
 
-A training application: money moves from a current account into a savings account, and every whole
-euro moved earns a point that can be spent on a reward.
+A small reminder app for the **specification swap** exercise. Java 17 and Spring Boot serve an AngularJS 1.8.3 frontend from a single process. Reminders are saved to a local JSON file; no database server or frontend build is needed.
 
-Follow the [workshop exercises](exercises.md) to work through the delivery loop and platform guardrails.
+This application lives on the `reminder-app` branch of `kbc-saving-streak-seed`.
 
-Pull requests receive [automated AI reviews](docs/ai-pr-review.md) through PR-Agent and OpenRouter.
+## Run
 
-- `backend/` — Spring Boot 3.5 (Java 17, Maven wrapper), SQLite at `data/saving-streak.db`
-- `frontend/` — React 18 + Vite 6, dev server on 5173 proxying `/api` to the backend
+Switch to the reminder app before running it:
 
-Run it locally with the Vite dev server and `backend/mvnw spring-boot:run`, or deploy it as
-below — `make deploy` builds both and serves them behind nginx.
-
-## Running the deployed app
-
-The app runs on this VM as two long-lived pieces, and nginx is the only one on the network:
-
-```
-browser ──▶ nginx :80 ──┬──▶ /var/www/saving-streak        the built frontend bundle
-                        └──▶ 127.0.0.1:8081  /api/…        saving-streak.service (the jar)
+```sh
+git switch reminder-app
 ```
 
-One origin for both halves, which is the same shape as the Vite dev proxy in
-`frontend/vite.config.ts`. The frontend's `/api` calls are relative and work unchanged either
-way, and there is no CORS to configure. The backend listens on loopback only, so the jar cannot
-be reached except through nginx.
+Install a Java 17+ JDK, then run from this directory:
 
-Not port 8080: **code-server already listens there on this VM**, and starting the backend on it
-fails with "Identify and stop the process that's listening on port 8080". 8081 is the default,
-and `BACKEND_PORT` overrides it.
-
-### Prerequisites, once per machine
-
-```bash
-sudo apt-get update
-sudo apt-get install -y openjdk-17-jdk-headless nginx unzip rsync curl make
+```sh
+./mvnw spring-boot:run
 ```
 
-`unzip` is not optional. Without it `backend/mvnw` silently switches to the `.tar.gz`
-distribution and then validates it against the `.zip`'s pinned SHA-256, so every build dies with
-`Failed to validate Maven distribution SHA-256, your Maven distribution might be compromised`.
-That message is a wrapper bug, not a compromised artifact — installing `unzip` is the fix, and
-editing `distributionSha256Sum` is not.
+Open **http://localhost:8080**. On Windows, use `mvnw.cmd spring-boot:run`. Maven and dependencies download on the first run. AngularJS is included locally, so the browser does not need a CDN connection.
 
-Node and npm come from the distribution or nodesource. `make tools` checks the whole list and
-prints what is missing.
+If port 8080 is already in use:
 
-### Deploying
-
-```bash
-make deploy
+```sh
+./mvnw spring-boot:run -Dspring-boot.run.arguments=--server.port=8085
 ```
 
-That is build, install, restart, and prove it answers — the whole path, and the one to use after
-any change. It ends by asking the running app for its seeded customers, so a deploy that starts
-but cannot serve fails the command rather than looking successful. Run `make help` for every
-target; the useful ones day to day are:
+## What the starter does
 
-| Target | What it does |
-| --- | --- |
-| `make deploy` | build → install → restart → health, the whole path |
-| `make build` | the jar and the frontend bundle, nothing installed |
-| `make test` | the backend test suite |
-| `make status` | both services, and what is listening on 80 and 8081 |
-| `make logs` | follow the backend log (`journalctl -u saving-streak -f`) |
-| `make health` | prove the app answers through the proxy |
-| `make reset-data` | delete the database and start again on freshly seeded demo data |
-| `make uninstall` | remove the service, the site and the web root; restore nginx's default site |
+- Create, edit, complete, and delete reminders.
+- Choose a one-off reminder or a daily reminder.
+- See active and completed reminders, with due reminders highlighted in the page.
+- Keep changes across refreshes and server restarts.
+- Start with three examples the first time the application runs.
 
-### What `make install` writes
+This is a single-user, local workshop application. Notifications are **in-page highlights** while the app is open. There are no emails, operating-system notifications, or user accounts.
 
-Everything deployed is generated from a template in `deploy/`, with this machine's paths
-substituted in. Edit the template and re-run `make install`; never edit the deployed copy, or the
-next deploy silently reverts it.
+**Daily reminders:** completing an occurrence schedules the next future occurrence at the same local time in its saved time zone. Renaming a reminder preserves that time zone and daily schedule, including when the browser is in another time zone. Creating a reminder or changing its **When** or **Repeat** value sets the schedule in the browser's time zone, as displayed below the form. Missed days are skipped. Daily reminders stay active; the starter does not keep completion history for each occurrence. Spring daylight-saving gaps move that occurrence forward; the following day returns to the original local time. A repeated request to complete an old occurrence returns `409` instead of advancing the schedule twice.
 
-| Generated | From | Holds |
+**Snooze is the student feature.** The starter deliberately leaves its behavior open for the product-owner interview. See [the exercise brief](EXERCISE.md).
+
+## Check
+
+```sh
+./mvnw test
+```
+
+Tests cover the HTTP workflow, invalid inputs, persistence, daily recurrence, daylight-saving behavior, and repeated completion requests. They use isolated temporary data files.
+
+For browser tests, install Node.js 20+ and set up the pinned test dependencies once:
+
+```sh
+npm ci
+npx playwright install chromium
+```
+
+Then run:
+
+```sh
+npm run test:e2e
+```
+
+This compiles and starts a separate Java app on **127.0.0.1:18081** with temporary storage, runs the actual AngularJS UI in Chromium, then stops the test app and removes its data. Keep that port free; tests refuse to reuse an existing server. The normal app on port 8080 and `data/reminders.json` are not used. The browser suite covers create/edit/complete with refreshes, title-only edits across time zones and daylight saving, and explicit schedule changes. Failure screenshots and traces go in `output/playwright/test-results/`. On Linux, `npx playwright install --with-deps chromium` can install browser system dependencies if needed.
+
+To build a standalone app:
+
+```sh
+./mvnw package
+java -jar target/reminder-app-0.0.1-SNAPSHOT.jar
+```
+
+Frontend files are copied into the app during Maven resource processing. Restart `spring-boot:run` after frontend edits to pick them up.
+
+## Files
+
+```text
+frontend/                            AngularJS controller, HTML, CSS, vendored AngularJS
+src/main/java/io/workshop/reminders/  REST API, reminder rules, JSON storage
+src/main/resources/                   Server configuration
+src/test/                            Backend and HTTP tests
+tests/browser/                       Repeatable browser tests and isolated test server
+data/reminders.json                  Local runtime data (created automatically)
+```
+
+The main places to explore are `ReminderService.java` for behavior, `ReminderController.java` for HTTP endpoints, and `frontend/app.js` for UI interactions.
+
+Set `REMINDERS_DATA_FILE` to use a different JSON file, or `REMINDERS_SEED_DATA=false` to start without example reminders. Only one running app should use a given data file. To start over, stop the app, move `data/reminders.json` aside, and restart. An intentionally emptied list stays empty on restart.
+
+## API
+
+| Method | Path | Behavior |
 | --- | --- | --- |
-| `/etc/systemd/system/saving-streak.service` | `deploy/saving-streak.service.in` | how the jar is started, restarted and logged |
-| `/etc/saving-streak.env` | `deploy/saving-streak.env.in` | profile, port, database path, log level |
-| `/etc/nginx/sites-available/saving-streak` | `deploy/nginx-saving-streak.conf.in` | the reverse proxy and the static site |
-| `/var/www/saving-streak/` | `frontend/dist/` | the bundle, copied because nginx's workers run as `www-data` and cannot traverse a home directory at mode 750 |
+| GET | `/api/reminders` | List all reminders, sorted by due time |
+| POST | `/api/reminders` | Create a reminder |
+| GET | `/api/reminders/{id}` | Read a reminder |
+| PUT | `/api/reminders/{id}` | Edit an active reminder |
+| POST | `/api/reminders/{id}/complete` | Complete the specified occurrence |
+| DELETE | `/api/reminders/{id}` | Delete a reminder |
 
-The unit is `systemctl enable`d, so the app comes back by itself after a reboot. `make install`
-also removes nginx's stock `default` site: both claim `default_server` on port 80 and nginx
-refuses to start with both. `make uninstall` puts it back.
+Create and edit accept:
 
-### The deployed configuration
-
-The service runs with `SPRING_PROFILES_ACTIVE=dev`, which is the point of the app rather than a
-shortcut: it seeds the demo customers, exposes the movable clock, and exposes the run-a-job-now
-endpoints a trainer demonstrates with. `LOGGING_LEVEL_IO_DATAROOTS_SAVINGSTREAK=DEBUG` is set so
-that reading that one package shows what the app actually did: one line per business event with
-the values that decided it, and a WARN on every refusal with its reason.
-
-`SAVING_STREAK_DB` is an absolute path to `data/saving-streak.db`. The default in
-`application.properties` is relative, and a relative path follows the service's working
-directory, which would quietly create a second empty database the first time that changed.
-
-Seeding happens only when there are no customers at all, so a restart never multiplies the demo
-data and never restores it either. `make reset-data` deletes the file and starts the app again,
-which is the only way back to the starting state.
-
-### Reaching it from a browser
-
-`make deploy` ends by printing the address to open, and `make url` prints it on its own. On this
-VM that is `https://vm1.kbc.demo.dataroots.fun/proxy/80/`, behind the same password as the IDE —
-but that hostname appears nowhere in the Makefile, because the same Makefile runs on other VMs.
-
-It is read from the environment instead: code-server exports `VSCODE_PROXY_URI` into every
-terminal it starts, as the template `https://<this-host>/proxy/{{port}}/`, and the Makefile
-substitutes `HTTP_PORT` into it. A different VM therefore prints its own address with nothing
-edited. Run `make` from a shell that has no such variable — plain ssh, a cron job — and rather
-than invent a hostname it prints the VNet address and says the public one is unknown from there.
-
-Nothing else reaches this VM from outside. It has no public IP of its own; it sits at `10.10.1.4`
-on the VNet, and the gateway in front terminates TLS and forwards **only to port 8080**, which is
-code-server's. Port 80 is open on the VM and answers on the VNet, but no external request has
-ever arrived on it. code-server's port proxy is the way through: it forwards `/proxy/<port>/` to
-`localhost:<port>` on this VM, reaching nginx with no Azure change at all.
-
-If someone adds an App Gateway rule and an NSG rule for port 80 later, `http://10.10.1.4/` starts
-working too. Nothing here has to change for that: every route works at once.
-
-#### Why the page used to come up blank, and what stops it now
-
-A page served under a path prefix cannot ask for `/assets/index-*.js` or `/api/customers`: the
-leading slash discards the prefix. The failure is silent — the HTML and the title load, the bundle
-does not, and the page is simply white with the answer only in the browser console. All three
-causes are now closed, and each fix is equally correct at `/`:
-
-| What broke | Fix |
-| --- | --- |
-| `/proxy/80/` asked the proxy root for `/assets/…` and `/api/…`, answered 401 | `vite.config.ts` sets `base: './'`; `api.ts` resolves every endpoint through one `apiUrl()` helper on `document.baseURI` |
-| `/proxy/80` without the slash resolved assets to `/proxy/assets/…`, answered 400 | an inline script in `index.html` adds the slash and reloads; it cannot loop, and at `/` it never fires |
-| `/absproxy/80/` keeps its prefix, so nginx served index.html for the bundle and the browser rejected it on MIME type | the nginx site strips `^/absproxy/<port>` and re-runs matching, so both proxy forms land on the same rules |
-
-Keep new `fetch` calls going through `apiUrl()`. A literal `/api/…` works at the root and breaks
-behind the proxy, which is much the harder of the two to notice.
-
-The nginx site also sets `absolute_redirect off`, so redirects are relative. nginx builds absolute
-ones from its own name and port, which sends a browser on `host:8080/absproxy/80` to
-`host/absproxy/80/` — losing the port, and the app with it.
-
-### Ports are arguments, not edits
-
-```bash
-make deploy BACKEND_PORT=9090 HTTP_PORT=8088
+```json
+{
+  "title": "Send the agenda",
+  "dueAt": "2026-10-01T09:00:00Z",
+  "repeat": "ONCE",
+  "timeZone": "Europe/Brussels"
+}
 ```
 
-Both flow into the unit, the env file and the nginx site together, so the two halves cannot drift
-apart. Pass the same values to every later `make` call for that deployment, or re-run `make
-deploy` with the defaults to go back.
+`repeat` is `ONCE` or `DAILY`. Completion accepts `{ "dueAt": "2026-10-01T09:00:00Z" }`, using the exact occurrence returned by the API. The browser displays dates in its local time zone.
+
+Framework references: [Spring Boot 3.5 requirements](https://docs.spring.io/spring-boot/3.5/system-requirements.html), [AngularJS 1.8.3 source](https://github.com/angular/angular.js/tree/v1.8.3). AngularJS is the 1.x framework requested for this workshop; its MIT license is included in `frontend/vendor/`.

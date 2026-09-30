@@ -1,20 +1,9 @@
-# Build output
-backend/target/
-frontend/node_modules/
-frontend/dist/
-
-# Python bytecode
-__pycache__/
-*.pyc
-
-# The SQLite database is local state, recreated on first start
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
-
-# Maven output from the repository root
-/target/
-
-# macOS metadata
+target/
+data/
+output/
+.playwright-mcp/
 .DS_Store
+.idea/
+*.iml
+node_modules/
+.playwright-cli/
