@@ -386,26 +386,20 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
     return () => request.abort()
   }, [loadNotifications])
 
-  /**
-   * Reads them again when the page is looked at again, and that is the whole of the refreshing this
-   * feature does. There is no interval anywhere in this application and this does not add the
-   * first: nothing is asked for while nobody is looking, and coming back to the tab asks once.
-   *
-   * <p>It is here for the trainer. Every other thing that raises a notification is something done
-   * on this page — a deposit, a withdrawal, a claim, a gift — and each of those already says so
-   * through the callbacks below. A wound-forward clock and a job run are not: they are done against
-   * the API from a terminal, and without this the bell would still be showing last night's count
-   * when the trainer turned back to the browser to demonstrate what the sweep had just raised.
-   */
+  /** Keep visible alerts current as the minute-by-minute notification job runs. */
   useEffect(() => {
+    const request = new AbortController()
     const lookedAtAgain = () => {
       if (document.visibilityState === 'visible') {
-        loadNotifications()
+        loadNotifications(request.signal)
       }
     }
+    const timer = window.setInterval(lookedAtAgain, 10_000)
     document.addEventListener('visibilitychange', lookedAtAgain)
     window.addEventListener('focus', lookedAtAgain)
     return () => {
+      window.clearInterval(timer)
+      request.abort()
       document.removeEventListener('visibilitychange', lookedAtAgain)
       window.removeEventListener('focus', lookedAtAgain)
     }
@@ -485,7 +479,7 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               // Every figure on the overview is behind whatever just happened here: the money in
               // both accounts, and the points the deposit earned. Notifications are refreshed too:
               // a deposit crossing EUR 100 raises a milestone immediately. Other milestones and
-              // bonuses exposed by withdrawals are checked by the overnight sweep.
+              // bonuses exposed by withdrawals are checked by the scheduled sweep.
               onChanged={() => {
                 loadAccounts()
                 loadNotifications()

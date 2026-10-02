@@ -27,7 +27,8 @@ import org.springframework.test.context.DynamicPropertySource;
  * demo. One file serves the whole run, so tests assert on what their own requests changed rather
  * than on absolute state they did not put there.
  */
-@SpringBootTest(classes = SavingStreakApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(classes = SavingStreakApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "saving-streak.scheduling.enabled=false")
 @ActiveProfiles("dev")
 public abstract class ApiIntegrationTest {
 

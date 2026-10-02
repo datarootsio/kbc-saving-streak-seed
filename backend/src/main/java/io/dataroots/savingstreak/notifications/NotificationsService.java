@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  * money, credits no
  * points and secures no week: this is a record addressed to a customer, not a rule that pays them.
  *
- * <p>Deposit events and a nightly sweep raise notifications. A customer reads what has
+ * <p>Deposit events and a scheduled sweep raise notifications. A customer reads what has
  * been said to them ({@link #notificationsOf}), and marks what they have read
  * ({@link #markEverythingReadFor}). The two reads are addressed to a customer rather than to an
  * account — a notification carries the account it is about so the panel can name the pot, but who it
@@ -50,7 +50,7 @@ import org.springframework.transaction.annotation.Transactional;
  * and the one write, and share nothing else — a balance rung is about an account and an anniversary
  * is about one deposit inside it.
  *
- * <p><strong>The nightly sweep raises balance notifications on a change of recorded rung.</strong>
+ * <p><strong>The scheduled sweep raises balance notifications on a change of recorded rung.</strong>
  * That decision follows from what this application stores. A
  * savings balance is derived by summing what every deposit still holds, every time it is asked for;
  * no previous balance is written down anywhere, so there is nothing for a crossing to be measured
@@ -73,7 +73,7 @@ import org.springframework.transaction.annotation.Transactional;
  * the customer had reached.
  *
  * <p>A deposit taking the balance from below EUR 100 to EUR 100 or more announces its highest
- * reached rung immediately, within the deposit transaction. Other changes use the nightly sweep.
+ * reached rung immediately, within the deposit transaction. Other changes use the scheduled sweep.
  *
  * <p>An account that already stands on a rung and has never been told so is announced on the first
  * sweep. Nothing is backfilled beyond that: the first run says where an account stands today and
@@ -146,7 +146,7 @@ public class NotificationsService {
      * built, because a sweep that only looked at accounts that had moved would need a record of what
      * had moved, which is a second store to keep in step with this one.
      *
-     * <p>Answers nothing, as neither of the other two nightly sweeps does: its caller runs on a
+     * <p>Answers nothing, as neither of the other two scheduled sweeps does: its caller runs on a
      * schedule with nobody waiting on it, and a figure handed back to a scheduled method is a figure
      * nothing can read. What the sweep did is in the INFO lines below.
      *

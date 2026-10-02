@@ -26,8 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * rather than the machine's. A sweep that read {@code Instant.now()} would stamp tonight's date on a
  * notification raised in a year the application thinks it is living in.
  *
- * <p>The hour it is scheduled at is asserted because it is load-bearing. Points expire at three and
- * loyalty pays at half past, so four means this sweep reads state the night has already settled.
+ * <p>The schedule is asserted so students can reproduce the incident within a minute.
  *
  * <p>Its own application, for the reason {@link AnApplicationWithAClockToMove} gives: a year passes
  * in it.
@@ -68,11 +67,10 @@ class TheNotificationSweepIsAJobThatCanBeRunOnDemandApiTest extends ApiIntegrati
                 .filter(job -> job.name().equals(TheNotificationSweep.THE_JOB))
                 .findFirst()
                 .orElseThrow();
-        assertThat(theSweep.definedBy()).isEqualTo("NotificationsAreRaisedNightly");
+        assertThat(theSweep.definedBy()).isEqualTo("NotificationsAreRaisedEveryMinute");
         assertThat(theSweep.schedule())
-                .as("four in the morning: an hour after points expire and half an hour after "
-                        + "loyalty pays, so the sweep reads state the night has settled")
-                .isEqualTo("cron 0 0 4 * * *");
+                .as("once a minute, so the exercise does not require waiting overnight")
+                .isEqualTo("cron 0 * * * * *");
     }
 
     @Test
@@ -86,7 +84,7 @@ class TheNotificationSweepIsAJobThatCanBeRunOnDemandApiTest extends ApiIntegrati
         JobRunView ran = app.runJob(TheNotificationSweep.THE_JOB);
 
         assertThat(ran.name()).isEqualTo(TheNotificationSweep.THE_JOB);
-        assertThat(ran.definedBy()).isEqualTo("NotificationsAreRaisedNightly");
+        assertThat(ran.definedBy()).isEqualTo("NotificationsAreRaisedEveryMinute");
         assertThat(Duration.between(theApplicationThinksItIs, ran.ranAt()).abs())
                 .as("the job ran at the moment the wound-forward clock reads")
                 .isLessThan(Duration.ofMinutes(5));

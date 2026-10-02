@@ -57,6 +57,7 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         this.application = new SpringApplicationBuilder(SavingStreakApplication.class)
                 .run("--spring.datasource.url=jdbc:sqlite:" + databaseFile,
                         "--spring.profiles.active=dev",
+                        "--saving-streak.scheduling.enabled=false",
                         "--server.port=0");
         this.http = new TestRestTemplate();
         this.http.setUriTemplateHandler(new DefaultUriBuilderFactory("http://localhost:"
