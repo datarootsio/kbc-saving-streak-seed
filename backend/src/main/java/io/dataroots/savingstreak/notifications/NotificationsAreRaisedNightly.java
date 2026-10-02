@@ -16,10 +16,9 @@ import org.springframework.stereotype.Component;
  * arrived last night has been paid and moved on by the time this looks at it, and is never
  * announced as still coming.
  *
- * <p>Nightly rather than at the moment a balance moves. A rung lost to a withdrawal at noon is
- * announced at four the next morning, which is late by half a day and buys one producer of
- * notifications instead of two: raising it in the withdrawal itself would put a second writer in a
- * second module and split the one place this feature logs.
+ * <p>The first EUR 100 milestone is also checked immediately after a deposit. Other changes use
+ * this nightly sweep. A rung lost to a withdrawal at noon is announced at four the next morning.
+ * Both triggers keep notification rules and logging in the Notifications module.
  *
  * <p>The moment comes off the application's clock rather than the machine's, which is what makes a
  * rule about a year demonstrable in an afternoon: a trainer winds the clock forward, runs this job

@@ -483,9 +483,9 @@ function Banking({ customer, onSignOut }: { customer: Customer; onSignOut: () =>
               savingsAccountId={screen.savingsAccountId}
               currentAccounts={accounts?.currentAccounts ?? []}
               // Every figure on the overview is behind whatever just happened here: the money in
-              // both accounts, and the points the deposit earned. The notifications too: a rung
-              // this deposit has just passed, or a bonus the withdrawal has just exposed, is
-              // raised by the overnight sweep against balances this has just moved.
+              // both accounts, and the points the deposit earned. Notifications are refreshed too:
+              // a deposit crossing EUR 100 raises a milestone immediately. Other milestones and
+              // bonuses exposed by withdrawals are checked by the overnight sweep.
               onChanged={() => {
                 loadAccounts()
                 loadNotifications()

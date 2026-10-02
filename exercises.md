@@ -29,3 +29,5 @@ npm --prefix frontend run dev
 ```
 
 Tests: `./backend/mvnw -f backend/pom.xml test`. The development app includes demo customers and controls to advance time and run scheduled jobs.
+
+A deposit taking a savings balance from below €100 to €100 or more raises a milestone notification immediately. Other notification checks run in the nightly job.

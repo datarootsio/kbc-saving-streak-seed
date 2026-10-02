@@ -17,6 +17,7 @@ import io.dataroots.savingstreak.streaks.WeekAndStreak;
 import io.dataroots.savingstreak.streaks.WeekAndStreakDerivation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,12 +40,15 @@ public class DepositsService {
     private final AccountsService accounts;
     private final PointsService points;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
-    DepositsService(DepositRepository deposits, AccountsService accounts, PointsService points, Clock clock) {
+    DepositsService(DepositRepository deposits, AccountsService accounts, PointsService points, Clock clock,
+                    ApplicationEventPublisher events) {
         this.deposits = deposits;
         this.accounts = accounts;
         this.points = points;
         this.clock = clock;
+        this.events = events;
     }
 
     /**
@@ -141,6 +145,7 @@ public class DepositsService {
                 credited.earnedAs(PointsReason.BASE_ACCRUAL),
                 credited.earnedAs(PointsReason.STREAK_BONUS),
                 credited.total(), credited.points(), deposit.getDepositedAt());
+        events.publishEvent(new SavingsDepositMade(savingsAccountId, customerId, amount, now));
         return new RecordedDeposit(
                 deposit.getId(), deposit.getAmount(), credited.total(),
                 credited.earnedAs(PointsReason.BASE_ACCRUAL),

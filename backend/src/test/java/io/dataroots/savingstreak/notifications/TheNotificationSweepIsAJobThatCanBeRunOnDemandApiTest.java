@@ -78,7 +78,7 @@ class TheNotificationSweepIsAJobThatCanBeRunOnDemandApiTest extends ApiIntegrati
     @Test
     void the_sweep_raises_notifications_against_the_clock_the_application_is_running_on() {
         long savingsAccount = app.savingsAccountOf(ANKE);
-        app.deposit(savingsAccount, ANKE, ENOUGH_TO_REACH_A_RUNG);
+        Instant depositedAt = app.deposit(savingsAccount, ANKE, ENOUGH_TO_REACH_A_RUNG).depositedAt();
 
         app.daysPass(DAYS_WELL_PAST_A_YEAR);
         Instant theApplicationThinksItIs = app.theClockReads();
@@ -93,21 +93,19 @@ class TheNotificationSweepIsAJobThatCanBeRunOnDemandApiTest extends ApiIntegrati
 
         List<RaisedNotification> said = sweep.whatWasSaidAbout(savingsAccount, ANKE);
         assertThat(said)
-                .as("and it acted on that moment rather than reporting that it had: both of the "
-                        + "sweep's rules had something to say about this account, one about the "
-                        + "rung the balance landed on and one about the deposit's anniversary — "
-                        + "which the wound clock has carried the application past and which no "
-                        + "loyalty sweep has been run to settle, so it is outstanding and the "
-                        + "euros behind it are exposed right now")
+                .as("the immediate balance alert remains, and the sweep announces the outstanding "
+                        + "anniversary against the wound-forward clock")
                 .hasSize(2);
         assertThat(said).map(RaisedNotification::reason)
                 .containsExactlyInAnyOrder(
                         NotificationReason.BALANCE_THRESHOLD_REACHED,
                         NotificationReason.LOYALTY_BONUS_AT_RISK);
-        assertThat(said).allSatisfy(raised ->
-                assertThat(Duration.between(theApplicationThinksItIs, raised.raisedAt()).abs())
-                        .as("the moment stamped on the notification is the application's, not the "
-                                + "machine's")
-                        .isLessThan(Duration.ofMinutes(5)));
+        assertThat(said).allSatisfy(raised -> {
+            Instant expectedMoment = raised.reason() == NotificationReason.BALANCE_THRESHOLD_REACHED
+                    ? depositedAt : theApplicationThinksItIs;
+            assertThat(Duration.between(expectedMoment, raised.raisedAt()).abs())
+                    .as("the balance alert uses deposit time; the anniversary alert uses sweep time")
+                    .isLessThan(Duration.ofMinutes(5));
+        });
     }
 }

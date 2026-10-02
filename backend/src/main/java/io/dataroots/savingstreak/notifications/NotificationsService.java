@@ -17,11 +17,13 @@ import io.dataroots.savingstreak.accounts.AccountHolder;
 import io.dataroots.savingstreak.accounts.AccountsService;
 import io.dataroots.savingstreak.deposits.DepositStillHoldingMoney;
 import io.dataroots.savingstreak.deposits.DepositsService;
+import io.dataroots.savingstreak.deposits.SavingsDepositMade;
 import io.dataroots.savingstreak.loyalty.LoyaltyService;
 import io.dataroots.savingstreak.loyalty.NextAnniversaryOfADeposit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,11 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>A module of its own because a notification is not owned by any of the rules it reports on. It
  * reads a savings balance and the deposits still holding money from Deposits, who holds an account
  * from Accounts, and when those deposits next pay from Loyalty; it writes nothing but its own
- * record, and none of those modules learns that notifications exist. It moves no money, credits no
+ * record, and reacts to deposit events without making Deposits depend on Notifications. It moves no
+ * money, credits no
  * points and secures no week: this is a record addressed to a customer, not a rule that pays them.
  *
- * <p>Three things happen here: a sweep raises what the rules have to say, a customer reads what has
- * been said to them ({@link #notificationsOf}), and a customer marks what they have read
+ * <p>Deposit events and a nightly sweep raise notifications. A customer reads what has
+ * been said to them ({@link #notificationsOf}), and marks what they have read
  * ({@link #markEverythingReadFor}). The two reads are addressed to a customer rather than to an
  * account — a notification carries the account it is about so the panel can name the pot, but who it
  * concerns is a person, and somebody saving towards two goals has one panel and not two.
@@ -47,8 +50,8 @@ import org.springframework.transaction.annotation.Transactional;
  * and the one write, and share nothing else — a balance rung is about an account and an anniversary
  * is about one deposit inside it.
  *
- * <p><strong>A balance notification is raised on a change of rung, not on a crossing event.</strong>
- * That is the load-bearing decision in here and it is forced by what this application stores. A
+ * <p><strong>The nightly sweep raises balance notifications on a change of recorded rung.</strong>
+ * That decision follows from what this application stores. A
  * savings balance is derived by summing what every deposit still holds, every time it is asked for;
  * no previous balance is written down anywhere, so there is nothing for a crossing to be measured
  * against. So the sweep reads the rung the account stands on now, reads the rung it was last known
@@ -68,6 +71,9 @@ import org.springframework.transaction.annotation.Transactional;
  * reads back as EUR 100, which is exactly where it stands. One fall, one notification, and a fall of
  * a single rung — every fall the acceptance criteria describe, and the ordinary case — names the rung
  * the customer had reached.
+ *
+ * <p>A deposit taking the balance from below EUR 100 to EUR 100 or more announces its highest
+ * reached rung immediately, within the deposit transaction. Other changes use the nightly sweep.
  *
  * <p>An account that already stands on a rung and has never been told so is announced on the first
  * sweep. Nothing is backfilled beyond that: the first run says where an account stands today and
@@ -109,6 +115,27 @@ public class NotificationsService {
         this.loyalty = loyalty;
         this.notifications = notifications;
         this.clock = clock;
+    }
+
+    /** Joins the deposit transaction, so the notification exists when the deposit request succeeds. */
+    @EventListener
+    @Transactional
+    public void onDeposit(SavingsDepositMade deposit) {
+        BigDecimal balance = deposits.moneyBalanceOf(deposit.savingsAccountId());
+        BigDecimal previousBalance = balance.subtract(deposit.amount());
+        BigDecimal firstMilestone = BalanceThresholds.THE_RUNGS.get(0);
+        log.debug("deposit balance notification checked savingsAccountId={} customerId={} "
+                        + "previousBalance={} balance={} firstMilestone={}",
+                deposit.savingsAccountId(), deposit.customerId(), asMoney(previousBalance),
+                asMoney(balance), asMoney(firstMilestone));
+        if (previousBalance.compareTo(firstMilestone) >= 0 || balance.compareTo(firstMilestone) < 0) {
+            return;
+        }
+        // An actual crossing is a new occasion even if an earlier alert for this rung is unread.
+        BigDecimal reached = BalanceThresholds.theRungStoodOnWith(balance).orElseThrow();
+        Notification notification = notifications.save(Notification.balanceRungReached(
+                deposit.customerId(), deposit.savingsAccountId(), reached, deposit.depositedAt()));
+        logRaisedNotification(notification);
     }
 
     /**
@@ -167,16 +194,7 @@ public class NotificationsService {
         // all. Nothing raised is no statement at all rather than an empty one.
         List<Notification> raised = notifications.saveAll(raising);
         for (Notification notification : raised) {
-            // One line per notification with the figures that produced it and the row it became, so
-            // that a reviewer can check by hand that the rule fired on the values it claims. After
-            // the write rather than before it, because the identifier is half of what makes the line
-            // worth having.
-            log.info("notification raised customerId={} reason={} savingsAccountId={} depositId={} "
-                            + "amount={} points={} occursOn={} notificationId={}",
-                    notification.getCustomerId(), notification.getReason(),
-                    notification.getSavingsAccountId(), notification.getDepositId(),
-                    asMoney(notification.getAmount()), notification.getPoints(),
-                    notification.getOccursOn(), notification.getId());
+            logRaisedNotification(notification);
         }
         // One line per sweep: the moment it judged everything against, how many accounts and how
         // many deposits it looked at, and how many notifications it raised. A quiet night and a
@@ -184,6 +202,15 @@ public class NotificationsService {
         log.info("notifications raised asAt={} accountsConsidered={} depositsConsidered={} "
                         + "raised={}",
                 now, savingsAccounts.size(), depositsConsidered, raised.size());
+    }
+
+    private void logRaisedNotification(Notification notification) {
+        log.info("notification raised customerId={} reason={} savingsAccountId={} depositId={} "
+                        + "amount={} points={} occursOn={} notificationId={}",
+                notification.getCustomerId(), notification.getReason(),
+                notification.getSavingsAccountId(), notification.getDepositId(),
+                asMoney(notification.getAmount()), notification.getPoints(),
+                notification.getOccursOn(), notification.getId());
     }
 
     /**
