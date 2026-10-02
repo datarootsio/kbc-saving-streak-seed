@@ -17,3 +17,20 @@ output/
 .DS_Store
 .idea/
 *.iml
+
+# Local AI agent configuration and instructions
+.claude/
+.agents/
+.agent/
+.codex/
+.copilot/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+AGENTS.local.md
+skills-lock.json
+.github/copilot-instructions.md
+.github/agents/
+.github/skills/
+.github/prompts/
+.github/instructions/
