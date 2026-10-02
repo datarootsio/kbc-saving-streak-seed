@@ -114,3 +114,73 @@ for (const field of ['When', 'Repeat']) {
     expect(new Date(saved.dueAt).toISOString()).toBe(year + (field === 'When' ? '-01-15T10:30:00.000Z' : '-01-15T08:00:00.000Z'));
   });
 }
+
+test('weekly reminders keep the chosen weekday after editing and completing', async ({ page, request }) => {
+  const year = new Date().getUTCFullYear() + 1;
+  const first = new Date(Date.UTC(year, 5, 15, 14, 30));
+  first.setUTCDate(first.getUTCDate() + (5 - first.getUTCDay() + 7) % 7);
+  await page.goto('/');
+  await page.getByLabel('Remind me to').fill('Weekly review');
+  await page.getByLabel('When', { exact: true }).fill(year + '-06-15T14:30');
+  await page.getByLabel('Repeat', { exact: true }).selectOption('WEEKLY');
+  await page.getByLabel('Day of the week', { exact: true }).selectOption({ label: 'Friday' });
+  await expect(page.getByLabel('Day of the month', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add reminder' }).click();
+  await expect(page.getByText('↻ Every Friday', { exact: true })).toBeVisible();
+  const [reminder] = await (await request.get('/api/reminders')).json();
+  expect(new Date(reminder.dueAt).toISOString()).toBe(first.toISOString());
+  expect(reminder.dayOfWeek).toBe('FRIDAY');
+  expect(reminder.dayOfMonth).toBeNull();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit Weekly review', exact: true }).click();
+  await expect(page.getByLabel('Day of the week', { exact: true })).toHaveValue('string:FRIDAY');
+  await page.getByLabel('Remind me to').fill('Weekly team review');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Weekly team review', exact: true })).toBeVisible();
+  const completed = page.waitForResponse(response => response.url().endsWith('/' + reminder.id + '/complete'));
+  await page.getByRole('button', { name: 'Complete Weekly team review', exact: true }).click();
+  expect((await completed).ok()).toBeTruthy();
+  first.setUTCDate(first.getUTCDate() + 7);
+  const next = await (await request.get('/api/reminders/' + reminder.id)).json();
+  expect(new Date(next.dueAt).toISOString()).toBe(first.toISOString());
+  expect(next.completed).toBe(false);
+  await page.reload();
+  await expect(page.getByText('↻ Every Friday', { exact: true })).toBeVisible();
+});
+
+test('monthly reminders return to day 31 after a shorter month and a rename', async ({ page, request }) => {
+  const year = new Date().getUTCFullYear() + 1;
+  await page.goto('/');
+  await page.getByLabel('Remind me to').fill('Monthly review');
+  await page.getByLabel('When', { exact: true }).fill(year + '-01-31T09:00');
+  await page.getByLabel('Repeat', { exact: true }).selectOption('MONTHLY');
+  await page.getByLabel('Day of the month', { exact: true }).selectOption({ label: '31' });
+  await expect(page.getByLabel('Day of the week', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add reminder' }).click();
+  await expect(page.getByText('↻ Monthly · day 31', { exact: true })).toBeVisible();
+  const [reminder] = await (await request.get('/api/reminders')).json();
+  expect(reminder.dayOfMonth).toBe(31);
+  expect(reminder.dayOfWeek).toBeNull();
+
+  const completed = page.waitForResponse(response => response.url().endsWith('/' + reminder.id + '/complete'));
+  await page.getByRole('button', { name: 'Complete Monthly review', exact: true }).click();
+  expect((await completed).ok()).toBeTruthy();
+  const february = await (await request.get('/api/reminders/' + reminder.id)).json();
+  expect(new Date(february.dueAt).toISOString()).toBe(new Date(Date.UTC(year, 2, 0, 9)).toISOString());
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit Monthly review', exact: true }).click();
+  await expect(page.getByLabel('Day of the month', { exact: true })).toHaveValue('number:31');
+  await page.getByLabel('Remind me to').fill('Monthly team review');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('heading', { name: 'Monthly team review', exact: true })).toBeVisible();
+  const completedAgain = page.waitForResponse(response => response.url().endsWith('/' + reminder.id + '/complete'));
+  await page.getByRole('button', { name: 'Complete Monthly team review', exact: true }).click();
+  expect((await completedAgain).ok()).toBeTruthy();
+  const march = await (await request.get('/api/reminders/' + reminder.id)).json();
+  expect(new Date(march.dueAt).toISOString()).toBe(year + '-03-31T09:00:00.000Z');
+  expect(march.dayOfMonth).toBe(31);
+  expect(march.completed).toBe(false);
+  await page.reload();
+  await expect(page.getByText('↻ Monthly · day 31', { exact: true })).toBeVisible();
+});

@@ -60,11 +60,11 @@
 
           <ul class="reminder-list" ng-if="vm.loaded">
             <li class="reminder-card" ng-repeat="reminder in vm.visibleReminders() track by reminder.id" ng-class="{ overdue: vm.isDue(reminder), done: reminder.completed, 'is-editing': vm.editingId === reminder.id, 'is-completing': vm.completingId === reminder.id, 'is-highlighted': vm.highlightedId === reminder.id }" ng-style="{ 'animation-delay': ($index < 5 ? $index * 40 : 0) + 'ms' }">
-              <button class="complete-button" type="button" ng-if="!reminder.completed" ng-click="vm.complete(reminder)" ng-disabled="vm.busy || vm.loading" ng-attr-aria-label="{{ 'Complete ' + reminder.title }}" ng-attr-title="{{ reminder.repeat === 'DAILY' ? 'Complete this occurrence and schedule the next day' : 'Mark as completed' }}"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg></button>
+              <button class="complete-button" type="button" ng-if="!reminder.completed" ng-click="vm.complete(reminder)" ng-disabled="vm.busy || vm.loading" ng-attr-aria-label="{{ 'Complete ' + reminder.title }}" ng-attr-title="{{ reminder.repeat !== 'ONCE' ? 'Complete this occurrence and schedule the next reminder' : 'Mark as completed' }}"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg></button>
               <span class="completed-icon" aria-hidden="true" ng-if="reminder.completed"><svg class="icon"><use href="#icon-check"/></svg></span>
               <div class="reminder-content">
                 <h2>{{ reminder.title }}</h2>
-                <div class="reminder-meta"><span class="reminder-time"><svg class="icon" aria-hidden="true"><use href="#icon-clock"/></svg><time ng-attr-datetime="{{ reminder.dueAt }}">{{ vm.formatWhen(reminder.dueAt) }}</time></span><span class="repeat-badge" ng-if="reminder.repeat === 'DAILY'">↻ Daily</span></div>
+                <div class="reminder-meta"><span class="reminder-time"><svg class="icon" aria-hidden="true"><use href="#icon-clock"/></svg><time ng-attr-datetime="{{ reminder.dueAt }}">{{ vm.formatWhen(reminder.dueAt) }}</time></span><span class="repeat-badge" ng-if="reminder.repeat !== 'ONCE'">↻ {{ vm.repeatLabel(reminder) }}</span></div>
                 <span class="due-label" ng-if="vm.isDue(reminder)"><span aria-hidden="true"></span> Ready when you are</span>
               </div>
               <div class="card-actions">
@@ -90,8 +90,17 @@
             <p class="field-error" id="date-error" ng-if="reminderForm.$submitted && reminderForm.dueAt.$invalid">Choose a valid date and time.</p>
 
             <label for="repeat">Repeat</label>
-            <select id="repeat" name="repeat" ng-model="vm.form.repeat" ng-disabled="vm.busy || vm.loading"><option value="ONCE">Doesn’t repeat</option><option value="DAILY">Every day</option></select>
-            <p class="repeat-help" ng-if="vm.form.repeat === 'DAILY'">Completing a daily reminder schedules its next occurrence at the same local time.</p>
+            <select id="repeat" name="repeat" ng-model="vm.form.repeat" ng-change="vm.changeRepeat()" ng-disabled="vm.busy || vm.loading"><option value="ONCE">Doesn’t repeat</option><option value="DAILY">Every day</option><option value="WEEKLY">Every week</option><option value="MONTHLY">Every month</option></select>
+            <div ng-if="vm.form.repeat === 'WEEKLY'">
+              <label for="dayOfWeek">Day of the week</label>
+              <select id="dayOfWeek" name="dayOfWeek" ng-model="vm.form.dayOfWeek" ng-options="day.value as day.label for day in vm.weekdays" required ng-disabled="vm.busy || vm.loading"></select>
+            </div>
+            <div ng-if="vm.form.repeat === 'MONTHLY'">
+              <label for="dayOfMonth">Day of the month</label>
+              <select id="dayOfMonth" name="dayOfMonth" ng-model="vm.form.dayOfMonth" ng-options="day for day in vm.monthDays" required ng-disabled="vm.busy || vm.loading"></select>
+              <p class="repeat-help">Months without this date use their last day, then return to your chosen day the following month.</p>
+            </div>
+            <p class="repeat-help" ng-if="vm.form.repeat !== 'ONCE'">Completing a reminder schedules its next occurrence at the same local time. For weekly and monthly reminders, “When” is the earliest start date.</p>
 
             <button class="primary-button" type="submit" ng-disabled="vm.busy || vm.loading"><span>{{ vm.busy ? 'Saving…' : (vm.editingId ? 'Save changes' : 'Add reminder') }}</span><svg class="icon" aria-hidden="true" ng-if="!vm.busy"><use href="#icon-arrow"/></svg><span class="button-spinner" aria-hidden="true" ng-if="vm.busy"></span></button>
             <button class="cancel-button" type="button" ng-if="vm.editingId" ng-click="vm.resetForm(reminderForm)" ng-disabled="vm.busy || vm.loading">Cancel editing</button>

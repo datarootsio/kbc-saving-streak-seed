@@ -64,6 +64,11 @@ class ReminderApiTest {
                 validReminder().replace("Send the agenda", "a".repeat(121)),
                 validReminder().replace("Europe/Brussels", "Not/A_Zone"),
                 validReminder().replace("ONCE", "SOMEDAY"),
+                validReminder().replace("ONCE", "WEEKLY"),
+                validReminder().replace("ONCE", "MONTHLY"),
+                validReminder().replace("ONCE", "MONTHLY").replace("\"timeZone\"", "\"dayOfMonth\":0,\"timeZone\""),
+                validReminder().replace("ONCE", "MONTHLY").replace("\"timeZone\"", "\"dayOfMonth\":32,\"timeZone\""),
+                validReminder().replace("ONCE", "WEEKLY").replace("\"timeZone\"", "\"dayOfWeek\":\"SOMEDAY\",\"timeZone\""),
                 validReminder().replace("2026-10-01T09:00:00Z", "not a date"),
                 "{}", "null")) {
             http.perform(post("/api/reminders").contentType("application/json").content(input))
@@ -76,6 +81,23 @@ class ReminderApiTest {
     void a_missing_or_malformed_id_is_not_a_server_error() throws Exception {
         http.perform(get("/api/reminders/not-a-uuid")).andExpect(status().isBadRequest());
         http.perform(delete("/api/reminders/11111111-1111-1111-1111-111111111111")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void weekly_and_monthly_selections_round_trip_through_the_api() throws Exception {
+        String weekly = validReminder().replace("ONCE", "WEEKLY")
+                .replace("\"timeZone\"", "\"dayOfWeek\":\"MONDAY\",\"timeZone\"");
+        String created = http.perform(post("/api/reminders").contentType("application/json").content(weekly))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.dayOfWeek").value("MONDAY"))
+                .andExpect(jsonPath("$.dueAt").value("2026-10-05T09:00:00Z"))
+                .andReturn().getResponse().getContentAsString();
+        String path = "/api/reminders/" + mapper.readTree(created).get("id").asText();
+        String monthly = validReminder().replace("ONCE", "MONTHLY")
+                .replace("\"timeZone\"", "\"dayOfMonth\":31,\"timeZone\"");
+        http.perform(put(path).contentType("application/json").content(monthly))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.repeat").value("MONTHLY"))
+                .andExpect(jsonPath("$.dayOfWeek").isEmpty()).andExpect(jsonPath("$.dayOfMonth").value(31));
+        http.perform(get(path)).andExpect(jsonPath("$.dayOfMonth").value(31));
     }
 
     @Test

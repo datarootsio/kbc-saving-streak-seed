@@ -12,8 +12,28 @@
       vm.filter = 'active';
       vm.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       vm.now = new Date();
+      vm.weekdays = [
+        { value: 'SUNDAY', label: 'Sunday' }, { value: 'MONDAY', label: 'Monday' },
+        { value: 'TUESDAY', label: 'Tuesday' }, { value: 'WEDNESDAY', label: 'Wednesday' },
+        { value: 'THURSDAY', label: 'Thursday' }, { value: 'FRIDAY', label: 'Friday' },
+        { value: 'SATURDAY', label: 'Saturday' }
+      ];
+      vm.monthDays = [];
+      for (var day = 1; day <= 31; day++) vm.monthDays.push(day);
       vm.today = vm.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
+      vm.repeatLabel = function (reminder) {
+        if (reminder.repeat === 'DAILY') return 'Every day';
+        if (reminder.repeat === 'WEEKLY') {
+          return 'Every ' + vm.weekdays.filter(function (day) { return day.value === reminder.dayOfWeek; })[0].label;
+        }
+        return 'Monthly · day ' + reminder.dayOfMonth;
+      };
+      vm.changeRepeat = function () {
+        if (!vm.form.dueAt) return;
+        vm.form.dayOfWeek = vm.weekdays[vm.form.dueAt.getDay()].value;
+        vm.form.dayOfMonth = vm.form.dueAt.getDate();
+      };
       vm.count = function (filter) {
         return vm.reminders.filter(function (r) { return r.completed === (filter === 'completed'); }).length;
       };
@@ -57,15 +77,20 @@
       vm.resetForm = function (form) {
         var due = new Date();
         due.setMinutes(due.getMinutes() + 30, 0, 0);
-        vm.form = { title: '', dueAt: due, repeat: 'ONCE' };
+        vm.form = { title: '', dueAt: due, repeat: 'ONCE',
+          dayOfWeek: vm.weekdays[due.getDay()].value, dayOfMonth: due.getDate() };
         vm.editingId = null;
         originalSchedule = null;
         if (form) { form.$setPristine(); form.$setUntouched(); }
       };
       vm.edit = function (reminder) {
         vm.editingId = reminder.id;
-        vm.form = { title: reminder.title, dueAt: new Date(reminder.dueAt), repeat: reminder.repeat };
-        originalSchedule = { dueAt: vm.form.dueAt.getTime(), repeat: reminder.repeat, timeZone: reminder.timeZone };
+        var due = new Date(reminder.dueAt);
+        vm.form = { title: reminder.title, dueAt: due, repeat: reminder.repeat,
+          dayOfWeek: reminder.dayOfWeek || vm.weekdays[due.getDay()].value,
+          dayOfMonth: reminder.dayOfMonth || due.getDate() };
+        originalSchedule = { dueAt: vm.form.dueAt.getTime(), repeat: reminder.repeat, timeZone: reminder.timeZone,
+          dayOfWeek: reminder.dayOfWeek || null, dayOfMonth: reminder.dayOfMonth || null };
         $timeout(function () { document.getElementById('title').focus(); });
       };
       vm.save = function (form) {
@@ -73,9 +98,14 @@
         vm.busy = true;
         vm.error = '';
         var editing = !!vm.editingId;
-        // Renaming keeps the saved schedule; changing When or Repeat uses the displayed time zone.
-        var sameSchedule = originalSchedule && vm.form.dueAt.getTime() === originalSchedule.dueAt && vm.form.repeat === originalSchedule.repeat;
-        var input = { title: vm.form.title, dueAt: vm.form.dueAt.toISOString(), repeat: vm.form.repeat, timeZone: sameSchedule ? originalSchedule.timeZone : vm.timeZone };
+        var weekday = vm.form.repeat === 'WEEKLY' ? vm.form.dayOfWeek : null;
+        var monthDay = vm.form.repeat === 'MONTHLY' ? vm.form.dayOfMonth : null;
+        // Renaming keeps the saved schedule; changing its date, frequency, or day uses the browser zone.
+        var sameSchedule = originalSchedule && vm.form.dueAt.getTime() === originalSchedule.dueAt
+          && vm.form.repeat === originalSchedule.repeat && weekday === originalSchedule.dayOfWeek
+          && monthDay === originalSchedule.dayOfMonth;
+        var input = { title: vm.form.title, dueAt: vm.form.dueAt.toISOString(), repeat: vm.form.repeat,
+          timeZone: sameSchedule ? originalSchedule.timeZone : vm.timeZone, dayOfWeek: weekday, dayOfMonth: monthDay };
         var request = editing ? $http.put(endpoint + '/' + vm.editingId, input) : $http.post(endpoint, input);
         request.then(function (response) {
           notify(editing ? 'Reminder updated. All set.' : 'Reminder added. One less thing to keep in your head.');
@@ -89,7 +119,7 @@
         vm.busy = true;
         vm.error = '';
         $http.post(endpoint + '/' + reminder.id + '/complete', { dueAt: reminder.dueAt }).then(function (response) {
-          notify(reminder.repeat === 'DAILY' ? 'Done for now. Next reminder: ' + vm.formatWhen(response.data.dueAt) + '.' : 'Done. A little weight off your mind.');
+          notify(reminder.repeat !== 'ONCE' ? 'Done for now. Next reminder: ' + vm.formatWhen(response.data.dueAt) + '.' : 'Done. A little weight off your mind.');
           if (vm.editingId === reminder.id) vm.resetForm();
           // Show completion only after the server confirms it; reduced motion skips the visual pause.
           vm.completingId = reminder.id;
