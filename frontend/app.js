@@ -214,11 +214,20 @@
         }, showError).finally(function () { vm.busy = false; });
       };
       // The app shows due reminders in-page; no browser notification permission is required.
+      function clockAngle(previous, target) {
+        if (previous === undefined) return target;
+        // Cross midnight and full rotations along the shortest arc, rather than rewinding.
+        var difference = (target - previous) % 360;
+        if (difference < -180) difference += 360;
+        if (difference > 180) difference -= 360;
+        return previous + difference;
+      }
       function updateClock() {
         vm.now = new Date();
         vm.today = vm.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-        vm.hourAngle = vm.now.getHours() * 30 + vm.now.getMinutes() / 2;
-        vm.minuteAngle = vm.now.getHours() * 360 + vm.now.getMinutes() * 6 + vm.now.getSeconds() / 10;
+        vm.hourAngle = clockAngle(vm.hourAngle, (vm.now.getHours() % 12) * 30
+          + vm.now.getMinutes() / 2 + vm.now.getSeconds() / 120);
+        vm.minuteAngle = clockAngle(vm.minuteAngle, vm.now.getMinutes() * 6 + vm.now.getSeconds() / 10);
       }
       var clockInterval = $interval(updateClock, 1000);
       updateClock();

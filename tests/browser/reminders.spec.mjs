@@ -235,3 +235,19 @@ for (const repeat of ['DAILY', 'WEEKLY', 'MONTHLY']) {
     expect(saved.completed).toBe(false);
   });
 }
+
+test('the decorative clock crosses midnight without spinning backward', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2027-01-31T23:59:59Z'));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'All clear.', exact: true })).toBeVisible();
+  const angles = () => page.locator('.dial-hand').evaluateAll(hands =>
+    hands.map(hand => Number(hand.style.transform.match(/rotate\(([-\d.]+)deg\)/)[1])));
+  const before = await angles();
+  await page.clock.setFixedTime(new Date('2027-02-01T00:00:00Z'));
+  await expect.poll(angles).not.toEqual(before);
+  const after = await angles();
+  for (let index = 0; index < before.length; index++) {
+    expect(after[index] - before[index]).toBeGreaterThan(0);
+    expect(after[index] - before[index]).toBeLessThan(1);
+  }
+});
