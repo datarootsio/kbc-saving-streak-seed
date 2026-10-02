@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f4ef">
-  <title>Remind — a little less to remember</title>
+  <title>Remind</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script defer src="vendor/angular.min.js"></script>
@@ -27,8 +27,11 @@
 
     <main>
       <div class="page-heading">
-        <div class="heading-copy"><span class="eyebrow"><span aria-hidden="true"></span>A LITTLE LESS TO REMEMBER</span><h1>Make space for your <em>day.</em></h1><p>Keep the small things here. Be present for everything else.</p></div>
-        <div class="active-count"><span class="count-label">A LITTLE OVERVIEW</span><div><strong>{{ vm.count('active') }}</strong><span>on your<br>mind</span></div><span class="count-footnote">One thing at a time.</span></div>
+        <div><h1>Your day, <em>lighter.</em></h1><div class="heading-detail"><span class="due-summary" ng-if="vm.dueCount()"><span class="status-dot" aria-hidden="true"></span>{{ vm.dueCount() }} due now</span><span ng-if="!vm.dueCount()">{{ vm.count('active') ? 'All in good time.' : 'A fresh start.' }}</span></div></div>
+        <div class="day-dial" aria-hidden="true">
+          <svg viewBox="0 0 100 100"><circle class="dial-face" cx="50" cy="50" r="43"/><g class="dial-ticks"><path d="M50 14v4M50 82v4M14 50h4M82 50h4M25 25l3 3M72 72l3 3M25 75l3-3M72 28l3-3"/></g><path class="dial-hand dial-hour" d="M50 50V30" ng-style="{ transform: 'rotate(' + vm.hourAngle + 'deg)' }"/><path class="dial-hand dial-minute" d="M50 50V20" ng-style="{ transform: 'rotate(' + vm.minuteAngle + 'deg)' }"/><circle class="dial-center" cx="50" cy="50" r="3"/></svg><span class="dial-spark"></span>
+        </div>
+        <button class="mobile-add" type="button" ng-click="vm.newReminder(reminderForm)" ng-disabled="vm.busy || vm.loading" aria-label="New reminder">+</button>
       </div>
 
       <div class="error-banner" role="alert" ng-if="vm.error">
@@ -38,7 +41,6 @@
 
       <div class="workspace">
         <section class="reminder-panel" aria-label="Your reminders">
-          <div class="section-heading"><h2>Your reminders</h2><span class="section-note">A CLEARER HEAD STARTS HERE</span></div>
           <div class="list-toolbar">
             <div class="tabs" ng-class="{ 'show-completed': vm.filter === 'completed' }" role="group" aria-label="Filter reminders">
               <button type="button" class="tab" ng-class="{ selected: vm.filter === 'active' }" ng-click="vm.filter = 'active'" ng-attr-aria-pressed="{{ vm.filter === 'active' }}">Active <span>{{ vm.count('active') }}</span></button>
@@ -47,25 +49,21 @@
             <button class="icon-button refresh" ng-class="{ 'is-loading': vm.loading }" type="button" ng-click="vm.load()" ng-disabled="vm.loading || vm.busy" aria-label="Refresh reminders" title="Refresh reminders"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg></button>
           </div>
 
-          <p class="list-caption" ng-if="vm.filter === 'active'">One thing at a time. You’ve got this.</p>
-          <p class="list-caption" ng-if="vm.filter === 'completed'">A little progress, worth remembering.</p>
-
-          <div class="empty-state" ng-if="vm.loading && !vm.loaded"><span class="empty-symbol is-loading"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg></span><h2>Getting your list ready…</h2></div>
+          <div class="empty-state" ng-if="vm.loading && !vm.loaded"><span class="empty-symbol is-loading"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg></span><h2>Loading…</h2></div>
           <div class="empty-state" ng-if="vm.loaded && vm.visibleReminders().length === 0">
             <span class="empty-symbol"><svg class="icon" aria-hidden="true" ng-if="vm.filter === 'completed'"><use href="#icon-check"/></svg><svg class="icon" aria-hidden="true" ng-if="vm.filter === 'active'"><use href="#icon-sun"/></svg></span>
-            <span class="empty-eyebrow">{{ vm.filter === 'completed' ? 'THE LITTLE WINS ADD UP' : 'NOTHING TO KEEP TRACK OF' }}</span>
-            <h2>{{ vm.filter === 'completed' ? 'Your wins will live here.' : 'A little breathing room.' }}</h2>
-            <p>{{ vm.filter === 'completed' ? 'Complete a reminder to see it here.' : 'Add a reminder whenever something comes to mind.' }}</p>
+            <h2>{{ vm.filter === 'completed' ? 'Nothing completed yet.' : 'All clear.' }}</h2>
+            <p>{{ vm.filter === 'completed' ? 'Completed reminders appear here.' : 'Add something to remember.' }}</p>
           </div>
 
-          <ul class="reminder-list" ng-if="vm.loaded">
-            <li class="reminder-card" ng-repeat="reminder in vm.visibleReminders() track by reminder.id" ng-class="{ overdue: vm.isDue(reminder), done: reminder.completed, 'is-editing': vm.editingId === reminder.id, 'is-completing': vm.completingId === reminder.id, 'is-highlighted': vm.highlightedId === reminder.id }" ng-style="{ 'animation-delay': ($index < 5 ? $index * 40 : 0) + 'ms' }">
-              <button class="complete-button" type="button" ng-if="!reminder.completed" ng-click="vm.complete(reminder)" ng-disabled="vm.busy || vm.loading" ng-attr-aria-label="{{ 'Complete ' + reminder.title }}" ng-attr-title="{{ reminder.repeat !== 'ONCE' ? 'Complete this occurrence and schedule the next reminder' : 'Mark as completed' }}"><svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg></button>
+          <ul class="reminder-list" ng-if="vm.loaded" reminder-motion>
+            <li class="reminder-card" ng-repeat="reminder in vm.visibleReminders() track by reminder.id" ng-attr-data-reminder-id="{{ reminder.id }}" ng-class="{ overdue: vm.isDue(reminder), done: reminder.completed, 'is-editing': vm.editingId === reminder.id, 'is-completing': vm.completingId === reminder.id, 'is-leaving': vm.completingId === reminder.id && vm.leaving, 'is-highlighted': vm.highlightedId === reminder.id }">
+              <button class="complete-button" type="button" ng-if="!reminder.completed" ng-click="vm.complete(reminder)" ng-disabled="vm.busy || vm.loading" ng-attr-aria-label="{{ 'Complete ' + reminder.title }}" ng-attr-title="{{ reminder.repeat !== 'ONCE' ? 'Complete this occurrence and schedule the next reminder' : 'Mark as completed' }}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg></button>
               <span class="completed-icon" aria-hidden="true" ng-if="reminder.completed"><svg class="icon"><use href="#icon-check"/></svg></span>
               <div class="reminder-content">
                 <h2>{{ reminder.title }}</h2>
                 <div class="reminder-meta"><span class="reminder-time"><svg class="icon" aria-hidden="true"><use href="#icon-clock"/></svg><time ng-attr-datetime="{{ reminder.dueAt }}">{{ vm.formatWhen(reminder.dueAt) }}</time></span><span class="repeat-badge" ng-if="reminder.repeat !== 'ONCE'">↻ {{ vm.repeatLabel(reminder) }}</span></div>
-                <span class="due-label" ng-if="vm.isDue(reminder)"><span aria-hidden="true"></span> Ready when you are</span>
+                <span class="due-label" ng-if="vm.isDue(reminder)"><span aria-hidden="true"></span> Due now</span>
               </div>
               <div class="card-actions">
                 <button class="icon-button" type="button" ng-if="!reminder.completed" ng-click="vm.edit(reminder)" ng-disabled="vm.busy || vm.loading" ng-attr-aria-label="{{ 'Edit ' + reminder.title }}" title="Edit reminder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg></button>
@@ -73,17 +71,14 @@
               </div>
             </li>
           </ul>
-          <p class="list-footnote" ng-if="vm.loaded"><span aria-hidden="true"></span>Due reminders stay highlighted until you complete them.</p>
         </section>
 
         <aside class="composer" ng-class="{ 'is-editing': vm.editingId }" aria-labelledby="form-heading">
-          <div class="composer-topline"><span class="composer-symbol" aria-hidden="true">{{ vm.editingId ? '↗' : '+' }}</span><span class="composer-eyebrow">{{ vm.editingId ? 'A LITTLE ADJUSTMENT' : 'MAKE A LITTLE SPACE' }}</span></div>
-          <h2 id="form-heading">{{ vm.editingId ? 'A change of plans?' : 'What’s on your mind?' }}</h2>
-          <p>{{ vm.editingId ? 'Update the details of this reminder.' : 'Write it down. Let your mind move on.' }}</p>
+          <div class="composer-heading"><span class="composer-symbol" aria-hidden="true">{{ vm.editingId ? '↗' : '+' }}</span><h2 id="form-heading">{{ vm.editingId ? 'Edit reminder' : 'New reminder' }}</h2></div>
           <form name="reminderForm" ng-submit="vm.save(reminderForm)" novalidate>
             <label for="title">Remind me to</label>
-            <input id="title" name="title" type="text" ng-model="vm.form.title" required ng-maxlength="120" maxlength="120" placeholder="e.g. Send the project update" autocomplete="off" ng-disabled="vm.busy || vm.loading" ng-attr-aria-invalid="{{ reminderForm.$submitted && reminderForm.title.$invalid }}" aria-describedby="title-error">
-            <p class="field-error" id="title-error" ng-if="reminderForm.$submitted && reminderForm.title.$invalid">Enter a title of 120 characters or fewer.</p>
+            <input id="title" name="title" type="text" ng-model="vm.form.title" required ng-maxlength="120" maxlength="120" placeholder="e.g. Water the plants" autocomplete="off" ng-disabled="vm.busy || vm.loading" ng-attr-aria-invalid="{{ reminderForm.$submitted && reminderForm.title.$invalid }}" aria-describedby="title-error">
+            <p class="field-error" id="title-error" ng-if="reminderForm.$submitted && reminderForm.title.$invalid">Add a title (up to 120 characters).</p>
 
             <label for="dueAt">When</label>
             <input id="dueAt" name="dueAt" type="datetime-local" ng-model="vm.form.dueAt" required step="60" ng-disabled="vm.busy || vm.loading" ng-attr-aria-invalid="{{ reminderForm.$submitted && reminderForm.dueAt.$invalid }}" aria-describedby="date-error">
@@ -91,26 +86,26 @@
 
             <label for="repeat">Repeat</label>
             <select id="repeat" name="repeat" ng-model="vm.form.repeat" ng-change="vm.changeRepeat()" ng-disabled="vm.busy || vm.loading"><option value="ONCE">Doesn’t repeat</option><option value="DAILY">Every day</option><option value="WEEKLY">Every week</option><option value="MONTHLY">Every month</option></select>
-            <div ng-if="vm.form.repeat === 'WEEKLY'">
+            <div class="schedule-option" ng-if="vm.form.repeat === 'WEEKLY'">
               <label for="dayOfWeek">Day of the week</label>
               <select id="dayOfWeek" name="dayOfWeek" ng-model="vm.form.dayOfWeek" ng-options="day.value as day.label for day in vm.weekdays" required ng-disabled="vm.busy || vm.loading"></select>
             </div>
-            <div ng-if="vm.form.repeat === 'MONTHLY'">
+            <div class="schedule-option" ng-if="vm.form.repeat === 'MONTHLY'">
               <label for="dayOfMonth">Day of the month</label>
               <select id="dayOfMonth" name="dayOfMonth" ng-model="vm.form.dayOfMonth" ng-options="day for day in vm.monthDays" required ng-disabled="vm.busy || vm.loading"></select>
-              <p class="repeat-help">Months without this date use their last day, then return to your chosen day the following month.</p>
+              <p class="repeat-help" ng-if="vm.form.dayOfMonth > 28">Short months use their last day.</p>
             </div>
-            <p class="repeat-help" ng-if="vm.form.repeat !== 'ONCE'">Completing a reminder schedules its next occurrence at the same local time. For weekly and monthly reminders, “When” is the earliest start date.</p>
+            <details class="schedule-help" ng-if="vm.form.repeat !== 'ONCE'"><summary>How repeats work</summary><p>Complete to schedule the next occurrence at the same local time. “When” is the earliest start date. Monthly reminders keep the selected day, even after a shorter month.</p></details>
 
             <button class="primary-button" type="submit" ng-disabled="vm.busy || vm.loading"><span>{{ vm.busy ? 'Saving…' : (vm.editingId ? 'Save changes' : 'Add reminder') }}</span><svg class="icon" aria-hidden="true" ng-if="!vm.busy"><use href="#icon-arrow"/></svg><span class="button-spinner" aria-hidden="true" ng-if="vm.busy"></span></button>
-            <button class="cancel-button" type="button" ng-if="vm.editingId" ng-click="vm.resetForm(reminderForm)" ng-disabled="vm.busy || vm.loading">Cancel editing</button>
+            <button class="cancel-button" type="button" ng-if="vm.editingId" ng-click="vm.resetForm(reminderForm)" ng-disabled="vm.busy || vm.loading">Cancel</button>
           </form>
-          <div class="composer-footer"><svg class="icon" aria-hidden="true"><use href="#icon-clock"/></svg><span>Times shown in<br><strong>{{ vm.timeZone.replaceAll('_', ' ') }}</strong></span></div>
+          <div class="composer-footer"><svg class="icon" aria-hidden="true"><use href="#icon-clock"/></svg><span>{{ vm.timeZone.replaceAll('_', ' ') }}</span></div>
         </aside>
       </div>
       <div class="save-note" ng-if="vm.noticeVisible"><span class="notice-check" aria-hidden="true"><svg class="icon"><use href="#icon-check"/></svg></span><p aria-hidden="true">{{ vm.message }}</p><button class="notice-dismiss" type="button" ng-click="vm.noticeVisible = false" aria-label="Dismiss confirmation"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></div>
     </main>
-    <footer class="page-footer"><span><span class="footer-dot" aria-hidden="true"></span>Small reminders. A clearer head.</span><span>A little room for what matters.</span></footer>
+    <footer class="page-footer"><span class="footer-dot" aria-hidden="true"></span>A little less to remember.</footer>
   </div>
 </body>
 </html>

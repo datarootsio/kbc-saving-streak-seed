@@ -1,8 +1,69 @@
 (function () {
   'use strict';
 
-  angular.module('reminderApp', []).controller('ReminderController', ['$http', '$interval', '$window', '$timeout',
-    function ($http, $interval, $window, $timeout) {
+  angular.module('reminderApp', []).directive('reminderMotion', ['$window', function ($window) {
+    return {
+      restrict: 'A',
+      link: function (scope, element) {
+        var positions = new Map();
+        var animations = new Set();
+        var motionPreference = $window.matchMedia('(prefers-reduced-motion: reduce)');
+        var frame;
+        var firstRender = true;
+        function arrange() {
+          var next = new Map();
+          var reducedMotion = motionPreference.matches;
+          element[0].querySelectorAll('[data-reminder-id]').forEach(function (card, index) {
+            var id = card.dataset.reminderId;
+            var position = { top: card.offsetTop, left: card.offsetLeft };
+            var previous = positions.get(id);
+            next.set(id, position);
+            if (reducedMotion || !card.animate) return;
+            var keyframes;
+            if (!previous) {
+              keyframes = [{ opacity: 0, transform: 'translateY(14px) scale(.98)' }, { opacity: 1, transform: 'none' }];
+            } else if (previous.top !== position.top || previous.left !== position.left) {
+              keyframes = [{ transform: 'translate(' + (previous.left - position.left) + 'px, ' + (previous.top - position.top) + 'px)' }, { transform: 'none' }];
+            }
+            if (!keyframes) return;
+            var animation = card.animate(keyframes, {
+              duration: previous ? 460 : 520, easing: 'cubic-bezier(.22, 1, .36, 1)',
+              delay: firstRender ? Math.min(index, 5) * 55 : 0, fill: 'backwards'
+            });
+            animations.add(animation);
+            animation.onfinish = function () { animations.delete(animation); };
+          });
+          positions = next;
+          if (next.size) firstRender = false;
+        }
+        // Animate DOM additions and moves without rebuilding the list or delaying data changes.
+        var observer = new MutationObserver(function () {
+          $window.cancelAnimationFrame(frame);
+          frame = $window.requestAnimationFrame(arrange);
+        });
+        observer.observe(element[0], { childList: true, subtree: true });
+        function cancelMotion() { animations.forEach(function (animation) { animation.cancel(); }); animations.clear(); }
+        function motionChanged() { if (motionPreference.matches) cancelMotion(); }
+        function resized() {
+          cancelMotion();
+          element[0].querySelectorAll('[data-reminder-id]').forEach(function (card) {
+            positions.set(card.dataset.reminderId, { top: card.offsetTop, left: card.offsetLeft });
+          });
+        }
+        motionPreference.addEventListener('change', motionChanged);
+        $window.addEventListener('resize', resized);
+        frame = $window.requestAnimationFrame(arrange);
+        scope.$on('$destroy', function () {
+          observer.disconnect();
+          $window.cancelAnimationFrame(frame);
+          motionPreference.removeEventListener('change', motionChanged);
+          $window.removeEventListener('resize', resized);
+          cancelMotion();
+        });
+      }
+    };
+  }]).controller('ReminderController', ['$http', '$interval', '$window', '$timeout', '$scope',
+    function ($http, $interval, $window, $timeout, $scope) {
       var vm = this;
       var endpoint = 'api/reminders';
       var originalSchedule = null;
@@ -43,6 +104,7 @@
       vm.isDue = function (reminder) {
         return !reminder.completed && new Date(reminder.dueAt) <= vm.now;
       };
+      vm.dueCount = function () { return vm.reminders.filter(vm.isDue).length; };
       vm.formatWhen = function (value) {
         var date = new Date(value);
         var tomorrow = new Date(vm.now);
@@ -59,7 +121,7 @@
         vm.message = message;
         vm.noticeVisible = true;
         $timeout.cancel(noticeTimeout);
-        noticeTimeout = $timeout(function () { vm.noticeVisible = false; }, 6500);
+        noticeTimeout = $timeout(function () { vm.noticeVisible = false; }, 4500);
       }
       function highlight(id) {
         vm.highlightedId = id;
@@ -91,8 +153,18 @@
           dayOfMonth: reminder.dayOfMonth || due.getDate() };
         originalSchedule = { dueAt: vm.form.dueAt.getTime(), repeat: reminder.repeat, timeZone: reminder.timeZone,
           dayOfWeek: reminder.dayOfWeek || null, dayOfMonth: reminder.dayOfMonth || null };
-        $timeout(function () { document.getElementById('title').focus(); });
+        focusComposer();
       };
+      function focusComposer() {
+        $timeout(function () {
+          var composer = document.querySelector('.composer');
+          if ($window.innerWidth <= 800) {
+            composer.scrollIntoView({ behavior: $window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+          }
+          document.getElementById('title').focus({ preventScroll: true });
+        });
+      }
+      vm.newReminder = function (form) { vm.resetForm(form); focusComposer(); };
       vm.save = function (form) {
         if (form.$invalid || vm.busy || vm.loading) return;
         vm.busy = true;
@@ -108,7 +180,7 @@
           timeZone: sameSchedule ? originalSchedule.timeZone : vm.timeZone, dayOfWeek: weekday, dayOfMonth: monthDay };
         var request = editing ? $http.put(endpoint + '/' + vm.editingId, input) : $http.post(endpoint, input);
         request.then(function (response) {
-          notify(editing ? 'Reminder updated. All set.' : 'Reminder added. One less thing to keep in your head.');
+          notify(editing ? 'Reminder updated' : 'Reminder added');
           vm.filter = 'active';
           vm.resetForm(form);
           return vm.load().then(function () { highlight(response.data.id); });
@@ -119,13 +191,14 @@
         vm.busy = true;
         vm.error = '';
         $http.post(endpoint + '/' + reminder.id + '/complete', { dueAt: reminder.dueAt }).then(function (response) {
-          notify(reminder.repeat !== 'ONCE' ? 'Done for now. Next reminder: ' + vm.formatWhen(response.data.dueAt) + '.' : 'Done. A little weight off your mind.');
+          notify(reminder.repeat !== 'ONCE' ? 'Done · Next: ' + vm.formatWhen(response.data.dueAt) : 'Reminder completed');
           if (vm.editingId === reminder.id) vm.resetForm();
           // Show completion only after the server confirms it; reduced motion skips the visual pause.
           vm.completingId = reminder.id;
-          var delay = $window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+          vm.leaving = reminder.repeat === 'ONCE';
+          var delay = $window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 440;
           return $timeout(angular.noop, delay).then(vm.load);
-        }, showError).finally(function () { vm.busy = false; vm.completingId = null; });
+        }, showError).finally(function () { vm.busy = false; vm.completingId = null; vm.leaving = false; });
       };
       vm.remove = function (reminder) {
         if (vm.busy || vm.loading || !$window.confirm('Delete “' + reminder.title + '”?')) return;
@@ -133,15 +206,24 @@
         vm.error = '';
         $http.delete(endpoint + '/' + reminder.id).then(function () {
           if (vm.editingId === reminder.id) vm.resetForm();
-          notify('Reminder deleted.');
+          notify('Reminder deleted');
           return vm.load();
         }, showError).finally(function () { vm.busy = false; });
       };
       // The app shows due reminders in-page; no browser notification permission is required.
-      $interval(function () {
+      function updateClock() {
         vm.now = new Date();
         vm.today = vm.now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-      }, 1000);
+        vm.hourAngle = vm.now.getHours() * 30 + vm.now.getMinutes() / 2;
+        vm.minuteAngle = vm.now.getHours() * 360 + vm.now.getMinutes() * 6 + vm.now.getSeconds() / 10;
+      }
+      var clockInterval = $interval(updateClock, 1000);
+      updateClock();
+      $scope.$on('$destroy', function () {
+        $interval.cancel(clockInterval);
+        $timeout.cancel(noticeTimeout);
+        $timeout.cancel(highlightTimeout);
+      });
       vm.resetForm();
       vm.load();
     }]);
