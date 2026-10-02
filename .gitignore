@@ -6,6 +6,7 @@ output/
 .idea/
 *.iml
 node_modules/
+frontend/dist/
 .playwright-cli/
 
 # Local AI agent configuration and instructions
