@@ -56,7 +56,8 @@ public class ReminderService {
                 && java.util.Objects.equals(current.dayOfWeek(), updated.dayOfWeek())
                 && java.util.Objects.equals(current.dayOfMonth(), updated.dayOfMonth())) {
             updated = new Reminder(id, updated.title(), updated.dueAt(), updated.repeat(),
-                    updated.timeZone(), current.dailyTime(), updated.dayOfWeek(), updated.dayOfMonth(), false);
+                    updated.timeZone(), current.dailyTime(), updated.dayOfWeek(), updated.dayOfMonth(),
+                    current.visibleFrom(), false);
         }
         return replace(updated);
     }
@@ -70,8 +71,10 @@ public class ReminderService {
         }
         boolean completed = current.repeat() == Reminder.Repeat.ONCE;
         Instant dueAt = completed ? current.dueAt() : nextOccurrence(current);
+        Instant visibleFrom = completed ? null : dueAt.atZone(ZoneId.of(current.timeZone()))
+                .toLocalDate().atStartOfDay(ZoneId.of(current.timeZone())).toInstant();
         return replace(new Reminder(id, current.title(), dueAt, current.repeat(),
-                current.timeZone(), current.dailyTime(), current.dayOfWeek(), current.dayOfMonth(), completed));
+                current.timeZone(), current.dailyTime(), current.dayOfWeek(), current.dayOfMonth(), visibleFrom, completed));
     }
 
     public synchronized void delete(UUID id) {
@@ -104,7 +107,7 @@ public class ReminderService {
             Instant dueAt = date.equals(local.toLocalDate()) ? input.dueAt()
                     : date.atTime(localTime).atZone(zone).toInstant();
             return new Reminder(id, input.title().strip(), dueAt, input.repeat(), zone.getId(),
-                    localTime, weekday, monthDay, completed);
+                    localTime, weekday, monthDay, null, completed);
         } catch (DateTimeException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose a valid date and time zone.");
         }
@@ -114,7 +117,8 @@ public class ReminderService {
         ZoneId zone = ZoneId.of(reminder.timeZone());
         ZonedDateTime now = clock.instant().atZone(zone);
         LocalDate currentDate = reminder.dueAt().atZone(zone).toLocalDate();
-        LocalDate nextDate = currentDate.isAfter(now.toLocalDate()) ? currentDate : now.toLocalDate();
+        // Completing counts for today; an overdue reminder must not immediately return later today.
+        LocalDate nextDate = currentDate.isAfter(now.toLocalDate()) ? currentDate : now.toLocalDate().plusDays(1);
         nextDate = switch (reminder.repeat()) {
             case DAILY -> nextDate;
             case WEEKLY -> nextDate.with(TemporalAdjusters.nextOrSame(reminder.dayOfWeek()));
@@ -123,7 +127,8 @@ public class ReminderService {
         };
         // Keep the saved wall-clock time and monthly anchor even after a DST gap or short month.
         ZonedDateTime next = nextDate.atTime(reminder.dailyTime()).atZone(zone);
-        while (!next.toInstant().isAfter(now.toInstant()) || !next.toInstant().isAfter(reminder.dueAt())) {
+        while (!nextDate.isAfter(now.toLocalDate()) || !next.toInstant().isAfter(now.toInstant())
+                || !next.toInstant().isAfter(reminder.dueAt())) {
             nextDate = switch (reminder.repeat()) {
                 case DAILY -> nextDate.plusDays(1);
                 case WEEKLY -> nextDate.plusWeeks(1);

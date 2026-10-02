@@ -95,14 +95,17 @@
         vm.form.dayOfWeek = vm.weekdays[vm.form.dueAt.getDay()].value;
         vm.form.dayOfMonth = vm.form.dueAt.getDate();
       };
+      vm.isActive = function (reminder) {
+        return !reminder.completed && (!reminder.visibleFrom || new Date(reminder.visibleFrom) <= vm.now);
+      };
       vm.count = function (filter) {
-        return vm.reminders.filter(function (r) { return r.completed === (filter === 'completed'); }).length;
+        return vm.reminders.filter(function (r) { return filter === 'completed' ? r.completed : vm.isActive(r); }).length;
       };
       vm.visibleReminders = function () {
-        return vm.reminders.filter(function (r) { return r.completed === (vm.filter === 'completed'); });
+        return vm.reminders.filter(function (r) { return vm.filter === 'completed' ? r.completed : vm.isActive(r); });
       };
       vm.isDue = function (reminder) {
-        return !reminder.completed && new Date(reminder.dueAt) <= vm.now;
+        return vm.isActive(reminder) && new Date(reminder.dueAt) <= vm.now;
       };
       vm.dueCount = function () { return vm.reminders.filter(vm.isDue).length; };
       vm.formatWhen = function (value) {
@@ -195,7 +198,7 @@
           if (vm.editingId === reminder.id) vm.resetForm();
           // Show completion only after the server confirms it; reduced motion skips the visual pause.
           vm.completingId = reminder.id;
-          vm.leaving = reminder.repeat === 'ONCE';
+          vm.leaving = true;
           var delay = $window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 440;
           return $timeout(angular.noop, delay).then(vm.load);
         }, showError).finally(function () { vm.busy = false; vm.completingId = null; vm.leaving = false; });

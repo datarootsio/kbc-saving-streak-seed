@@ -95,7 +95,7 @@
               <select id="dayOfMonth" name="dayOfMonth" ng-model="vm.form.dayOfMonth" ng-options="day for day in vm.monthDays" required ng-disabled="vm.busy || vm.loading"></select>
               <p class="repeat-help" ng-if="vm.form.dayOfMonth > 28">Short months use their last day.</p>
             </div>
-            <details class="schedule-help" ng-if="vm.form.repeat !== 'ONCE'"><summary>How repeats work</summary><p>Complete to schedule the next occurrence at the same local time. “When” is the earliest start date. Monthly reminders keep the selected day, even after a shorter month.</p></details>
+            <details class="schedule-help" ng-if="vm.form.repeat !== 'ONCE'"><summary>How repeats work</summary><p>Complete to schedule the next occurrence at the same local time. It reappears at midnight on its scheduled day. “When” is the earliest start date. Monthly reminders keep the selected day, even after a shorter month.</p></details>
 
             <button class="primary-button" type="submit" ng-disabled="vm.busy || vm.loading"><span>{{ vm.busy ? 'Saving…' : (vm.editingId ? 'Save changes' : 'Add reminder') }}</span><svg class="icon" aria-hidden="true" ng-if="!vm.busy"><use href="#icon-arrow"/></svg><span class="button-spinner" aria-hidden="true" ng-if="vm.busy"></span></button>
             <button class="cancel-button" type="button" ng-if="vm.editingId" ng-click="vm.resetForm(reminderForm)" ng-disabled="vm.busy || vm.loading">Cancel</button>

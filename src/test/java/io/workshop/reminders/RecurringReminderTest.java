@@ -54,6 +54,7 @@ class RecurringReminderTest {
         assertThat(next.dueAt()).isEqualTo(Instant.parse("2026-10-09T07:00:00Z"));
         assertThat(next.dayOfWeek()).isEqualTo(DayOfWeek.FRIDAY);
         assertThat(next.completed()).isFalse();
+        assertThat(next.visibleFrom()).isEqualTo(Instant.parse("2026-10-08T22:00:00Z"));
     }
 
     @Test
@@ -90,9 +91,12 @@ class RecurringReminderTest {
         var february = service.complete(reminder.id(), reminder.dueAt());
         assertThat(february.dueAt()).isEqualTo(Instant.parse("2026-02-28T08:00:00Z"));
         assertThat(february.dayOfMonth()).isEqualTo(31);
+        assertThat(february.visibleFrom()).isEqualTo(Instant.parse("2026-02-27T23:00:00Z"));
         store = openStore();
+        assertThat(at("2026-02-01T12:00:00Z").find(february.id()).visibleFrom()).isEqualTo(february.visibleFrom());
         var renamed = at("2026-02-28T12:00:00Z").update(february.id(),
                 new ReminderInput("Renamed", february.dueAt(), february.repeat(), february.timeZone(), null, 31));
+        assertThat(renamed.visibleFrom()).isEqualTo(february.visibleFrom());
         assertThat(at("2026-02-28T12:00:00Z").complete(renamed.id(), renamed.dueAt()).dueAt())
                 .isEqualTo(Instant.parse("2026-03-31T07:00:00Z"));
     }
@@ -147,7 +151,41 @@ class RecurringReminderTest {
                   "repeat":"DAILY","timeZone":"UTC","dailyTime":"09:00:00","completed":false}]
                 """.formatted(id));
         store = openStore();
+        assertThat(at("2026-10-02T12:00:00Z").find(id).visibleFrom()).isNull();
         assertThat(at("2026-10-02T12:00:00Z").complete(id, Instant.parse("2026-10-02T09:00:00Z")).dueAt())
                 .isEqualTo(Instant.parse("2026-10-03T09:00:00Z"));
+    }
+
+    @Test
+    void daily_visibility_starts_at_midnight_before_the_daylight_saving_change() throws Exception {
+        var service = at("2026-03-28T12:00:00Z");
+        var reminder = service.create(new ReminderInput("Daily", Instant.parse("2026-03-28T08:00:00Z"),
+                Reminder.Repeat.DAILY, "Europe/Brussels"));
+        assertThat(reminder.visibleFrom()).isNull();
+        var next = service.complete(reminder.id(), reminder.dueAt());
+        assertThat(next.visibleFrom()).isEqualTo(Instant.parse("2026-03-28T23:00:00Z"));
+        assertThat(next.dueAt()).isEqualTo(Instant.parse("2026-03-29T07:00:00Z"));
+        store = openStore();
+        assertThat(at("2026-03-28T13:00:00Z").find(next.id()).visibleFrom()).isEqualTo(next.visibleFrom());
+        var renamed = at("2026-03-28T13:00:00Z").update(next.id(),
+                new ReminderInput("Renamed", next.dueAt(), next.repeat(), next.timeZone()));
+        assertThat(renamed.visibleFrom()).isEqualTo(next.visibleFrom());
+        var rescheduled = at("2026-03-28T13:00:00Z").update(next.id(),
+                new ReminderInput("Rescheduled", Instant.parse("2026-03-30T07:00:00Z"), next.repeat(), next.timeZone()));
+        assertThat(rescheduled.visibleFrom()).isNull();
+    }
+
+    @Test
+    void overdue_occurrences_completed_before_todays_time_return_on_a_later_day() {
+        var service = at("2026-10-02T05:00:00Z"); // Friday, 07:00 Brussels
+        for (var input : new ReminderInput[] {
+                new ReminderInput("Daily", Instant.parse("2026-10-01T07:00:00Z"), Reminder.Repeat.DAILY, "Europe/Brussels"),
+                weekly("2026-09-25T07:00:00Z", DayOfWeek.FRIDAY),
+                monthly("2026-09-02T07:00:00Z", 2) }) {
+            var reminder = service.create(input);
+            var next = service.complete(reminder.id(), reminder.dueAt());
+            var nextDate = next.visibleFrom().atZone(java.time.ZoneId.of(next.timeZone())).toLocalDate();
+            assertThat(nextDate).isAfter(java.time.LocalDate.parse("2026-10-02"));
+        }
     }
 }

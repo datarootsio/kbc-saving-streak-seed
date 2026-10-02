@@ -22,4 +22,4 @@ Your agreed behavior, task breakdown, and working snooze feature. Explain how yo
 
 Requires Java 17+. Run `./mvnw spring-boot:run` and open <http://localhost:8080>. Tests: `./mvnw test`.
 
-The starter supports one-off, daily, weekly (chosen weekday), and monthly (chosen day) reminders, editing, completion, deletion, and persistence. Shorter months use their last day without changing the chosen monthly day. Notifications appear as in-page due highlights. Restart the app after frontend edits.
+The starter supports one-off, daily, weekly (chosen weekday), and monthly (chosen day) reminders, editing, completion, deletion, and persistence. Completed recurring reminders reappear at midnight on their next scheduled day in the saved time zone. Shorter months use their last day without changing the chosen monthly day. Notifications appear as in-page due highlights. Restart the app after frontend edits.

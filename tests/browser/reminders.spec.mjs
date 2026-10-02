@@ -77,6 +77,8 @@ test('renaming a daily reminder keeps its time zone across daylight saving', asy
   expect(next.timeZone).toBe('Europe/Brussels');
   expect(next.dailyTime).toBe('09:00:00');
   await page.reload();
+  await expect(page.getByRole('heading', { name: 'Renamed Brussels reminder', exact: true })).toHaveCount(0);
+  await page.clock.setFixedTime(new Date(next.visibleFrom));
   const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Renamed Brussels reminder', exact: true }) });
   await expect(card.locator('time')).toHaveAttribute('datetime', next.dueAt);
 });
@@ -146,6 +148,8 @@ test('weekly reminders keep the chosen weekday after editing and completing', as
   expect(new Date(next.dueAt).toISOString()).toBe(first.toISOString());
   expect(next.completed).toBe(false);
   await page.reload();
+  await expect(page.getByText('↻ Every Friday', { exact: true })).toHaveCount(0);
+  await page.clock.setFixedTime(new Date(next.visibleFrom));
   await expect(page.getByText('↻ Every Friday', { exact: true })).toBeVisible();
 });
 
@@ -169,6 +173,9 @@ test('monthly reminders return to day 31 after a shorter month and a rename', as
   const february = await (await request.get('/api/reminders/' + reminder.id)).json();
   expect(new Date(february.dueAt).toISOString()).toBe(new Date(Date.UTC(year, 2, 0, 9)).toISOString());
   await page.reload();
+  await expect(page.getByRole('heading', { name: 'Monthly review', exact: true })).toHaveCount(0);
+  await page.clock.setFixedTime(new Date(february.visibleFrom));
+  await expect(page.getByRole('heading', { name: 'Monthly review', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Edit Monthly review', exact: true }).click();
   await expect(page.getByLabel('Day of the month', { exact: true })).toHaveValue('number:31');
   await page.getByLabel('Remind me to').fill('Monthly team review');
@@ -182,5 +189,49 @@ test('monthly reminders return to day 31 after a shorter month and a rename', as
   expect(march.dayOfMonth).toBe(31);
   expect(march.completed).toBe(false);
   await page.reload();
+  await expect(page.getByText('↻ Monthly · day 31', { exact: true })).toHaveCount(0);
+  await page.clock.setFixedTime(new Date(march.visibleFrom));
   await expect(page.getByText('↻ Monthly · day 31', { exact: true })).toBeVisible();
 });
+
+for (const repeat of ['DAILY', 'WEEKLY', 'MONTHLY']) {
+  test(repeat + ' hides its next occurrence until midnight in the saved time zone', async ({ page, request }) => {
+    const year = new Date().getUTCFullYear() + 1;
+    const start = new Date(Date.UTC(year, 0, 31, 8));
+    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const created = await request.post('/api/reminders', { data: {
+      title: 'Recurring reminder', dueAt: start.toISOString(), repeat, timeZone: 'Europe/Brussels',
+      dayOfWeek: repeat === 'WEEKLY' ? days[start.getUTCDay()] : null,
+      dayOfMonth: repeat === 'MONTHLY' ? 31 : null
+    } });
+    expect(created.status()).toBe(201);
+    const reminder = await created.json();
+    expect(reminder.visibleFrom).toBeNull();
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Recurring reminder', exact: true })).toBeVisible();
+    const completed = page.waitForResponse(response => response.url().endsWith('/' + reminder.id + '/complete'));
+    await page.getByRole('button', { name: 'Complete Recurring reminder', exact: true }).click();
+    const next = await (await completed).json();
+    await expect(page.getByRole('heading', { name: 'Recurring reminder', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Active 0', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Completed 0', exact: true })).toBeVisible();
+
+    // The browser is in UTC. Reappearance follows Brussels midnight, which is 23:00 UTC in winter.
+    const midnight = new Date(next.visibleFrom);
+    expect(midnight.getUTCHours()).toBe(23);
+    expect(midnight.getUTCMinutes()).toBe(0);
+    expect(new Date(next.dueAt).getTime() - midnight.getTime()).toBe(9 * 60 * 60 * 1000);
+    await page.clock.setFixedTime(new Date(midnight.getTime() - 1));
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'All clear.', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recurring reminder', exact: true })).toHaveCount(0);
+    await page.clock.setFixedTime(midnight);
+    // No reload: the app's clock brings the occurrence back automatically.
+    await expect(page.getByRole('heading', { name: 'Recurring reminder', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Active 1', exact: true })).toBeVisible();
+    await expect(page.getByText('Due now', { exact: true })).toHaveCount(0);
+    const saved = await (await request.get('/api/reminders/' + reminder.id)).json();
+    expect(saved.dueAt).toBe(next.dueAt);
+    expect(saved.completed).toBe(false);
+  });
+}
