@@ -90,6 +90,7 @@ function registerCommands() {
   RS.registerCommand(module, "cancel-processes", new Packages.com.google.refine.commands.history.CancelProcessesCommand());
 
   RS.registerCommand(module, "compute-facets", new Packages.com.google.refine.commands.browsing.ComputeFacetsCommand());
+  RS.registerCommand(module, "get-numeric-health", new Packages.com.google.refine.commands.browsing.NumericHealthCommand());
   RS.registerCommand(module, "compute-clusters", new Packages.com.google.refine.commands.browsing.ComputeClustersCommand());
   RS.registerCommand(module, "get-clustering-functions-and-distances", new Packages.com.google.refine.commands.browsing.GetClusteringFunctionsAndDistancesCommand());
 
