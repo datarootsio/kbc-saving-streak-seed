@@ -254,3 +254,31 @@ td.investigation-highlight .data-table-cell-content::before {
 .health-popover-row.is-active .health-popover-name {
   text-decoration: underline;
 }
+
+/* ---- investigation toggles ---- */
+.investigation-toggles {
+  margin-top: var(--padding-tight);
+  font-size: 0.9em;
+}
+
+.investigation-toggles-title {
+  color: var(--text-tertiary);
+}
+
+.investigation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.investigation-toggle-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.investigation-toggle input:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 1px;
+}
+/* ---- end investigation toggles ---- */

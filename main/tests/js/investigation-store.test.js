@@ -187,3 +187,60 @@ test('a data-only update with no open card does not call the card endpoint', () 
   store.onProjectUpdate({engineChanged: true});
   assert.strictEqual(cardCalls.length, 0);
 });
+
+// ---- cards: problem-row toggles (ticket 09) ----
+
+test('setProblemRows on a card with a range rewrites the facet with the same bounds and the new flags', () => {
+  const {store, cardCalls, writes, state} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
+  store.setRange('amount', {from: 0, to: 1});
+  store.refreshCardSelections();
+  cardCalls[1].onDone(cardPayload(3));
+  writes.length = 0;
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes.length, 1);
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, false, false]);
+  assert.strictEqual(c.from, 0);
+  assert.ok(Math.abs(c.to - 1) < 1e-6, 'upper bound is not nudged up a second time');
+  assert.strictEqual(c.selectNumeric, true);
+});
+
+test('setProblemRows keeps the other flags', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 1, includeBlank: true, includeWrongType: false, includeError: true}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(4));
+  store.setProblemRows('amount', {wrongType: true});
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, true, true]);
+});
+
+test('setProblemRows without a range writes nothing and the next setRange uses the choice', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes.length, 0);
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: true, wrongType: false, error: false});
+  store.setRange('amount', {from: 0, to: 1});
+  assert.strictEqual(writes[0].config.selectBlank, true);
+});
+
+test('problem-row defaults are all off, and follow the facet once there is a range', () => {
+  const {store, cardCalls} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: true, includeError: false}});
+  store.openCard('amount');
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: false, wrongType: false, error: false});
+  cardCalls[0].onDone(cardPayload(4));
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: false, wrongType: true, error: false});
+});
+
+test('setProblemRows uses the live facet bounds, not a card range that lags behind', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 2.5, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(5));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}; // slider moved, fetch pending
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes[0].config.to, 1);
+});

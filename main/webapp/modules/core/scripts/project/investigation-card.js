@@ -57,6 +57,7 @@ InvestigationCardStrip.prototype._renderCard = function(card) {
     });
     self._renderHistogram(card.histogram, elmts.bodyDiv, card.range);
     self._renderRange(card, elmts.bodyDiv);
+    self._renderToggles(card, elmts.bodyDiv);
   }
   return dom;
 };
@@ -113,6 +114,22 @@ InvestigationCardStrip.prototype._renderRange = function(card, parent) {
         .text($.i18n("core-investigation/keeps", card.selection.keptRows, card.selection.totalRows, pct)).appendTo(wrap);
     }
   }
+};
+
+// Keep-visible toggles for problem rows under the range selection (all off by default).
+InvestigationCardStrip.prototype._renderToggles = function(card, parent) {
+  var wrap = $('<div>').addClass("investigation-toggles").attr({ role: "group", "aria-label": $.i18n("core-investigation/toggles-title") }).appendTo(parent);
+  $('<div>').addClass("investigation-toggles-title").text($.i18n("core-investigation/toggles-title")).appendTo(wrap);
+  ["blank", "wrongType", "error"].forEach(function(kind) {
+    var label = $('<label>').addClass("investigation-toggle").attr("data-kind", kind).appendTo(wrap);
+    $('<input type="checkbox">').prop("checked", !!card.problemRows[kind]).on("change", function() {
+      var flags = {};
+      flags[kind] = this.checked;
+      InvestigationStore.setProblemRows(card.columnName, flags);
+    }).appendTo(label);
+    $('<span>').addClass("investigation-toggle-label").text($.i18n("core-investigation/toggle-" + kind)).appendTo(label);
+    $('<span>').addClass("investigation-toggle-count").text(card.counts[kind]).appendTo(label);
+  });
 };
 
 InvestigationCardStrip.prototype._renderHistogram = function(histogram, parent, range) {

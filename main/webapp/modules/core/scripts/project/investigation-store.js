@@ -114,7 +114,7 @@ var InvestigationStore = (function() {
     var snapshot = JSON.parse(JSON.stringify(state));
     snapshot.cards = cards.map(function(c) {
       return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total,
-        selection: c.selection, range: c.range };
+        selection: c.selection, range: c.range, problemRows: { blank: c.problemRows.blank, wrongType: c.problemRows.wrongType, error: c.problemRows.error } };
     });
     snapshot.highlight = JSON.parse(JSON.stringify(highlight));
     return snapshot;
@@ -157,6 +157,9 @@ var InvestigationStore = (function() {
         }
         card.selection = data.selection;
         card.range = deps.readRange(card.columnName);
+        if (card.range) {
+          card.problemRows = { blank: !!card.range.includeBlank, wrongType: !!card.range.includeWrongType, error: !!card.range.includeError };
+        }
       } else if (full) {
         card.status = "error";
       }
@@ -177,18 +180,51 @@ var InvestigationStore = (function() {
     });
   };
 
-  store.setRange = function(columnName, r) {
-    deps.writeRange(columnName, {
+  var rangeConfig = function(columnName, from, toExclusive, p) {
+    return {
       name: columnName,
       expression: "value",
       columnName: columnName,
-      from: r.from,
-      to: r.to + RANGE_UPPER_EPSILON,
+      from: from,
+      to: toExclusive,
       selectNumeric: true,
-      selectNonNumeric: !!r.includeWrongType,
-      selectBlank: !!r.includeBlank,
-      selectError: !!r.includeError
+      selectNonNumeric: !!p.wrongType,
+      selectBlank: !!p.blank,
+      selectError: !!p.error
+    };
+  };
+
+  store.setRange = function(columnName, r) {
+    var card = findCard(columnName);
+    var p = card ? card.problemRows : { blank: false, wrongType: false, error: false };
+    deps.writeRange(columnName, rangeConfig(columnName, r.from, r.to + RANGE_UPPER_EPSILON, {
+      blank: r.includeBlank === undefined ? p.blank : r.includeBlank,
+      wrongType: r.includeWrongType === undefined ? p.wrongType : r.includeWrongType,
+      error: r.includeError === undefined ? p.error : r.includeError
+    }));
+  };
+
+  // Toggles for blank / wrong-type / error rows: flags {blank, wrongType, error}, any subset.
+  // They live in the range facet's selectBlank / selectNonNumeric / selectError. With no range
+  // yet they are remembered on the card and used by the next setRange (defaults: all off).
+  store.setProblemRows = function(columnName, flags) {
+    var card = findCard(columnName);
+    if (!card) {
+      return;
+    }
+    var p = card.problemRows;
+    ["blank", "wrongType", "error"].forEach(function(k) {
+      if (flags[k] !== undefined) {
+        p[k] = !!flags[k];
+      }
     });
+    var live = deps.readRange(columnName); // the facet, not card.range, which lags behind a fetch
+    if (live) {
+      // the facet's own bound is already exclusive, so it is passed unchanged
+      deps.writeRange(columnName, rangeConfig(columnName, live.from, live.to, p));
+    } else {
+      emit("cards-changed", store.getState());
+    }
   };
 
   store.resetRange = function(columnName) {
@@ -200,7 +236,8 @@ var InvestigationStore = (function() {
       return;
     }
     var card = { columnName: columnName, status: "loading", stats: null, counts: null, histogram: null, total: null,
-                 selection: null, range: null };
+                 selection: null, range: null,
+                 problemRows: { blank: false, wrongType: false, error: false } };
     cards.push(card);
     emit("cards-changed", store.getState());
     fetchCard(card, true);
