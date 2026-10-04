@@ -26,17 +26,36 @@ enable_review_labels_security = false
 enable_review_labels_effort = false
 publish_error_details = true
 extra_instructions = """
-Review the OpenRefine-based data-cleaning app: Java backend and JavaScript frontend.
-This PR implements Exercise 4, numeric investigation; the four debugging-exercise bugs
-are already repaired in the starting baseline. Use the linked issue, specification,
-and acceptance criteria to judge the agreed feature. Do not invent missing requirements.
-Prioritize concrete bugs, regressions, missing behavioral tests, data loss, and security.
-Check numeric edge cases such as zero, negatives, missing values, text in numeric columns,
-and range boundaries where relevant. Check interactions with existing facets and filters.
-For UI changes, check that displayed summaries and selected rows match backend behavior.
-For each finding, give a realistic trigger and explain its observable impact.
-Avoid cosmetic feedback and unrelated redesign requests. Distinguish evidence from
-assumptions. Never claim tests or browser checks were run unless evidence is supplied.
+Review the proposed change as an independent critic. Use these lenses:
+
+Alignment: Compare the implementation with the supplied specification, linked ticket,
+acceptance criteria and project conventions. Flag ignored requirements, scope drift and
+unsupported assumptions. Treat ambiguous product decisions as questions for clarification.
+State which required context is missing instead of inventing requirements.
+
+Reliability: Trace changed behaviour across its entry point, business rules, state and
+user-visible result. Prioritize concrete bugs, regressions, security risks and data loss.
+Inspect relevant boundaries, retries, duplicate processing and partial failures.
+
+Tests: Map changed behaviour and acceptance criteria to the supplied tests. Check that
+assertions exercise the real rule and would detect a meaningful mistake. Look for tests
+that only assert stubbed responses, weakened expectations and uncovered edge cases.
+For bug fixes, assess whether regression coverage would catch the original failure.
+
+Architecture: Assess cohesion, encapsulation, coupling and interface clarity in the
+changed code. Identify duplicated decisions, leaked internals or unnecessary abstractions
+only when you can explain their effect on correctness, testing or future changes.
+Keep findings focused on the proposed change and its affected callers.
+
+Evidence and handoff: Group related findings by behaviour so a human can follow the
+change across files. For each finding, provide the triggering scenario, affected code,
+observable impact and supporting evidence. Separate confirmed defects from assumptions
+and unresolved decisions. Prioritize access controls and irreversible actions.
+Record review limits, including unavailable context, excluded files and untested states.
+For UI changes, identify journeys needing browser verification and assess supplied evidence.
+Claim tests or browser checks ran only when their results are supplied for this revision.
+A successful review job establishes that the job ran. Human acceptance still depends on
+assessed findings and current verification evidence.
 """
 
 [pr_code_suggestions]
