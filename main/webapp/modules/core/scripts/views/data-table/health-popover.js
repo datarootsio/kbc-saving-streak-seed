@@ -95,13 +95,46 @@ HealthPopover._fill = function(elmt, columnName, health) {
     .text($.i18n('core-investigation/popover-total', health.total)).appendTo(elmt);
   HealthPopover.CLASSES.forEach(function(cls) {
     var count = health.counts[cls];
-    var row = $('<div>').addClass('health-popover-row').attr('data-class', cls).toggleClass('is-zero', count === 0).appendTo(elmt);
+    var row = $('<div>').addClass('health-popover-row').attr({ 'data-class': cls, role: 'button', tabindex: 0 })
+      .toggleClass('is-zero', count === 0).appendTo(elmt);
+    row.on('click', function() { HealthPopover.toggleHighlight(columnName, cls); });
+    row.on('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        HealthPopover.toggleHighlight(columnName, cls);
+      }
+    });
     $('<span>').addClass('health-popover-swatch health-bar-' + cls).appendTo(row);
     $('<span>').addClass('health-popover-name').text($.i18n('core-investigation/class-' + cls)).appendTo(row);
     $('<span>').addClass('health-popover-count').text(count).appendTo(row);
     $('<span>').addClass('health-popover-pct').text(pct[cls] + '%').appendTo(row);
     $('<div>').addClass('health-popover-explain').text($.i18n('core-investigation/class-' + cls + '-explain')).appendTo(row);
   });
+  HealthPopover._syncPressed(elmt, columnName);
+};
+
+// ---- highlight (ticket 04) ----
+
+// Clicking the active class again clears it; another class replaces it.
+HealthPopover.toggleHighlight = function(columnName, cls) {
+  var active = InvestigationStore.getHighlight(columnName);
+  InvestigationStore.setHighlight(columnName, active === cls ? null : cls);
+};
+
+HealthPopover._syncPressed = function(elmt, columnName) {
+  var active = InvestigationStore.getHighlight(columnName);
+  elmt.find('.health-popover-row').each(function() {
+    var row = $(this);
+    var on = row.attr('data-class') === active;
+    row.attr('aria-pressed', on ? 'true' : 'false').toggleClass('is-active', on);
+  });
+};
+
+HealthPopover.onHighlightChanged = function(event) {
+  var open = HealthPopover._open;
+  if (open && open.columnName === event.columnName) {
+    HealthPopover._syncPressed(open.elmt, event.columnName);
+  }
 };
 
 HealthPopover._position = function(elmt, columnName) {
@@ -150,4 +183,5 @@ HealthPopover.onHealthUpdated = function(event) {
 
 if (typeof InvestigationStore !== 'undefined') {
   InvestigationStore.on('health-updated', HealthPopover.onHealthUpdated);
+  InvestigationStore.on('highlight-changed', HealthPopover.onHighlightChanged);
 }

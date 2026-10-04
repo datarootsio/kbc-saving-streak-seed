@@ -224,3 +224,33 @@
   margin-top: var(--padding-tight);
 }
 /* ---- end investigation range ---- */
+
+/* ---- cell highlight ---- */
+/* Colour plus an underline and a leading marker, so it does not rely on colour alone. */
+td.investigation-highlight {
+  background-color: #fff3c4;
+}
+td.investigation-highlight .data-table-cell-content {
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+}
+td.investigation-highlight .data-table-cell-content::before {
+  content: "\25C6\00a0";
+  color: #b36b00;
+  text-decoration: none;
+}
+.health-popover-row[role="button"] {
+  cursor: pointer;
+}
+.health-popover-row[role="button"]:hover,
+.health-popover-row.is-active {
+  background-color: #fff3c4;
+}
+.health-popover-row[role="button"]:focus-visible {
+  outline: 2px solid var(--blue-primary, #36c);
+  outline-offset: -2px;
+}
+.health-popover-row.is-active .health-popover-name {
+  text-decoration: underline;
+}
