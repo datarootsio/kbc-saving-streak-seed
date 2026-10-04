@@ -64,13 +64,13 @@ var InvestigationStore = (function() {
   store.getState = function() {
     var snapshot = JSON.parse(JSON.stringify(state));
     snapshot.cards = cards.map(function(c) {
-      return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts };
+      return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total };
     });
     return snapshot;
   };
 
   // ---- cards ----
-  var cards = []; // [{columnName, status: "loading"|"ready"|"error", stats, counts}]
+  var cards = []; // [{columnName, status: "loading"|"ready"|"error", stats, counts, histogram, total}]
 
   var findCard = function(columnName) {
     for (var i = 0; i < cards.length; i++) {
@@ -88,6 +88,7 @@ var InvestigationStore = (function() {
       {
         project: theProject.id,
         columnName: card.columnName,
+        bins: 20,
         engine: JSON.stringify(ui.browsingEngine.getJSON(true))
       },
       function(data) {
@@ -98,6 +99,8 @@ var InvestigationStore = (function() {
           card.status = "ready";
           card.stats = data.stats;
           card.counts = data.counts;
+          card.histogram = data.histogram;
+          card.total = data.total;
         } else {
           card.status = "error";
         }
@@ -117,7 +120,7 @@ var InvestigationStore = (function() {
     if (findCard(columnName)) {
       return;
     }
-    var card = { columnName: columnName, status: "loading", stats: null, counts: null };
+    var card = { columnName: columnName, status: "loading", stats: null, counts: null, histogram: null, total: null };
     cards.push(card);
     emit("cards-changed", store.getState());
     fetchCard(card);

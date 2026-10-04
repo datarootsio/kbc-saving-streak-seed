@@ -94,3 +94,39 @@
 .health-bar-blank { background: var(--light-grey); }
 .health-bar-wrongType { background: #e90; }
 .health-bar-error { background: var(--error-red); }
+
+/* ---- investigation histogram ---- */
+.investigation-histogram {
+  margin-top: var(--padding-tight);
+}
+
+.investigation-histogram-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 60px;
+}
+
+.investigation-histogram-bar {
+  flex: 1 1 0;
+  min-width: 3px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.investigation-histogram-fill {
+  width: 100%;
+  background: var(--link-primary);
+  min-height: 0;
+}
+
+.investigation-histogram-bar[data-count="0"] .investigation-histogram-fill {
+  display: none;
+}
+
+.investigation-histogram-single {
+  color: var(--text-tertiary);
+  font-size: 0.85em;
+  margin-top: var(--padding-tight);
+}
+/* ---- end investigation histogram ---- */

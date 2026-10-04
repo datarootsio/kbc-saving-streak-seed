@@ -43,6 +43,7 @@ public class NumericHealthCommand extends Command {
             if (column == null) {
                 throw new IllegalArgumentException("No such column: " + columnName);
             }
+            int binCount = parseBins(request.getParameter("bins"));
             int cellIndex = column.getCellIndex();
 
             List<Cell> cells = new ArrayList<>();
@@ -62,7 +63,7 @@ public class NumericHealthCommand extends Command {
                 public void end(Project project) {
                 }
             });
-            NumericHealth health = NumericHealthCalculator.compute(cells);
+            NumericHealth health = NumericHealthCalculator.compute(cells, binCount);
 
             Map<String, Object> counts = new LinkedHashMap<>();
             counts.put("numeric", health.counts().get(CellClass.NUMERIC));
@@ -84,9 +85,37 @@ public class NumericHealthCommand extends Command {
                 stats.put("median", health.median());
                 result.put("stats", stats);
             }
+            if (health.histogramBins() == null) {
+                result.put("histogram", null);
+            } else {
+                Map<String, Object> histogram = new LinkedHashMap<>();
+                histogram.put("binWidth", health.histogramBinWidth());
+                histogram.put("min", health.histogramMin());
+                histogram.put("bins", health.histogramBins());
+                result.put("histogram", histogram);
+            }
             respondJSON(response, result);
         } catch (Exception e) {
             respondException(response, e);
         }
+    }
+
+    private static final int DEFAULT_BINS = 20;
+    private static final int MAX_BINS = 100;
+
+    /** Absent means the default; anything that is not an integer in 1..100 is rejected. */
+    private static int parseBins(String param) {
+        if (param == null || param.isEmpty()) {
+            return DEFAULT_BINS;
+        }
+        try {
+            int bins = Integer.parseInt(param.trim());
+            if (bins >= 1 && bins <= MAX_BINS) {
+                return bins;
+            }
+        } catch (NumberFormatException e) {
+            // fall through to the error below
+        }
+        throw new IllegalArgumentException("bins must be an integer between 1 and " + MAX_BINS + ": " + param);
     }
 }
