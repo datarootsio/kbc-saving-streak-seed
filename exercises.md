@@ -4,7 +4,7 @@ Use AI to turn a user's request into a small, useful improvement in the data-cle
 
 ## Make numeric columns easier to investigate
 
-[Issue #5](https://github.com/datarootsio/kbc-saving-streak-seed/issues/5) asks for a quicker way to understand numeric values and inspect relevant rows. Discuss the user's workflow with the facilitator before choosing a feature. Use `sample-data/inconsistent-behavior.csv` to ground the conversation in examples.
+[Issue #5](https://github.com/datarootsio/kbc-saving-streak-seed/issues/5) asks for a quicker way to understand numeric values and inspect relevant rows. Clarify the workflow and missing requirements before choosing a feature. Use `sample-data/inconsistent-behavior.csv` to ground the conversation in examples.
 
 **Objective:** clarify an ambiguous request, align with the agent on testable behavior, and deliver a feature in small verified slices.
 
@@ -21,4 +21,4 @@ The four bugs from the debugging exercise are repaired, and the removed original
 
 ## Working agreement
 
-Create your own working branch from `exercise/numeric-investigation`. Agree the scope with the facilitator before implementation. Preserve existing authorship and license notices. Bring your evidence and remaining questions to the debrief; different implementations can satisfy the same agreed behavior.
+Create your own working branch from `exercise/numeric-investigation`. Define a small scope and acceptance criteria before implementation. Preserve existing authorship and license notices. Bring your evidence and remaining questions to the debrief; different implementations can satisfy the same agreed behavior.
