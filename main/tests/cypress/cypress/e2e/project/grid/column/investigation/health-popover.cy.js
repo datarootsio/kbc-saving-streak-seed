@@ -48,8 +48,16 @@ describe(__filename, function () {
     row('blank').find('.health-popover-count').should('have.text', '1');
     row('blank').find('.health-popover-pct').should('have.text', '17%');
     ['numeric', 'blank', 'wrongType', 'error'].forEach((cls) => {
-      row(cls).find('.health-popover-name').invoke('text').should('match', /\S/).and('not.contain', 'core-investigation/');
-      row(cls).find('.health-popover-explain').invoke('text').should('match', /\S/).and('not.contain', 'core-investigation/');
+      row(cls)
+        .find('.health-popover-name')
+        .invoke('text')
+        .should('match', /\S/)
+        .and('not.contain', 'core-investigation/');
+      row(cls)
+        .find('.health-popover-explain')
+        .invoke('text')
+        .should('match', /\S/)
+        .and('not.contain', 'core-investigation/');
     });
   });
 
@@ -92,6 +100,16 @@ describe(__filename, function () {
     cy.focused().should('have.class', 'health-bar');
   });
 
+  it('story 23: Escape returns focus to the bar even when focus had moved off it', function () {
+    loadAmount();
+    bar('amount').click();
+    popover().find('.health-popover-title').click();
+    cy.get('.health-bar:focus').should('not.exist');
+    cy.get('body').type('{esc}');
+    popover().should('not.exist');
+    cy.focused().should('have.class', 'health-bar');
+  });
+
   it('closes on an outside click, and not on a click inside the popover', function () {
     loadAmount();
     bar('amount').click();
@@ -102,7 +120,11 @@ describe(__filename, function () {
   });
 
   it('clicking the bar again toggles it closed, and only one popover is open at a time', function () {
-    cy.loadAndVisitProject([['a', 'b'], ['1', '2'], [null, '3']]);
+    cy.loadAndVisitProject([
+      ['a', 'b'],
+      ['1', '2'],
+      [null, '3'],
+    ]);
     toNumber('a');
     toNumber('b');
     bar('a').click();
