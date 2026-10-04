@@ -1,6 +1,6 @@
-# Data cleaning exercises
+# Data cleaning debug
 
-A local browser app for investigating inconsistent behavior and building a small numeric-data feature. Start with [exercises.md](exercises.md).
+A local browser app for investigating and repairing the four bugs reported in [issue #1](https://github.com/datarootsio/data-cleaning-workshop/issues/1). Start with [exercises.md](exercises.md).
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ A local browser app for investigating inconsistent behavior and building a small
 ## Start locally
 
 ```sh
-git switch exercise/data-cleaning
+git switch exercise/data-cleaning-debug
 make build
 make run
 ```
