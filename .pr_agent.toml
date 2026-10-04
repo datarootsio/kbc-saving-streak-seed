@@ -1,0 +1,44 @@
+[config]
+response_language = "en-US"
+max_model_tokens = 32000
+custom_model_max_tokens = 200000
+output_run_details = true
+enable_auto_approval = false
+
+[openrouter]
+max_tokens = 16000
+reasoning_effort = "none"
+
+[pr_description]
+publish_description_as_comment = true
+publish_description_as_comment_persistent = true
+generate_ai_title = false
+publish_labels = false
+extra_instructions = "Explain the user-visible change simply. Preserve the author's PR description and distinguish implementation changes from documentation-only changes."
+
+[pr_reviewer]
+require_tests_review = true
+require_security_review = true
+require_priority_files = true
+inline_key_issues = true
+num_max_findings = 5
+enable_review_labels_security = false
+enable_review_labels_effort = false
+publish_error_details = true
+extra_instructions = """
+Review the OpenRefine-based data-cleaning app: Java backend and JavaScript frontend.
+This PR implements Exercise 4, numeric investigation; the four debugging-exercise bugs
+are already repaired in the starting baseline. Use the linked issue, specification,
+and acceptance criteria to judge the agreed feature. Do not invent missing requirements.
+Prioritize concrete bugs, regressions, missing behavioral tests, data loss, and security.
+Check numeric edge cases such as zero, negatives, missing values, text in numeric columns,
+and range boundaries where relevant. Check interactions with existing facets and filters.
+For UI changes, check that displayed summaries and selected rows match backend behavior.
+For each finding, give a realistic trigger and explain its observable impact.
+Avoid cosmetic feedback and unrelated redesign requests. Distinguish evidence from
+assumptions. Never claim tests or browser checks were run unless evidence is supplied.
+"""
+
+[pr_code_suggestions]
+num_code_suggestions_per_chunk = 3
+extra_instructions = "Focus on actionable correctness fixes. Avoid stylistic rewrites and unrelated refactors."
