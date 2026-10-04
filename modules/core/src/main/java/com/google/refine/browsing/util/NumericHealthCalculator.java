@@ -33,7 +33,10 @@ public final class NumericHealthCalculator {
         return CellClass.WRONG_TYPE;
     }
 
-    public static NumericHealth compute(Iterable<Cell> cells) {
+    public static NumericHealth compute(Iterable<Cell> cells, int binCount) {
+        if (binCount < 1) {
+            throw new IllegalArgumentException("binCount must be at least 1: " + binCount);
+        }
         Map<CellClass, Integer> counts = new EnumMap<>(CellClass.class);
         for (CellClass c : CellClass.values()) {
             counts.put(c, 0);
@@ -49,7 +52,7 @@ public final class NumericHealthCalculator {
             total++;
         }
         if (numbers.isEmpty()) {
-            return new NumericHealth(total, counts, null, null, null, null);
+            return new NumericHealth(total, counts, null, null, null, null, null, 0, null);
         }
         Collections.sort(numbers);
         double sum = 0;
@@ -60,6 +63,20 @@ public final class NumericHealthCalculator {
         double median = size % 2 == 1
                 ? numbers.get(size / 2)
                 : (numbers.get(size / 2 - 1) + numbers.get(size / 2)) / 2;
-        return new NumericHealth(total, counts, numbers.get(0), numbers.get(size - 1), sum / size, median);
+        double min = numbers.get(0);
+        double max = numbers.get(size - 1);
+        int[] bins;
+        double binWidth;
+        if (min == max) {
+            bins = new int[] { size };
+            binWidth = 0;
+        } else {
+            bins = new int[binCount];
+            binWidth = (max - min) / binCount;
+            for (double n : numbers) {
+                bins[Math.min(binCount - 1, (int) ((n - min) / binWidth))]++;
+            }
+        }
+        return new NumericHealth(total, counts, min, max, sum / size, median, min, binWidth, bins);
     }
 }

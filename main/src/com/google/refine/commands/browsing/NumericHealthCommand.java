@@ -62,7 +62,7 @@ public class NumericHealthCommand extends Command {
                 public void end(Project project) {
                 }
             });
-            NumericHealth health = NumericHealthCalculator.compute(cells);
+            NumericHealth health = NumericHealthCalculator.compute(cells, 20);
 
             Map<String, Object> counts = new LinkedHashMap<>();
             counts.put("numeric", health.counts().get(CellClass.NUMERIC));

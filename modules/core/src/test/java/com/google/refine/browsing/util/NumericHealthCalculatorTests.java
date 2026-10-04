@@ -65,7 +65,15 @@ public class NumericHealthCalculatorTests {
         for (java.io.Serializable v : values) {
             cells.add(cell(v));
         }
-        return NumericHealthCalculator.compute(cells);
+        return computeWithBins(20, values);
+    }
+
+    private static NumericHealth computeWithBins(int bins, java.io.Serializable... values) {
+        List<Cell> cells = new ArrayList<>();
+        for (java.io.Serializable v : values) {
+            cells.add(cell(v));
+        }
+        return NumericHealthCalculator.compute(cells, bins);
     }
 
     @Test
@@ -142,5 +150,66 @@ public class NumericHealthCalculatorTests {
         assertNull(h.mean());
         assertNull(h.median());
         assertNull(computeOf().min());
+    }
+
+    @Test
+    public void histogramOfAmountColumnSumsToFiveAndPlacesEdgeValues() {
+        NumericHealth h = computeOf(0L, 1L, -1L, null, 2.5, 0L);
+        int[] bins = h.histogramBins();
+        assertEquals(bins.length, 20);
+        assertEquals(java.util.Arrays.stream(bins).sum(), 5);
+        assertEquals(h.histogramMin(), Double.valueOf(-1.0));
+        assertEquals(h.histogramBinWidth(), 0.175, 1e-9);
+        assertEquals(bins[0], 1); // -1
+        assertEquals(bins[5], 2); // 0, 0 : (0 - -1) / 0.175 = 5.7
+        assertEquals(bins[11], 1); // 1 : 2 / 0.175 = 11.4
+        assertEquals(bins[19], 1); // 2.5 = max falls in last bin
+    }
+
+    @Test
+    public void maxValueFallsInLastBin() {
+        int[] bins = computeWithBins(4, 0L, 10L).histogramBins();
+        assertEquals(bins, new int[] { 1, 0, 0, 1 });
+    }
+
+    @Test
+    public void exactBinBoundaryGoesToUpperBin() {
+        // width 1: 0 -> bin 0, 1 -> bin 1, 2 -> bin 2, 4 -> last (bin 3)
+        assertEquals(computeWithBins(4, 0L, 1L, 2L, 4L).histogramBins(), new int[] { 1, 1, 1, 1 });
+    }
+
+    @Test
+    public void negativeValuesAreBinned() {
+        assertEquals(computeWithBins(2, -10L, -9L, -1L).histogramBins(), new int[] { 2, 1 });
+    }
+
+    @Test
+    public void singleDistinctValueGivesOneBin() {
+        NumericHealth h = computeOf(7L, 7L, 7L);
+        assertEquals(h.histogramBins(), new int[] { 3 });
+        assertEquals(h.histogramMin(), Double.valueOf(7.0));
+        assertEquals(h.histogramBinWidth(), 0.0);
+    }
+
+    @Test
+    public void singleBinRequestedCollectsEverything() {
+        assertEquals(computeWithBins(1, 1L, 5L, 9L).histogramBins(), new int[] { 3 });
+    }
+
+    @Test
+    public void nonNumericCellsAreNotBinned() {
+        assertEquals(java.util.Arrays.stream(computeWithBins(5, "a", 1L, "", 2L, new EvalError("x")).histogramBins()).sum(), 2);
+    }
+
+    @Test
+    public void histogramIsNullWithoutNumericCells() {
+        assertNull(computeOf("a", null).histogramBins());
+        assertNull(computeOf().histogramBins());
+        assertNull(computeOf().histogramMin());
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void zeroBinsRejected() {
+        computeWithBins(0, 1L);
     }
 }
