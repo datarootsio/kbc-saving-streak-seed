@@ -14,7 +14,8 @@ const fixture = [
 ];
 
 const bar = (column) => cy.get(`.health-bar[data-column="${column}"]`);
-const segment = (column, cls) => cy.get(`.health-bar[data-column="${column}"] .health-bar-segment[data-class="${cls}"]`);
+const segment = (column, cls) =>
+  cy.get(`.health-bar[data-column="${column}"] .health-bar-segment[data-class="${cls}"]`);
 
 const toNumber = (column) => {
   cy.get('body[ajax_in_progress="false"]');
