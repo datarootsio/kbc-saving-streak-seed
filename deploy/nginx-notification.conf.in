@@ -1,0 +1,41 @@
+server {
+    listen @HTTP_PORT@;
+    listen [::]:@HTTP_PORT@;
+    server_name _;
+    root @WEB_ROOT@;
+    index index.html;
+    absolute_redirect off;
+    client_max_body_size 1m;
+    # The exercise frontend uses root-relative API paths. Keep requests within
+    # the VM browser proxy, while preserving the original exercise source.
+    sub_filter_once off;
+    sub_filter_types application/javascript text/javascript;
+    sub_filter '"/api/' '"api/';
+    sub_filter '`/api/' '`api/';
+
+    location ~ ^/absproxy/[0-9]+(/.*)$ {
+        rewrite ^/absproxy/[0-9]+(/.*)$ $1 last;
+    }
+    location ~ ^/absproxy/[0-9]+$ {
+        return 301 $uri/;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:@BACKEND_PORT@;
+        proxy_http_version 1.1;
+        proxy_set_header Host 127.0.0.1;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_intercept_errors off;
+    }
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+    location / {
+        try_files $uri /index.html;
+    }
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+}
