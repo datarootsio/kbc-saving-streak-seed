@@ -122,6 +122,22 @@ describe(__filename, function () {
     card().find('.investigation-kept').should('have.text', 'Keeps 3 of 6 rows (50%)');
   });
 
+  it('Reset keeps a facet that the user created in the left panel, only clearing its selection', function () {
+    cy.loadAndVisitProject(fixture);
+    idle();
+    cy.columnActionClick('amount', ['Edit cells', 'Common transforms', 'To number']);
+    idle();
+    cy.columnActionClick('amount', ['Facet', 'Numeric facet']);
+    idle();
+    cy.columnActionClick('amount', ['Facet', 'Investigate numbers']);
+    card().find('.investigation-histogram-bar').should('have.length', 20);
+    setRange(0, 1);
+    card().find('.investigation-range-reset').click();
+    cy.get('table.data-table tbody tr').should('have.length', 6);
+    cy.wait(600); // a removed facet's element is only detached after 300ms
+    cy.get('#refine-tabs-facets .facets-container .facet-container').should('have.length', 1);
+  });
+
   it('combines with another facet by AND', function () {
     openCard();
     setRange(0, 1);
