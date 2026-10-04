@@ -160,4 +160,85 @@ public class NumericHealthCommandTests extends CommandTestBase {
         assertTrue(json.has("stats"), json.toString());
         assertTrue(json.get("stats").isNull(), json.toString());
     }
+
+    private static final String NO_FACETS = "{\"mode\":\"row-based\",\"facets\":[]}";
+
+    private JsonNode postWithBins(Project project, String bins) throws Exception {
+        when(request.getParameter("bins")).thenReturn(bins);
+        return post(project, "amount", NO_FACETS);
+    }
+
+    private static int sum(JsonNode bins) {
+        int s = 0;
+        for (JsonNode b : bins) {
+            s += b.asInt();
+        }
+        return s;
+    }
+
+    @Test
+    public void testHistogramDefaultsToTwentyBins() throws Exception {
+        JsonNode h = post(amountProject(), "amount", NO_FACETS).get("histogram");
+        assertEquals(h.get("min").asDouble(), -1.0);
+        assertEquals(h.get("binWidth").asDouble(), 0.175, 1e-9);
+        assertEquals(h.get("bins").size(), 20);
+        assertEquals(sum(h.get("bins")), 5);
+        assertEquals(h.get("bins").get(0).asInt(), 1);
+        assertEquals(h.get("bins").get(5).asInt(), 2);
+        assertEquals(h.get("bins").get(11).asInt(), 1);
+        assertEquals(h.get("bins").get(19).asInt(), 1);
+    }
+
+    @Test
+    public void testBinsParameterIsHonoured() throws Exception {
+        assertEquals(postWithBins(amountProject(), "7").get("histogram").get("bins").size(), 7);
+    }
+
+    @Test
+    public void testBinsLowerLimitIsOne() throws Exception {
+        assertEquals(postWithBins(amountProject(), "1").get("histogram").get("bins").size(), 1);
+    }
+
+    @Test
+    public void testBinsUpperLimitIsHundred() throws Exception {
+        assertEquals(postWithBins(amountProject(), "100").get("histogram").get("bins").size(), 100);
+    }
+
+    private void assertBinsRejected(String bad) throws Exception {
+        JsonNode json = postWithBins(amountProject(), bad);
+        assertEquals(json.get("code").asText(), "error", bad);
+        assertTrue(json.get("message").asText().contains("bins"), json.toString());
+    }
+
+    @Test
+    public void testZeroBinsIsAnError() throws Exception {
+        assertBinsRejected("0");
+    }
+
+    @Test
+    public void testTooManyBinsIsAnError() throws Exception {
+        assertBinsRejected("101");
+    }
+
+    @Test
+    public void testNonIntegerBinsIsAnError() throws Exception {
+        assertBinsRejected("2.5");
+    }
+
+    @Test
+    public void testSingleDistinctValueGivesOneBin() throws Exception {
+        Project project = createProject(new String[] { "amount" }, new Serializable[][] { { 7L }, { 7L }, { 7L } });
+        JsonNode h = post(project, "amount", NO_FACETS).get("histogram");
+        assertEquals(h.get("bins").size(), 1);
+        assertEquals(h.get("bins").get(0).asInt(), 3);
+        assertEquals(h.get("min").asDouble(), 7.0);
+    }
+
+    @Test
+    public void testHistogramIsNullWhenNoNumericCells() throws Exception {
+        Project project = createProject(new String[] { "name" }, new Serializable[][] { { "a" }, { "b" } });
+        JsonNode json = post(project, "name", NO_FACETS);
+        assertTrue(json.has("histogram"), json.toString());
+        assertTrue(json.get("histogram").isNull(), json.toString());
+    }
 }
