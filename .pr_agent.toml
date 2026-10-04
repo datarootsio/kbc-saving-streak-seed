@@ -26,15 +26,36 @@ enable_review_labels_security = false
 enable_review_labels_effort = false
 publish_error_details = true
 extra_instructions = """
-Review Saving Streak, a Java 17 / Spring Boot backend with a React / TypeScript frontend.
-Prioritize concrete bugs, regressions, missing behavioral tests and meaningful security issues.
-For each finding, identify the triggering scenario and explain its observable impact.
-Check points arithmetic and rounding, retry/idempotency behavior, and use of the application's
-injected clock where relevant. Bonus points must not accidentally move euros or advance a streak.
-Frontend API calls must use the existing apiUrl helper so deployment behind a path prefix works.
-Use the linked ticket or acceptance criteria when available; do not invent missing requirements.
-Avoid cosmetic feedback. Clearly distinguish observed evidence from assumptions, and never claim
-to have run tests or inspected a browser unless that evidence is actually supplied.
+Review the proposed change as an independent critic. Use these lenses:
+
+Alignment: Compare the implementation with the supplied specification, linked ticket,
+acceptance criteria and project conventions. Flag ignored requirements, scope drift and
+unsupported assumptions. Treat ambiguous product decisions as questions for clarification.
+State which required context is missing instead of inventing requirements.
+
+Reliability: Trace changed behaviour across its entry point, business rules, state and
+user-visible result. Prioritize concrete bugs, regressions, security risks and data loss.
+Inspect relevant boundaries, retries, duplicate processing and partial failures.
+
+Tests: Map changed behaviour and acceptance criteria to the supplied tests. Check that
+assertions exercise the real rule and would detect a meaningful mistake. Look for tests
+that only assert stubbed responses, weakened expectations and uncovered edge cases.
+For bug fixes, assess whether regression coverage would catch the original failure.
+
+Architecture: Assess cohesion, encapsulation, coupling and interface clarity in the
+changed code. Identify duplicated decisions, leaked internals or unnecessary abstractions
+only when you can explain their effect on correctness, testing or future changes.
+Keep findings focused on the proposed change and its affected callers.
+
+Evidence and handoff: Group related findings by behaviour so a human can follow the
+change across files. For each finding, provide the triggering scenario, affected code,
+observable impact and supporting evidence. Separate confirmed defects from assumptions
+and unresolved decisions. Prioritize access controls and irreversible actions.
+Record review limits, including unavailable context, excluded files and untested states.
+For UI changes, identify journeys needing browser verification and assess supplied evidence.
+Claim tests or browser checks ran only when their results are supplied for this revision.
+A successful review job establishes that the job ran. Human acceptance still depends on
+assessed findings and current verification evidence.
 """
 
 [pr_code_suggestions]
