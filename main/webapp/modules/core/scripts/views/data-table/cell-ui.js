@@ -101,6 +101,22 @@ DataTableCellUI.prototype._render = function() {
   divContent.appendChild(editLink).appendChild(document.createTextNode($.i18n('core-facets/edit')));
 
   this._td.appendChild(divContent);
+
+  $(this._td).data('cellUI', this);
+  this.applyHighlight();
+};
+
+// Investigation highlight: mark the cell when its class is the one active for its column.
+DataTableCellUI.prototype.applyHighlight = function() {
+  var column = Refine.cellIndexToColumn(this._cellIndex);
+  var active = (column && typeof InvestigationStore !== 'undefined') ? InvestigationStore.getHighlight(column.name) : null;
+  var on = CellHighlighter.isHighlighted(this._cell, active);
+  $(this._td).toggleClass('investigation-highlight', on);
+  if (on) {
+    $(this._td).attr('data-highlight-class', active);
+  } else {
+    $(this._td).removeAttr('data-highlight-class');
+  }
 };
 
 DataTableCellUI.prototype._startEdit = function(elmt) {

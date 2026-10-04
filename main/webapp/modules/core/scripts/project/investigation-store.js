@@ -158,6 +158,10 @@ var InvestigationStore = (function() {
     emit('highlight-changed', { columnName: columnName, cellClass: cellClass });
   };
 
+  store.getHighlight = function(columnName) {
+    return highlight[columnName] || null;
+  };
+
   // ---- end highlight ----
 
   // ---- browser wiring (not exercised by the node unit tests) ----

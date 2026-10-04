@@ -74,3 +74,11 @@ test('story 19: highlight is not touched by project updates (re-render keeps it)
   store.onProjectUpdate({cellsChanged: true});
   assert.strictEqual(store.getState().highlight.amount, 'blank');
 });
+
+test('getHighlight returns the active class for a column, or null', () => {
+  const store = makeStore();
+  assert.strictEqual(store.getHighlight('amount'), null);
+  store.setHighlight('amount', 'blank');
+  assert.strictEqual(store.getHighlight('amount'), 'blank');
+  assert.strictEqual(store.getHighlight('other'), null);
+});

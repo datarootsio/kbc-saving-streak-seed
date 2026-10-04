@@ -535,6 +535,7 @@ function init() {
       "scripts/views/data-table/cell-renderers/registry.js",
 
       "scripts/views/data-table/data-table-view.js",
+      "scripts/views/data-table/cell-highlighter.js",
       "scripts/views/data-table/cell-ui.js",
       "scripts/views/data-table/health-bar.js",
       "scripts/views/data-table/health-popover.js",
