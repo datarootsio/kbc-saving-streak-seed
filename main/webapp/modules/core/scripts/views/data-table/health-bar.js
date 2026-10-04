@@ -56,7 +56,24 @@ HealthBar._paint = function(slot, columnName) {
   var label = $.i18n('core-investigation/health-title', c.numeric, c.blank, c.wrongType, c.error);
   var bar = $('<div>')
     .addClass('health-bar')
-    .attr({ 'data-column': columnName, 'data-total': health.total, role: 'img', 'aria-label': label, title: label })
+    .attr({
+      'data-column': columnName,
+      'data-total': health.total,
+      role: 'button',
+      tabindex: 0,
+      'aria-haspopup': 'dialog',
+      'aria-expanded': HealthPopover.isOpenFor(columnName) ? 'true' : 'false',
+      'aria-label': label,
+      title: label
+    })
+    .on('click', function(e) { e.stopPropagation(); HealthPopover.toggle(columnName); })
+    .on('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        HealthPopover.toggle(columnName);
+      }
+    })
     .appendTo(slot);
   segments.forEach(function(s) {
     $('<span>')

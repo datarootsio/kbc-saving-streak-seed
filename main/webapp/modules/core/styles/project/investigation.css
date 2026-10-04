@@ -130,3 +130,64 @@
   margin-top: var(--padding-tight);
 }
 /* ---- end investigation histogram ---- */
+
+/* ---- health popover ---- */
+.health-bar {
+  cursor: pointer;
+}
+
+.health-bar:focus-visible {
+  outline: 2px solid var(--highlight-blue, #3b82c4);
+  outline-offset: 1px;
+}
+
+.health-popover {
+  position: fixed;
+  z-index: 1000;
+  min-width: 260px;
+  max-width: 340px;
+  background: var(--background-primary);
+  border: 1px solid var(--faint-grey);
+  border-radius: var(--rounded-corners-radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  padding: var(--padding-tight) var(--padding-normal);
+  font-weight: normal;
+}
+
+.health-popover-title {
+  font-weight: bold;
+}
+
+.health-popover-total {
+  color: var(--text-tertiary);
+  margin-bottom: var(--padding-tight);
+}
+
+.health-popover-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto 3em;
+  column-gap: var(--padding-tight);
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.health-popover-swatch {
+  width: 10px;
+  height: 10px;
+  align-self: center;
+}
+
+.health-popover-count,
+.health-popover-pct {
+  text-align: right;
+}
+
+.health-popover-explain {
+  grid-column: 2 / -1;
+  color: var(--text-tertiary);
+  font-size: 0.85em;
+}
+
+.health-popover-row.is-zero {
+  opacity: 0.45;
+}
