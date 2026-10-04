@@ -296,6 +296,16 @@ describe(__filename, function () {
       card('v').find('.investigation-range-single').should('contain.text', '5');
     });
 
+    it('a range stays resettable when other filters leave one distinct value', function () {
+      load();
+      openCard();
+      setRange('amount', -1, 1);
+      textFacetToggle('Alpha');
+      card().find('.investigation-range-single').should('exist');
+      card().find('.investigation-range-reset').should('exist');
+      card().find('.investigation-kept').should('exist');
+    });
+
     it('card text is at least 11px', function () {
       load();
       openCard();

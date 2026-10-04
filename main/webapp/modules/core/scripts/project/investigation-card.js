@@ -109,20 +109,21 @@ InvestigationCardStrip.prototype._renderRange = function(card, parent) {
   var from = card.range ? Math.max(card.range.from, min) : min;
   var to = card.range ? Math.min(card.range.to, max) : max;
   var wrap = $('<div>').addClass("investigation-range").appendTo(parent);
-  if (min === max) {
+  var single = min === max;
+  if (single) {
     // One distinct value: a range over it means nothing and the sliders would sit at one end.
     $('<div>').addClass("investigation-range-single").text($.i18n("core-investigation/single-value-is", fmt(min))).appendTo(wrap);
-    return;
   }
+  var controls = single ? $('<div>') : wrap; // detached when single: nothing to slide
   var fromInput = $('<input type="range" step="any">').addClass("investigation-range-from")
-    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-from") }).val(from).appendTo(wrap);
+    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-from") }).val(from).appendTo(controls);
   var toInput = $('<input type="range" step="any">').addClass("investigation-range-to")
-    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-to") }).val(to).appendTo(wrap);
-  var labels = $('<div>').addClass("investigation-range-labels").appendTo(wrap);
+    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-to") }).val(to).appendTo(controls);
+  var labels = $('<div>').addClass("investigation-range-labels").appendTo(controls);
   // The end labels always name the column's full domain; the current selection is read out below.
   $('<span>').addClass("investigation-range-min-label").text(fmt(min)).appendTo(labels);
   $('<span>').addClass("investigation-range-max-label").text(fmt(max)).appendTo(labels);
-  var current_ = $('<div>').addClass("investigation-range-current").appendTo(wrap);
+  var current_ = $('<div>').addClass("investigation-range-current").appendTo(controls);
   var showCurrent = function(a, b) {
     current_.text($.i18n("core-investigation/selected", fmt(a), fmt(b)));
   };
