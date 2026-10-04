@@ -67,3 +67,30 @@
   color: var(--error-red);
 }
 /* ---- end investigation cards ---- */
+
+/* ---- health bar (column header) ---- */
+.health-bar-slot:empty {
+  display: none;
+}
+
+.health-bar {
+  display: flex;
+  height: 6px;
+  margin-top: 4px;
+  width: 100%;
+  background: var(--faint-grey);
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.health-bar-segment {
+  display: block;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.health-bar-numeric { background: var(--green-primary); }
+.health-bar-blank { background: var(--light-grey); }
+.health-bar-wrongType { background: #e90; }
+.health-bar-error { background: var(--error-red); }

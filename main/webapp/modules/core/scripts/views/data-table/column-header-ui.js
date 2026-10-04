@@ -70,6 +70,7 @@ DataTableColumnHeaderUI.prototype._render = function() {
   elmts.dropdownMenu.on('click',function() {
     self._createMenuForColumnHeader(this);
   });
+  HealthBar.mount(elmts.healthBarContainer, this._column.name);
 
   var serviceUrl = null;
   if (this._column.reconConfig) {
