@@ -143,4 +143,21 @@ public class NumericHealthCommandTests extends CommandTestBase {
         command.doPost(request, response);
         assertErrorNotCSRF();
     }
+
+    @Test
+    public void testStatsOfAmountColumn() throws Exception {
+        JsonNode stats = post(amountProject(), "amount", "{\"mode\":\"row-based\",\"facets\":[]}").get("stats");
+        assertEquals(stats.get("min").asDouble(), -1.0);
+        assertEquals(stats.get("max").asDouble(), 2.5);
+        assertEquals(stats.get("mean").asDouble(), 0.5);
+        assertEquals(stats.get("median").asDouble(), 0.0);
+    }
+
+    @Test
+    public void testStatsAreNullWhenNoNumericCells() throws Exception {
+        Project project = createProject(new String[] { "name" }, new Serializable[][] { { "a" }, { "b" } });
+        JsonNode json = post(project, "name", "{\"mode\":\"row-based\",\"facets\":[]}");
+        assertTrue(json.has("stats"), json.toString());
+        assertTrue(json.get("stats").isNull(), json.toString());
+    }
 }

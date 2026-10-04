@@ -74,6 +74,16 @@ public class NumericHealthCommand extends Command {
             result.put("columnName", columnName);
             result.put("total", health.total());
             result.put("counts", counts);
+            if (health.min() == null) {
+                result.put("stats", null);
+            } else {
+                Map<String, Object> stats = new LinkedHashMap<>();
+                stats.put("min", health.min());
+                stats.put("max", health.max());
+                stats.put("mean", health.mean());
+                stats.put("median", health.median());
+                result.put("stats", stats);
+            }
             respondJSON(response, result);
         } catch (Exception e) {
             respondException(response, e);
