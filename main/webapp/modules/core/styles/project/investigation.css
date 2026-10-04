@@ -282,3 +282,39 @@ td.investigation-highlight .data-table-cell-content::before {
   outline-offset: 1px;
 }
 /* ---- end investigation toggles ---- */
+
+/* ---- investigation breadcrumb ---- */
+#investigation-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--padding-tight);
+}
+
+#investigation-breadcrumb:empty {
+  display: none;
+}
+
+.investigation-breadcrumb-arrow,
+.investigation-breadcrumb-count,
+.investigation-breadcrumb-total,
+.investigation-breadcrumb-shown {
+  color: var(--text-tertiary);
+}
+
+.investigation-breadcrumb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--padding-tight);
+  background: var(--background-primary);
+  border: 1px solid var(--faint-grey);
+  border-radius: var(--rounded-corners-radius);
+  padding: 0 var(--padding-tight);
+}
+
+.investigation-breadcrumb-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+/* ---- end investigation breadcrumb ---- */

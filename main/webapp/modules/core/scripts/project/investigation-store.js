@@ -273,7 +273,7 @@ var InvestigationStore = (function() {
   var engineWithRanges = function(engine, columns) {
     var copy = JSON.parse(JSON.stringify(engine));
     copy.facets = copy.facets.filter(function(f) {
-      return f.type === "core/range" && columns.indexOf(f.columnName) >= 0;
+      return f.type === "range" && columns.indexOf(f.columnName) >= 0;
     });
     return copy;
   };

@@ -307,7 +307,7 @@ test('setProblemRows uses the live facet bounds, not a card range that lags behi
   assert.strictEqual(writes[0].config.to, 1);
 });
 
-// ---- breadcrumb (ticket 10) ----
+// ---- breadcrumb (ticket 10) ---- (facet JSON types are the client's: 'range', 'list')
 // Per-step counts come from repeated `selection` calls: step k posts the engine holding only the
 // first k numeric filters; the final "shown" posts the full engine (all facets).
 
@@ -318,8 +318,8 @@ function makeBreadcrumbStore() {
   const cardCalls = [];  // card requests
   const ranges = {};
   const writes = [];
-  const text = {type: 'core/list', columnName: 'name', selection: [{v: {v: 'Alpha'}}]};
-  const rangeFacet = (c) => ({type: 'core/range', columnName: c, from: ranges[c].from, to: ranges[c].to});
+  const text = {type: 'list', columnName: 'name', selection: [{v: {v: 'Alpha'}}]};
+  const rangeFacet = (c) => ({type: 'range', columnName: c, from: ranges[c].from, to: ranges[c].to});
   const state = {withText: false};
   store._setDeps({
     columns: () => ['name', 'amount', 'qty'],
@@ -384,8 +384,8 @@ test('story 48/49: step requests carry only numeric filters; the final request a
   state.withText = true;
   calls.splice(0);
   store.onProjectUpdate({engineChanged: true});
-  const step = calls.find((c) => c.engineJson.facets.length === 1 && c.engineJson.facets[0].type === 'core/range');
-  const fin = calls.find((c) => c.engineJson.facets.some((f) => f.type === 'core/list'));
+  const step = calls.find((c) => c.engineJson.facets.length === 1 && c.engineJson.facets[0].type === 'range');
+  const fin = calls.find((c) => c.engineJson.facets.some((f) => f.type === 'list'));
   assert.ok(step, 'step 1 has only the range');
   assert.ok(fin, 'final has the text facet');
   answer(step, 6);
