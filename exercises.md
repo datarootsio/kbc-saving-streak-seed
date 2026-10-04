@@ -14,20 +14,3 @@ The worked-out Saving Streak app has a bug: customers receive duplicate balance 
 ## Be ready to show
 
 The reproduction, your explanation of the cause, the fix and verification evidence, and the review findings. Explain how the agent discovered the issue and what made its verification convincing.
-
-## Run
-
-Requires Java 17+ and Node.js 20.19+. From the repository root, use separate terminals:
-
-```sh
-# Backend: http://localhost:8080
-./backend/mvnw -f backend/pom.xml spring-boot:run
-
-# Frontend: http://localhost:5173
-npm --prefix frontend ci
-npm --prefix frontend run dev
-```
-
-Tests: `./backend/mvnw -f backend/pom.xml test`. The development app includes demo customers and controls to advance time and run scheduled jobs.
-
-A deposit taking a savings balance from below €100 to €100 or more raises a milestone notification immediately. Other notification checks run automatically once a minute.
