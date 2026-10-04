@@ -50,6 +50,23 @@ describe(__filename, function () {
     });
   });
 
+  it('The header checkbox selects and clears every listed project', function () {
+    const suffix = Date.now();
+    const first = 'bulk-all-a-' + suffix;
+    const second = 'bulk-all-b-' + suffix;
+    cy.loadProject('food.mini', first);
+    cy.loadProject('food.mini', second);
+    openProjectList();
+
+    cy.get('#select-all-projects').check();
+    cy.get('#tableBody input.project-selector:visible').each(($el) => {
+      cy.wrap($el).should('be.checked');
+    });
+
+    cy.get('#select-all-projects').uncheck();
+    cy.get('#projects-bulk-actions').should('not.be.visible');
+  });
+
   it('The header checkbox reflects whether every listed project is selected', function () {
     const suffix = Date.now();
     const tag = 'bulktag' + suffix;
@@ -59,7 +76,9 @@ describe(__filename, function () {
     cy.loadProject('food.mini', untagged);
     openProjectList();
 
+    // One of several listed projects: the header checkbox must stay clear.
     selectorFor(tagged).check();
+    cy.get('#select-all-projects').should('not.be.checked');
 
     // Restrict the list to the tag. That project is now the whole list, so the header
     // checkbox must tick itself - and the one it hid must have left the selection.

@@ -430,7 +430,7 @@ Refine.OpenProjectUI._updateSelection = function() {
   var selectors = $('#tableBody tr:visible input.project-selector');
   var selected = selectors.filter(':checked');
 
-  $('#select-all-projects').prop('checked', selectors.length > 0 || selected.length === selectors.length);
+  $('#select-all-projects').prop('checked', selectors.length > 0 && selected.length === selectors.length);
 
   var bar = $('#projects-bulk-actions');
   if (selected.length === 0) {

@@ -117,7 +117,7 @@ abstract public class ExpressionNumberComparisonRowFilter implements RowFilter {
                 if (Double.isInfinite(d) || Double.isNaN(d)) {
                     return _selectError;
                 } else {
-                    return _selectNumeric && d != 0 && checkValue(d);
+                    return _selectNumeric && checkValue(d);
                 }
             } else {
                 return _selectNonNumeric;

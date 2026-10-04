@@ -182,7 +182,7 @@ public class TextSearchFacet implements Facet {
                     throw new IllegalArgumentException(err.getUserMessage());
                 }
             } else if (!_config._caseSensitive) {
-                _query = _config._query;
+                _query = _query.toLowerCase();
             }
         }
 

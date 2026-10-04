@@ -1,6 +1,6 @@
-# Data cleaning debug
+# Numeric investigation
 
-A local browser app for investigating and repairing the four bugs reported in [issue #4](https://github.com/datarootsio/kbc-saving-streak-seed/issues/4). Start with [exercises.md](exercises.md).
+A local browser app for clarifying and implementing the feature requested in [issue #5](https://github.com/datarootsio/kbc-saving-streak-seed/issues/5). Start with [exercises.md](exercises.md). This starter includes the repairs from the debugging exercise; the new feature is still to build.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ A local browser app for investigating and repairing the four bugs reported in [i
 ## Start locally
 
 ```sh
-git switch exercise/data-cleaning-debug
+git switch exercise/numeric-investigation
 make build
 make run
 ```
@@ -30,6 +30,6 @@ Browser tests live in `main/tests/cypress`. See [the Cypress README](main/tests/
 
 ## Source and scope
 
-The participant code comes from [`datarootsio/data-cleaning-workshop`](https://github.com/datarootsio/data-cleaning-workshop), revision `db446ba1fc5c6f49f2c8a230d6407ecc32f424be`. Application behavior and existing tests are preserved. The build includes the core model, expression language, web application and local server. Optional database, Jython, PC-Axis and Wikibase extensions, distribution assembly and benchmarks are excluded.
+The participant code comes from [`datarootsio/data-cleaning-workshop`](https://github.com/datarootsio/data-cleaning-workshop), revision `db446ba1fc5c6f49f2c8a230d6407ecc32f424be`. This starter repairs the four investigation defects and restores the removed original browser coverage. The build includes the core model, expression language, web application and local server. Optional database, Jython, PC-Axis and Wikibase extensions, distribution assembly and benchmarks are excluded.
 
 This workshop is derived from OpenRefine, originally created by Metaweb Technologies and conceived by David Huynh, with work by its many contributors. Existing source credits and license notices are retained. See [LICENSE.txt](LICENSE.txt), [third-party notices](packaging/THIRD-PARTY.txt), and the notices in `main/webapp/licenses`.

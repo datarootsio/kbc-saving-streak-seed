@@ -3,10 +3,17 @@
  */
 
 describe('Checks Text-filter + Case Sensitive + Regex', () => {
+  it('Test Exact string, check the number of occurrences', () => {
+    cy.loadAndVisitProject('food.small');
+    cy.columnActionClick('Shrt_Desc', ['Text filter']);
+    cy.get('.input-container > input').should('be.visible').type('CHEESE');
+    cy.get('#summary-bar > span').should('have.text', '65 matching rows (199 total)');
+  });
   it('Test Exact String with case sensitive', () => {
     cy.loadAndVisitProject('food.small');
     cy.columnActionClick('Shrt_Desc', ['Text filter']);
     cy.get('.input-container > input').should('be.visible').type('Cheese');
+    cy.get('#summary-bar > span').should('have.text', '65 matching rows (199 total)');
     cy.get('#caseSensitiveCheckbox0').should('be.visible').click();
     cy.get('#summary-bar > span').should('have.text', '0 matching rows (199 total)');
   });
@@ -15,6 +22,7 @@ describe('Checks Text-filter + Case Sensitive + Regex', () => {
     cy.loadAndVisitProject('food.small');
     cy.columnActionClick('Shrt_Desc', ['Text filter']);
     cy.get('.input-container > input').should('be.visible').type('CHE');
+    cy.get('#summary-bar > span').should('have.text', '70 matching rows (199 total)');
     cy.get('#caseSensitiveCheckbox0').click();
     cy.get('#summary-bar > span').should('have.text', '70 matching rows (199 total)');
   });
@@ -47,6 +55,7 @@ describe('Checks Text-filter + Case Sensitive + Regex', () => {
     )
       .should('be.visible')
       .click();
+    cy.get('#summary-bar > span').should('have.text', '134 matching rows (199 total)');
 
     cy.get(
       '#facet-0 > div.facet-title.ui-sortable-handle > div > table > tbody > tr > td:nth-child(3) > a:nth-child(1)'
