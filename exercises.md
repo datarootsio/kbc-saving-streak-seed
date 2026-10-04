@@ -4,7 +4,7 @@ Investigate and repair the inconsistent behavior reported in the data-cleaning a
 
 ## Investigate inconsistent behavior
 
-[Issue #1](https://github.com/datarootsio/data-cleaning-workshop/issues/1) reports confusing cell values, numeric filtering, text search, and project selection. Use `sample-data/inconsistent-behavior.csv` to explore the report.
+[Issue #4](https://github.com/datarootsio/kbc-saving-streak-seed/issues/4) reports confusing cell values, numeric filtering, text search, and project selection. Use `sample-data/inconsistent-behavior.csv` to explore the report.
 
 **Objective:** investigate unfamiliar code with an agent, test competing explanations, and verify repairs with meaningful regression coverage.
 

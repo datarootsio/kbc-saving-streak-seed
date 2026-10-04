@@ -1,6 +1,6 @@
 # Data cleaning debug
 
-A local browser app for investigating and repairing the four bugs reported in [issue #1](https://github.com/datarootsio/data-cleaning-workshop/issues/1). Start with [exercises.md](exercises.md).
+A local browser app for investigating and repairing the four bugs reported in [issue #4](https://github.com/datarootsio/kbc-saving-streak-seed/issues/4). Start with [exercises.md](exercises.md).
 
 ## Prerequisites
 
