@@ -8,6 +8,13 @@ const amountProject = [
   ['Delta', '0'],
 ];
 
+// Imported cells are text: convert to numbers first, as health-bar.cy.js does.
+const toNumber = (column) => {
+  cy.get('body[ajax_in_progress="false"]');
+  cy.columnActionClick(column, ['Edit cells', 'Common transforms', 'To number']);
+  cy.get('body[ajax_in_progress="false"]');
+};
+
 const cardFor = (columnName) => cy.get('#investigation-card-strip .investigation-card[data-column="' + columnName + '"]');
 
 const barCounts = ($bars) => Cypress.$.makeArray($bars).map((bar) => Number(bar.getAttribute('data-count')));
@@ -15,6 +22,7 @@ const barCounts = ($bars) => Cypress.$.makeArray($bars).map((bar) => Number(bar.
 describe(__filename, function () {
   it('Amount histogram has 20 bars summing to 5 with -1, 0, 0, 1, 2.5 in the expected bins (stories 25, 33)', function () {
     cy.loadAndVisitProject(amountProject);
+    toNumber('amount');
     cy.columnActionClick('amount', ['Facet', 'Investigate numbers']);
     cardFor('amount').find('.investigation-histogram-bar').should('have.length', 20);
     cardFor('amount')
@@ -31,6 +39,7 @@ describe(__filename, function () {
 
   it('Bar heights are proportional to the counts', function () {
     cy.loadAndVisitProject(amountProject);
+    toNumber('amount');
     cy.columnActionClick('amount', ['Facet', 'Investigate numbers']);
     cardFor('amount').find('.investigation-histogram-bar[data-count="2"] .investigation-histogram-fill').should('have.attr', 'style').and('include', 'height: 100%');
     cardFor('amount').find('.investigation-histogram-bar[data-count="1"] .investigation-histogram-fill').first().should('have.attr', 'style').and('include', 'height: 50%');
@@ -38,6 +47,7 @@ describe(__filename, function () {
 
   it('A column with one distinct value renders one bin of 3 (story 32)', function () {
     cy.loadAndVisitProject([['v'], ['7'], ['7'], ['7']]);
+    toNumber('v');
     cy.columnActionClick('v', ['Facet', 'Investigate numbers']);
     cardFor('v').find('.investigation-histogram-bar').should('have.length', 1);
     cardFor('v').find('.investigation-histogram-bar').should('have.attr', 'data-count', '3');

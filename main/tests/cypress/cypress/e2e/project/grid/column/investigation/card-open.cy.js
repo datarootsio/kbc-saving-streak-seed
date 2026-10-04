@@ -8,11 +8,19 @@ const amountProject = [
   ['Delta', '0', '60'],
 ];
 
+// Imported cells are text: convert to numbers first, as health-bar.cy.js does.
+const toNumber = (column) => {
+  cy.get('body[ajax_in_progress="false"]');
+  cy.columnActionClick(column, ['Edit cells', 'Common transforms', 'To number']);
+  cy.get('body[ajax_in_progress="false"]');
+};
+
 const cardFor = (columnName) => cy.get('#investigation-card-strip .investigation-card[data-column="' + columnName + '"]');
 
 describe(__filename, function () {
   it('Investigate numbers on amount shows range and stats (stories 20, 21, 24, 26)', function () {
     cy.loadAndVisitProject(amountProject);
+    toNumber('amount');
     cy.columnActionClick('amount', ['Facet', 'Investigate numbers']);
     cardFor('amount').should('be.visible');
     cardFor('amount').find('.investigation-card-title').should('contain', 'amount');
@@ -33,6 +41,8 @@ describe(__filename, function () {
 
   it('Several cards are independent and each has a close button (story 36)', function () {
     cy.loadAndVisitProject(amountProject);
+    toNumber('amount');
+    toNumber('score');
     cy.columnActionClick('amount', ['Facet', 'Investigate numbers']);
     cardFor('amount').should('be.visible');
     cy.columnActionClick('score', ['Facet', 'Investigate numbers']);
