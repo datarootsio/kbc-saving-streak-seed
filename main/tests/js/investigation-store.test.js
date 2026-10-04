@@ -77,3 +77,113 @@ test('getState returns a snapshot that cannot mutate the store', () => {
   store.getState().health.amount.counts.numeric = 99;
   assert.strictEqual(store.getState().health.amount.counts.numeric, 5);
 });
+
+// ---- cards: range selection (ticket 07) ----
+
+function makeCardStore({range = null} = {}) {
+  const sandbox = require('./load')('project/investigation-store.js');
+  const store = vm.runInContext('InvestigationStore', sandbox);
+  const cardCalls = [];
+  const writes = [];
+  const state = {range};
+  store._setDeps({
+    columns: () => ['name', 'amount'],
+    engineJSON: () => ({facets: [], mode: 'row-based'}),
+    post: () => {},
+    cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
+    readRange: () => state.range,
+    writeRange: (columnName, config) => writes.push({columnName, config}),
+  });
+  return {store, cardCalls, writes, state};
+}
+const cardPayload = (kept, total = 6) => ({
+  code: 'ok', columnName: 'amount', total, counts: {numeric: 5, blank: 1, wrongType: 0, error: 0},
+  stats: {min: -1, max: 2.5, mean: 0.5, median: 0},
+  histogram: {binWidth: 0.175, min: -1, bins: [1, 4]},
+  selection: {keptRows: kept, totalRows: total},
+});
+
+test('openCard stores selection and no range when the column has no range facet', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  const card = store.getState().cards[0];
+  assert.deepStrictEqual({...card.selection}, {keptRows: 6, totalRows: 6});
+  assert.strictEqual(card.range, null);
+});
+
+test('openCard adopts an existing range facet on the column instead of creating one (no duplicate)', () => {
+  const {store, cardCalls, writes} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(3));
+  assert.strictEqual(store.getState().cards[0].range.from, 0);
+  assert.strictEqual(store.getState().cards[0].range.to, 1);
+  assert.strictEqual(writes.length, 0);
+});
+
+test('setRange writes a core range facet config on the column that excludes problem rows by default', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.setRange('amount', {from: 0, to: 1});
+  assert.strictEqual(writes.length, 1);
+  const c = writes[0].config;
+  assert.strictEqual(writes[0].columnName, 'amount');
+  assert.strictEqual(c.columnName, 'amount');
+  assert.strictEqual(c.name, 'amount');
+  assert.strictEqual(c.expression, 'value');
+  assert.strictEqual(c.from, 0);
+  // the facet's upper bound is exclusive, the card's is inclusive
+  assert.ok(c.to > 1 && c.to < 1.001, 'to=' + c.to);
+  assert.strictEqual(c.selectNumeric, true);
+  assert.strictEqual(c.selectNonNumeric, false);
+  assert.strictEqual(c.selectBlank, false);
+  assert.strictEqual(c.selectError, false);
+});
+
+test('setRange honours the include flags', () => {
+  const {store, writes} = makeCardStore();
+  store.setRange('amount', {from: 0, to: 1, includeBlank: true, includeWrongType: true, includeError: true});
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, true, true]);
+});
+
+test('resetRange asks the engine to clear the column range', () => {
+  const {store, writes} = makeCardStore();
+  store.resetRange('amount');
+  assert.deepStrictEqual({...writes[0]}, {columnName: 'amount', config: null});
+});
+
+test('an engine change refreshes selection and range but keeps the histogram', () => {
+  const {store, cardCalls, state} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
+  store.onProjectUpdate({engineChanged: true});
+  const refresh = cardCalls[cardCalls.length - 1];
+  assert.strictEqual(cardCalls.length, 2);
+  const shrunk = cardPayload(3);
+  shrunk.histogram = {binWidth: 1, min: 0, bins: [2]};
+  refresh.onDone(shrunk);
+  const card = store.getState().cards[0];
+  assert.strictEqual(card.selection.keptRows, 3);
+  assert.strictEqual(card.range.to, 1);
+  assert.deepStrictEqual([...card.histogram.bins], [1, 4]);
+});
+
+test('a stale selection response never overwrites a newer one', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({engineChanged: true});
+  store.onProjectUpdate({engineChanged: true});
+  cardCalls[2].onDone(cardPayload(3));
+  cardCalls[1].onDone(cardPayload(5));
+  assert.strictEqual(store.getState().cards[0].selection.keptRows, 3);
+});
+
+test('a data-only update with no open card does not call the card endpoint', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(cardCalls.length, 0);
+});

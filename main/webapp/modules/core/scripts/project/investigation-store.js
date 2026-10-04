@@ -2,6 +2,52 @@
  * M3 InvestigationStore: single source of UI state for the numeric investigation.
  * No DOM. Talks to the server through an injectable transport.
  */
+// Browser-only: finds, creates, edits and clears the card's range facet in ui.browsingEngine.
+// The facet is the ordinary left-panel range facet, so edits made in either place show in both.
+var RangeFilterBridge = (function() {
+  var owned = {}; // columnName -> true when the card created the facet
+
+  var find = function(columnName) {
+    var key = JSON.stringify(['range', 'value', columnName]);
+    var facets = ui.browsingEngine._facets;
+    for (var i = 0; i < facets.length; i++) {
+      var f = facets[i].facet;
+      if (f instanceof RangeFacet && f.uniquenessCriterion() === key) {
+        return f;
+      }
+    }
+    return null;
+  };
+
+  return {
+    read: function(columnName) {
+      var f = find(columnName);
+      if (!f || !f.hasSelection()) {
+        return null;
+      }
+      var j = f.getJSON();
+      return { from: j.from, to: j.to, includeBlank: j.selectBlank, includeWrongType: j.selectNonNumeric, includeError: j.selectError };
+    },
+    write: function(columnName, config) {
+      var f = find(columnName);
+      if (config === null) {
+        if (f && owned[columnName]) {
+          delete owned[columnName];
+          ui.browsingEngine.removeFacet(f);
+        } else if (f) {
+          f.reset();
+          Refine.update({ engineChanged: true });
+        }
+      } else if (f) {
+        f.setSelection(config);
+      } else {
+        owned[columnName] = true;
+        ui.browsingEngine.addFacet("range", config, {}, true);
+      }
+    }
+  };
+})();
+
 var InvestigationStore = (function() {
   var state = { health: {} };
   var handlers = {};
@@ -59,12 +105,16 @@ var InvestigationStore = (function() {
     if (REFETCH_FLAGS.some(function(f) { return options && options[f]; })) {
       store.refreshAll();
     }
+    if (options && options.engineChanged) {
+      store.refreshCardSelections();
+    }
   };
 
   store.getState = function() {
     var snapshot = JSON.parse(JSON.stringify(state));
     snapshot.cards = cards.map(function(c) {
-      return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total };
+      return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total,
+        selection: c.selection, range: c.range };
     });
     return snapshot;
   };
@@ -81,49 +131,78 @@ var InvestigationStore = (function() {
     return null;
   };
 
-  var fetchCard = function(card) {
-    card.status = "loading";
-    Refine.postCSRF(
-      "command/core/get-numeric-health",
-      {
-        project: theProject.id,
-        columnName: card.columnName,
-        bins: 20,
-        engine: JSON.stringify(ui.browsingEngine.getJSON(true))
-      },
-      function(data) {
-        if (cards.indexOf(card) < 0) {
-          return; // closed while loading
-        }
-        if (data.code === "ok") {
+  // The card's range is an ordinary core/range facet (AD3). RangeFacet's upper bound is
+  // exclusive but the card's is inclusive, so the facet's "to" is nudged up by this much.
+  var RANGE_UPPER_EPSILON = 1e-7;
+
+  // full: apply stats/counts/histogram/total too; otherwise only selection and range
+  // (until ticket 08 the response counts include the card's own range facet).
+  var fetchCard = function(card, full) {
+    var mine = card.seq = (card.seq || 0) + 1;
+    if (full) {
+      card.status = "loading";
+    }
+    deps.cardPost(card.columnName, deps.engineJSON(true), function(data) {
+      if (cards.indexOf(card) < 0 || card.seq !== mine) {
+        return; // closed while loading, or superseded
+      }
+      if (data.code === "ok") {
+        if (full) {
           card.status = "ready";
           card.stats = data.stats;
           card.counts = data.counts;
           card.histogram = data.histogram;
           card.total = data.total;
-        } else {
-          card.status = "error";
         }
-        emit("cards-changed", store.getState());
-      },
-      "json",
-      function() {
-        if (cards.indexOf(card) >= 0) {
-          card.status = "error";
-          emit("cards-changed", store.getState());
-        }
+        card.selection = data.selection;
+        card.range = deps.readRange(card.columnName);
+      } else if (full) {
+        card.status = "error";
       }
-    );
+      emit("cards-changed", store.getState());
+    }, function() {
+      if (cards.indexOf(card) >= 0 && card.seq === mine && full) {
+        card.status = "error";
+        emit("cards-changed", store.getState());
+      }
+    });
+  };
+
+  store.refreshCardSelections = function() {
+    cards.forEach(function(card) {
+      if (card.status === "ready") {
+        fetchCard(card, false);
+      }
+    });
+  };
+
+  store.setRange = function(columnName, r) {
+    deps.writeRange(columnName, {
+      name: columnName,
+      expression: "value",
+      columnName: columnName,
+      from: r.from,
+      to: r.to + RANGE_UPPER_EPSILON,
+      selectNumeric: true,
+      selectNonNumeric: !!r.includeWrongType,
+      selectBlank: !!r.includeBlank,
+      selectError: !!r.includeError
+    });
+  };
+
+  store.resetRange = function(columnName) {
+    deps.writeRange(columnName, null);
   };
 
   store.openCard = function(columnName) {
     if (findCard(columnName)) {
       return;
     }
-    var card = { columnName: columnName, status: "loading", stats: null, counts: null, histogram: null, total: null };
+    var card = { columnName: columnName, status: "loading", stats: null, counts: null, histogram: null, total: null,
+                 selection: null, range: null };
     cards.push(card);
     emit("cards-changed", store.getState());
-    fetchCard(card);
+    fetchCard(card, true);
   };
 
   store.closeCard = function(columnName) {
@@ -143,7 +222,18 @@ var InvestigationStore = (function() {
     columns: function() {
       return theProject.columnModel.columns.map(function(c) { return c.name; });
     },
-    engineJSON: function() { return ui.browsingEngine.getJSON(); },
+    engineJSON: function(keepUnrestricted) { return ui.browsingEngine.getJSON(!!keepUnrestricted); },
+    cardPost: function(columnName, engineJson, onDone, onError) {
+      Refine.postCSRF(
+        "command/core/get-numeric-health",
+        { project: theProject.id, columnName: columnName, bins: 20, engine: JSON.stringify(engineJson) },
+        onDone,
+        "json",
+        onError
+      );
+    },
+    readRange: function(columnName) { return RangeFilterBridge.read(columnName); },
+    writeRange: function(columnName, config) { RangeFilterBridge.write(columnName, config); },
     post: function(columnName, engineJson, onDone, onError) {
       Refine.postCSRF(
         "command/core/get-numeric-health?" + $.param({ project: theProject.id }),
