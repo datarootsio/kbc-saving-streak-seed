@@ -91,6 +91,7 @@ function makeCardStore({range = null} = {}) {
     engineJSON: () => ({facets: [], mode: 'row-based'}),
     post: () => {},
     cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
+    stepPost: () => {},
     readRange: () => state.range,
     writeRange: (columnName, config) => writes.push({columnName, config}),
   });
@@ -304,4 +305,141 @@ test('setProblemRows uses the live facet bounds, not a card range that lags behi
   state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}; // slider moved, fetch pending
   store.setProblemRows('amount', {blank: true});
   assert.strictEqual(writes[0].config.to, 1);
+});
+
+// ---- breadcrumb (ticket 10) ----
+// Per-step counts come from repeated `selection` calls: step k posts the engine holding only the
+// first k numeric filters; the final "shown" posts the full engine (all facets).
+
+function makeBreadcrumbStore() {
+  const sandbox = require('./load')('project/investigation-store.js');
+  const store = vm.runInContext('InvestigationStore', sandbox);
+  const calls = [];      // breadcrumb step requests
+  const cardCalls = [];  // card requests
+  const ranges = {};
+  const writes = [];
+  const text = {type: 'core/list', columnName: 'name', selection: [{v: {v: 'Alpha'}}]};
+  const rangeFacet = (c) => ({type: 'core/range', columnName: c, from: ranges[c].from, to: ranges[c].to});
+  const state = {withText: false};
+  store._setDeps({
+    columns: () => ['name', 'amount', 'qty'],
+    engineJSON: () => ({
+      mode: 'row-based',
+      facets: Object.keys(ranges).map(rangeFacet).concat(state.withText ? [text] : []),
+    }),
+    post: () => {},
+    cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
+    stepPost: (columnName, engineJson, onDone, onError) => calls.push({columnName, engineJson, onDone, onError}),
+    readRange: (c) => ranges[c] || null,
+    writeRange: (c, config) => { writes.push({c, config}); if (config === null) { delete ranges[c]; } },
+  });
+  const answer = (call, kept, total = 10) => call.onDone({
+    code: 'ok', total, counts: {numeric: 1, blank: 0, wrongType: 0, error: 0},
+    stats: {min: 0, max: 1, mean: 0, median: 0}, histogram: {binWidth: 1, min: 0, bins: [1]},
+    selection: {keptRows: kept, totalRows: total},
+  });
+  const openBoth = () => {
+    store.openCard('amount'); store.openCard('qty');
+    cardCalls.splice(0).forEach((c) => answer(c, 10));
+  };
+  return {store, calls, cardCalls, ranges, writes, state, answer, openBoth};
+}
+const facetCols = (call) => call.engineJson.facets.map((f) => f.columnName).join(',');
+
+test('breadcrumb is null with no numeric filters and makes no step calls', () => {
+  const {store, calls, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(store.getState().breadcrumb, null);
+  assert.strictEqual(calls.length, 0);
+});
+
+test('story 44/45: two filters give two steps ordered by creation, each count from its prefix, then shown', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  // qty filtered first, amount second: creation order, not card order
+  ranges.qty = {from: 0, to: 5};
+  store.onProjectUpdate({engineChanged: true});
+  ranges.amount = {from: 0, to: 1};
+  store.onProjectUpdate({engineChanged: true});
+  calls.splice(0); // discard calls from the first update (stale after the second)
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(calls.length, 3, 'one call per step plus the final');
+  assert.strictEqual(facetCols(calls[0]), 'qty', 'step 1 posts only the first-created filter');
+  assert.deepStrictEqual([...calls[1].engineJson.facets.map((f) => f.columnName)].sort(), ['amount', 'qty']);
+  answer(calls[0], 7);
+  answer(calls[1], 3);
+  answer(calls[2], 3);
+  const bc = store.getState().breadcrumb;
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(bc.steps.map((s) => [s.columnName, s.kept]))), [['qty', 7], ['amount', 3]]);
+  assert.strictEqual(bc.total, 10);
+  assert.strictEqual(bc.shown, 3);
+  assert.deepStrictEqual({from: bc.steps[0].from, to: bc.steps[0].to}, {from: 0, to: 5});
+});
+
+test('story 48/49: step requests carry only numeric filters; the final request also carries other facets', () => {
+  const {store, calls, ranges, state, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  state.withText = true;
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const step = calls.find((c) => c.engineJson.facets.length === 1 && c.engineJson.facets[0].type === 'core/range');
+  const fin = calls.find((c) => c.engineJson.facets.some((f) => f.type === 'core/list'));
+  assert.ok(step, 'step 1 has only the range');
+  assert.ok(fin, 'final has the text facet');
+  answer(step, 6);
+  answer(fin, 2);
+  const bc = store.getState().breadcrumb;
+  assert.strictEqual(bc.steps[0].kept, 6);
+  assert.strictEqual(bc.shown, 2);
+});
+
+test('a stale breadcrumb response is ignored', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const first = calls.slice();
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const second = calls.slice();
+  second.forEach((c) => answer(c, 4));
+  first.forEach((c) => answer(c, 9));
+  assert.strictEqual(store.getState().breadcrumb.shown, 4);
+});
+
+test('story 46: removeFilter clears only that column range; others stay', () => {
+  const {store, writes, ranges, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.qty = {from: 0, to: 5};
+  ranges.amount = {from: 0, to: 1};
+  store.removeFilter('qty');
+  assert.deepStrictEqual(writes.map((w) => [w.c, w.config]), [['qty', null]]);
+  assert.ok(ranges.amount);
+});
+
+test('story 47: breadcrumb disappears when the last filter goes (e.g. removed in the left panel)', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  calls.forEach((c) => answer(c, 3));
+  assert.ok(store.getState().breadcrumb);
+  delete ranges.amount;
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(store.getState().breadcrumb, null);
+});
+
+test('closing a card with a filter drops its chip', () => {
+  const {store, ranges, calls, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  calls.forEach((c) => answer(c, 3));
+  store.closeCard('amount');
+  assert.strictEqual(store.getState().breadcrumb, null);
 });

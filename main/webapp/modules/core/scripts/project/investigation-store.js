@@ -105,6 +105,7 @@ var InvestigationStore = (function() {
     if (REFETCH_FLAGS.some(function(f) { return options && options[f]; })) {
       store.refreshAll();
       store.refreshCards();
+      store.refreshBreadcrumb();
     }
   };
 
@@ -114,6 +115,7 @@ var InvestigationStore = (function() {
       return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total,
         selection: c.selection, range: c.range, problemRows: { blank: c.problemRows.blank, wrongType: c.problemRows.wrongType, error: c.problemRows.error } };
     });
+    snapshot.breadcrumb = breadcrumb ? JSON.parse(JSON.stringify(breadcrumb)) : null;
     snapshot.highlight = JSON.parse(JSON.stringify(highlight));
     return snapshot;
   };
@@ -157,6 +159,9 @@ var InvestigationStore = (function() {
         card.range = deps.readRange(card.columnName);
         if (card.range) {
           card.problemRows = { blank: !!card.range.includeBlank, wrongType: !!card.range.includeWrongType, error: !!card.range.includeError };
+        }
+        if (initial) {
+          store.refreshBreadcrumb(); // the card may have adopted an existing range facet
         }
       } else if (initial) {
         card.status = "error";
@@ -251,6 +256,82 @@ var InvestigationStore = (function() {
     if (card.range) {
       deps.writeRange(columnName, null); // the grid returns; a facet the user made in the left panel is only reset
     }
+    store.refreshBreadcrumb();
+  };
+
+  // ---- breadcrumb (ticket 10) ----
+  // One step per numeric investigation filter (a card whose column has an active range facet), in
+  // creation order. Step k's count = rows kept by the first k numeric filters ALONE (other facet
+  // types are left out), read from the endpoint's `selection` with an engine holding just those
+  // range facets (one call per step). `shown` = rows kept by the full engine (all facets), so a
+  // text facet changes only this last number. `total` = all rows in the project.
+  var breadcrumb = null;
+  var bcSeq = 0;
+  var filterOrder = {};  // columnName -> creation rank, kept while the filter is active
+  var nextRank = 0;
+
+  var engineWithRanges = function(engine, columns) {
+    var copy = JSON.parse(JSON.stringify(engine));
+    copy.facets = copy.facets.filter(function(f) {
+      return f.type === "core/range" && columns.indexOf(f.columnName) >= 0;
+    });
+    return copy;
+  };
+
+  store.removeFilter = function(columnName) {
+    deps.writeRange(columnName, null); // same path as Reset and close: a user-made facet is only reset
+  };
+
+  store.refreshBreadcrumb = function() {
+    var mine = ++bcSeq;
+    var filters = [];
+    cards.forEach(function(card) {
+      var r = deps.readRange(card.columnName);
+      if (r) {
+        if (filterOrder[card.columnName] === undefined) {
+          filterOrder[card.columnName] = nextRank++;
+        }
+        filters.push({ columnName: card.columnName, from: r.from, to: r.to });
+      }
+    });
+    Object.keys(filterOrder).forEach(function(c) {
+      if (!filters.some(function(f) { return f.columnName === c; })) {
+        delete filterOrder[c];
+      }
+    });
+    if (filters.length === 0) {
+      if (breadcrumb !== null) {
+        breadcrumb = null;
+        emit("cards-changed", store.getState());
+      }
+      return;
+    }
+    filters.sort(function(a, b) { return filterOrder[a.columnName] - filterOrder[b.columnName]; });
+    var engine = deps.engineJSON(true);
+    var requests = filters.map(function(f, k) {
+      return { column: f.columnName, engine: engineWithRanges(engine, filters.slice(0, k + 1).map(function(x) { return x.columnName; })) };
+    });
+    requests.push({ column: filters[0].columnName, engine: engine });
+    var results = [];
+    var pending = requests.length;
+    requests.forEach(function(req, i) {
+      deps.stepPost(req.column, req.engine, function(data) {
+        if (mine !== bcSeq || data.code !== "ok") {
+          return;
+        }
+        results[i] = data.selection;
+        if (--pending === 0) {
+          breadcrumb = {
+            total: results[0].totalRows,
+            steps: filters.map(function(f, k) {
+              return { columnName: f.columnName, from: f.from, to: f.to, kept: results[k].keptRows };
+            }),
+            shown: results[results.length - 1].keptRows
+          };
+          emit("cards-changed", store.getState());
+        }
+      }, function() {});
+    });
   };
 
   // ---- end cards ----
@@ -292,6 +373,15 @@ var InvestigationStore = (function() {
       Refine.postCSRF(
         "command/core/get-numeric-health",
         { project: theProject.id, columnName: columnName, bins: 20, engine: JSON.stringify(engineJson) },
+        onDone,
+        "json",
+        onError
+      );
+    },
+    stepPost: function(columnName, engineJson, onDone, onError) {
+      Refine.postCSRF(
+        "command/core/get-numeric-health",
+        { project: theProject.id, columnName: columnName, bins: 1, engine: JSON.stringify(engineJson) },
         onDone,
         "json",
         onError
