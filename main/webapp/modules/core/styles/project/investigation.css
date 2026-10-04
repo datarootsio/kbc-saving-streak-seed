@@ -191,3 +191,36 @@
 .health-popover-row.is-zero {
   opacity: 0.45;
 }
+
+/* ---- investigation range ---- */
+.investigation-range {
+  margin-top: var(--padding-tight);
+}
+
+.investigation-range input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 2px 0;
+}
+
+.investigation-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  color: var(--text-tertiary);
+}
+
+.investigation-histogram-bar-out .investigation-histogram-fill {
+  background: var(--text-tertiary);
+  opacity: 0.4;
+}
+
+.investigation-kept {
+  margin-top: var(--padding-tight);
+  font-size: 0.9em;
+}
+
+.investigation-range-reset {
+  margin-top: var(--padding-tight);
+}
+/* ---- end investigation range ---- */

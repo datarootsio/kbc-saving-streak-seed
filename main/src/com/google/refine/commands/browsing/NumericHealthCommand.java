@@ -94,6 +94,12 @@ public class NumericHealthCommand extends Command {
                 histogram.put("bins", health.histogramBins());
                 result.put("histogram", histogram);
             }
+            // Reflects every facet in the engine config, including this column's own range facet.
+            // (Excluding the own facet from counts/histogram is ticket 08.)
+            Map<String, Object> selection = new LinkedHashMap<>();
+            selection.put("keptRows", cells.size());
+            selection.put("totalRows", project.rows.size());
+            result.put("selection", selection);
             respondJSON(response, result);
         } catch (Exception e) {
             respondException(response, e);

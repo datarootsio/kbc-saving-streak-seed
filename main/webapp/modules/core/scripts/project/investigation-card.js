@@ -55,12 +55,67 @@ InvestigationCardStrip.prototype._renderCard = function(card) {
       $('<dt>').text($.i18n("core-investigation/stat-" + stat[0])).appendTo(item);
       $('<dd>').text(stat[1]).appendTo(item);
     });
-    self._renderHistogram(card.histogram, elmts.bodyDiv);
+    self._renderHistogram(card.histogram, elmts.bodyDiv, card.range);
+    self._renderRange(card, elmts.bodyDiv);
   }
   return dom;
 };
 
-InvestigationCardStrip.prototype._renderHistogram = function(histogram, parent) {
+InvestigationCardStrip._binOutsideRange = function(histogram, i, range) {
+  if (!range) {
+    return false;
+  }
+  var lower = histogram.min + i * histogram.binWidth;
+  var upper = lower + histogram.binWidth;
+  return upper < range.from || lower > range.to;
+};
+
+InvestigationCardStrip.prototype._renderRange = function(card, parent) {
+  var fmt = InvestigationCardStrip._formatNumber;
+  var min = card.stats.min;
+  var max = card.stats.max;
+  var from = card.range ? Math.max(card.range.from, min) : min;
+  var to = card.range ? Math.min(card.range.to, max) : max;
+  var wrap = $('<div>').addClass("investigation-range").appendTo(parent);
+  var fromInput = $('<input type="range" step="any">').addClass("investigation-range-from")
+    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-from") }).val(from).appendTo(wrap);
+  var toInput = $('<input type="range" step="any">').addClass("investigation-range-to")
+    .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-to") }).val(to).appendTo(wrap);
+  var labels = $('<div>').addClass("investigation-range-labels").appendTo(wrap);
+  var fromLabel = $('<span>').addClass("investigation-range-from-label").text(fmt(from)).appendTo(labels);
+  var toLabel = $('<span>').addClass("investigation-range-to-label").text(fmt(to)).appendTo(labels);
+
+  var current = function() {
+    var a = Number(fromInput.val());
+    var b = Number(toInput.val());
+    return { from: Math.min(a, b), to: Math.max(a, b) };
+  };
+  wrap.find("input").on("input", function() {
+    var r = current();
+    fromLabel.text(fmt(r.from));
+    toLabel.text(fmt(r.to));
+  });
+  wrap.find("input").on("change", function() {
+    var r = current();
+    var old = card.range || {};
+    InvestigationStore.setRange(card.columnName, {
+      from: r.from, to: r.to,
+      includeBlank: old.includeBlank, includeWrongType: old.includeWrongType, includeError: old.includeError
+    });
+  });
+
+  if (card.range) {
+    $('<button type="button">').addClass("investigation-range-reset").text($.i18n("core-investigation/range-reset"))
+      .on("click", function() { InvestigationStore.resetRange(card.columnName); }).appendTo(wrap);
+    if (card.selection) {
+      var pct = card.selection.totalRows > 0 ? Math.round(100 * card.selection.keptRows / card.selection.totalRows) : 0;
+      $('<div>').addClass("investigation-kept")
+        .text($.i18n("core-investigation/keeps", card.selection.keptRows, card.selection.totalRows, pct)).appendTo(wrap);
+    }
+  }
+};
+
+InvestigationCardStrip.prototype._renderHistogram = function(histogram, parent, range) {
   if (!histogram) {
     return;
   }
@@ -71,6 +126,7 @@ InvestigationCardStrip.prototype._renderHistogram = function(histogram, parent) 
   histogram.bins.forEach(function(count, i) {
     var from = histogram.min + i * histogram.binWidth;
     var bar = $('<div>').addClass("investigation-histogram-bar").attr("data-count", count)
+      .toggleClass("investigation-histogram-bar-out", InvestigationCardStrip._binOutsideRange(histogram, i, range))
       .attr("title", $.i18n("core-investigation/bin-title", fmt(from), fmt(from + histogram.binWidth), count))
       .appendTo(bars);
     $('<div>').addClass("investigation-histogram-fill").css("height", (peak > 0 ? (100 * count / peak) : 0) + "%").appendTo(bar);

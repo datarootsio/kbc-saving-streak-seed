@@ -241,4 +241,40 @@ public class NumericHealthCommandTests extends CommandTestBase {
         assertTrue(json.has("histogram"), json.toString());
         assertTrue(json.get("histogram").isNull(), json.toString());
     }
+
+    private static String rangeFacetOn(String column, double from, double to, boolean selectBlank) {
+        return "{\"type\":\"range\",\"name\":\"" + column + "\",\"columnName\":\"" + column + "\","
+                + "\"expression\":\"value\",\"from\":" + from + ",\"to\":" + to
+                + ",\"selectNumeric\":true,\"selectNonNumeric\":false,\"selectBlank\":" + selectBlank + ",\"selectError\":false}";
+    }
+
+    private static void assertSelection(JsonNode json, int kept, int total) {
+        assertEquals(json.get("code").asText(), "ok");
+        assertEquals(json.get("selection").get("keptRows").asInt(), kept);
+        assertEquals(json.get("selection").get("totalRows").asInt(), total);
+    }
+
+    @Test
+    public void testSelectionWithoutFacetsKeepsEveryRow() throws Exception {
+        assertSelection(post(amountProject(), "amount", "{\"mode\":\"row-based\",\"facets\":[]}"), 6, 6);
+    }
+
+    @Test
+    public void testSelectionReflectsOwnRangeFacet() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, false) + "]}";
+        assertSelection(post(amountProject(), "amount", engine), 3, 6);
+    }
+
+    @Test
+    public void testSelectionCountsBlankRowsWhenRangeSelectsBlank() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, true) + "]}";
+        assertSelection(post(amountProject(), "amount", engine), 4, 6);
+    }
+
+    @Test
+    public void testSelectionCombinesRangeWithOtherFacets() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, false) + ","
+                + listFacetOn("name", "{\"v\":\"Alpha\",\"l\":\"Alpha\"}") + "]}";
+        assertSelection(post(amountProject(), "amount", engine), 1, 6);
+    }
 }
