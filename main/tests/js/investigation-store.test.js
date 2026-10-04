@@ -88,6 +88,8 @@ function makeCardStore({range = null} = {}) {
   const state = {range};
   store._setDeps({
     columns: () => ['name', 'amount'],
+    cellIndexOf: () => 0,
+    nameOfCellIndex: () => null,
     engineJSON: () => ({facets: [], mode: 'row-based'}),
     post: () => {},
     cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
@@ -323,6 +325,8 @@ function makeBreadcrumbStore() {
   const state = {withText: false};
   store._setDeps({
     columns: () => ['name', 'amount', 'qty'],
+    cellIndexOf: () => 0,
+    nameOfCellIndex: () => null,
     engineJSON: () => ({
       mode: 'row-based',
       facets: Object.keys(ranges).map(rangeFacet).concat(state.withText ? [text] : []),

@@ -318,3 +318,53 @@ td.investigation-highlight .data-table-cell-content::before {
   cursor: pointer;
 }
 /* ---- end investigation breadcrumb ---- */
+
+/* ---- investigation resilience ---- */
+.health-bar-loading {
+  height: 6px;
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  background: repeating-linear-gradient(45deg, var(--faint-grey), var(--faint-grey) 4px, var(--background-primary) 4px, var(--background-primary) 8px);
+}
+
+.health-bar-retry,
+.investigation-card-retry,
+.investigation-breadcrumb-retry {
+  margin-left: var(--padding-tight);
+  cursor: pointer;
+}
+
+.health-bar-retry {
+  margin: 2px 0 0 0;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.investigation-card-refresh-error,
+.investigation-breadcrumb-error {
+  color: var(--error-red);
+}
+
+.investigation-card-breakdown {
+  color: var(--text-tertiary);
+}
+
+.investigation-notice {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--padding-tight);
+  background: #fff3c4;
+  border: 1px solid #b36b00;
+  border-radius: var(--rounded-corners-radius);
+  padding: var(--padding-tight) var(--padding-normal);
+}
+
+.investigation-notice-dismiss {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+/* ---- end investigation resilience ---- */

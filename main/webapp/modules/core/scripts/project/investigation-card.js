@@ -17,10 +17,31 @@ InvestigationCardStrip._formatNumber = function(n) {
 InvestigationCardStrip.prototype._render = function(state) {
   var self = this;
   this._div.empty();
+  state.notices.forEach(function(notice) {
+    self._div.append(self._renderNotice(notice));
+  });
   state.cards.forEach(function(card) {
     self._div.append(self._renderCard(card));
   });
   resizeAll();
+};
+
+// Shown where a card was closed because its column was renamed or removed (story 52).
+InvestigationCardStrip.prototype._renderNotice = function(notice) {
+  var dom = $('<div>').addClass("investigation-notice").attr({ role: "status", "data-column": notice.columnName });
+  var text = notice.renamedTo
+    ? $.i18n("core-investigation/notice-renamed", notice.columnName, notice.renamedTo)
+    : $.i18n("core-investigation/notice-removed", notice.columnName);
+  $('<span>').addClass("investigation-notice-text").text(text).appendTo(dom);
+  $('<button type="button">').addClass("investigation-notice-dismiss").text("\u00d7")
+    .attr({ "aria-label": $.i18n("core-investigation/dismiss"), title: $.i18n("core-investigation/dismiss") })
+    .on("click", function() { InvestigationStore.dismissNotice(notice.columnName); }).appendTo(dom);
+  return dom;
+};
+
+InvestigationCardStrip.prototype._renderRetry = function(card, parent) {
+  $('<button type="button">').addClass("investigation-card-retry").text($.i18n("core-investigation/retry"))
+    .on("click", function() { InvestigationStore.retryCard(card.columnName); }).appendTo(parent);
 };
 
 InvestigationCardStrip.prototype._renderCard = function(card) {
@@ -36,12 +57,22 @@ InvestigationCardStrip.prototype._renderCard = function(card) {
   if (card.status === "loading") {
     $('<div>').addClass("investigation-card-status").text($.i18n("core-investigation/loading")).appendTo(elmts.bodyDiv);
   } else if (card.status === "error") {
-    $('<div>').addClass("investigation-card-status investigation-card-error").text($.i18n("core-investigation/error")).appendTo(elmts.bodyDiv);
+    var errorDiv = $('<div>').addClass("investigation-card-status investigation-card-error").appendTo(elmts.bodyDiv);
+    $('<span>').text($.i18n("core-investigation/error")).appendTo(errorDiv);
+    self._renderRetry(card, errorDiv);
   } else if (card.total === 0) {
     $('<div>').addClass("investigation-card-empty investigation-card-empty-project").text($.i18n("core-investigation/empty-project")).appendTo(elmts.bodyDiv);
   } else if (card.stats === null) {
     $('<div>').addClass("investigation-card-empty").text($.i18n("core-investigation/no-numeric")).appendTo(elmts.bodyDiv);
+    $('<div>').addClass("investigation-card-breakdown")
+      .text($.i18n("core-investigation/no-numeric-breakdown", card.total, card.counts.blank, card.counts.wrongType, card.counts.error))
+      .appendTo(elmts.bodyDiv);
   } else {
+    if (card.refreshError) {
+      var warn = $('<div>').addClass("investigation-card-refresh-error").attr("role", "alert").appendTo(elmts.bodyDiv);
+      $('<span>').text($.i18n("core-investigation/refresh-error")).appendTo(warn);
+      self._renderRetry(card, warn);
+    }
     elmts.rangeSpan.text($.i18n("core-investigation/range", fmt(card.stats.min), fmt(card.stats.max)));
     var list = $('<dl>').addClass("investigation-card-stats").appendTo(elmts.bodyDiv);
     [

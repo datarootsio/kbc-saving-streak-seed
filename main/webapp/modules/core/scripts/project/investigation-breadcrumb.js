@@ -7,6 +7,7 @@ function InvestigationBreadcrumb(div) {
   var self = this;
   this._div = div;
   InvestigationStore.on("cards-changed", function(state) {
+    self._error = state.breadcrumbError;
     self._render(state.breadcrumb);
   });
 }
@@ -15,6 +16,13 @@ InvestigationBreadcrumb.prototype._render = function(bc) {
   var fmt = InvestigationCardStrip._formatNumber;
   var div = this._div;
   div.empty();
+  if (this._error) {
+    // placed first so it is visible even when there are no numbers to show
+    var err = $('<span>').addClass("investigation-breadcrumb-error").attr("role", "alert").appendTo(div);
+    $('<span>').text($.i18n("core-investigation/breadcrumb-error")).appendTo(err);
+    $('<button type="button">').addClass("investigation-breadcrumb-retry").text($.i18n("core-investigation/retry"))
+      .on("click", function() { InvestigationStore.retryBreadcrumb(); }).appendTo(err);
+  }
   if (bc) {
     var arrow = function() { $('<span>').addClass("investigation-breadcrumb-arrow").text("\u2192").appendTo(div); };
     $('<span>').addClass("investigation-breadcrumb-total").text($.i18n("core-investigation/breadcrumb-total", bc.total)).appendTo(div);
