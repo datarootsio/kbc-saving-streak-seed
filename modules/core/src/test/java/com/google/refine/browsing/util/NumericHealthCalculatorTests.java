@@ -6,6 +6,7 @@
 package com.google.refine.browsing.util;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -95,5 +96,51 @@ public class NumericHealthCalculatorTests {
     @Test
     public void emptyInputHasZeroCountsForEveryClass() {
         assertCounts(computeOf(), 0, 0, 0, 0);
+    }
+
+    @Test
+    public void statsOfSampleAmountColumn() {
+        NumericHealth h = computeOf(0L, 1L, -1L, null, 2.5, 0L);
+        assertEquals(h.min(), Double.valueOf(-1.0));
+        assertEquals(h.max(), Double.valueOf(2.5));
+        assertEquals(h.mean(), Double.valueOf(0.5));
+        assertEquals(h.median(), Double.valueOf(0.0));
+    }
+
+    @Test
+    public void medianOfOddCountIsMiddleValue() {
+        assertEquals(computeOf(5L, 1L, 3L).median(), Double.valueOf(3.0));
+    }
+
+    @Test
+    public void medianOfEvenCountIsMeanOfMiddleTwo() {
+        assertEquals(computeOf(4L, 1L, 3L, 2L).median(), Double.valueOf(2.5));
+    }
+
+    @Test
+    public void singleValueStats() {
+        NumericHealth h = computeOf(7L);
+        assertEquals(h.min(), Double.valueOf(7.0));
+        assertEquals(h.max(), Double.valueOf(7.0));
+        assertEquals(h.mean(), Double.valueOf(7.0));
+        assertEquals(h.median(), Double.valueOf(7.0));
+    }
+
+    @Test
+    public void statsIgnoreNonNumericCells() {
+        NumericHealth h = computeOf("a", 2L, "", 4L, new EvalError("x"), "NaN");
+        assertEquals(h.min(), Double.valueOf(2.0));
+        assertEquals(h.max(), Double.valueOf(4.0));
+        assertEquals(h.mean(), Double.valueOf(3.0));
+    }
+
+    @Test
+    public void statsAreNullWithoutNumericCells() {
+        NumericHealth h = computeOf("a", null);
+        assertNull(h.min());
+        assertNull(h.max());
+        assertNull(h.mean());
+        assertNull(h.median());
+        assertNull(computeOf().min());
     }
 }

@@ -5,7 +5,10 @@
 
 package com.google.refine.browsing.util;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 import com.google.refine.expr.EvalError;
@@ -36,10 +39,27 @@ public final class NumericHealthCalculator {
             counts.put(c, 0);
         }
         int total = 0;
+        List<Double> numbers = new ArrayList<>();
         for (Cell cell : cells) {
-            counts.merge(classify(cell), 1, Integer::sum);
+            CellClass cellClass = classify(cell);
+            counts.merge(cellClass, 1, Integer::sum);
+            if (cellClass == CellClass.NUMERIC) {
+                numbers.add(((Number) cell.value).doubleValue());
+            }
             total++;
         }
-        return new NumericHealth(total, counts);
+        if (numbers.isEmpty()) {
+            return new NumericHealth(total, counts, null, null, null, null);
+        }
+        Collections.sort(numbers);
+        double sum = 0;
+        for (double n : numbers) {
+            sum += n;
+        }
+        int size = numbers.size();
+        double median = size % 2 == 1
+                ? numbers.get(size / 2)
+                : (numbers.get(size / 2 - 1) + numbers.get(size / 2)) / 2;
+        return new NumericHealth(total, counts, numbers.get(0), numbers.get(size - 1), sum / size, median);
     }
 }
