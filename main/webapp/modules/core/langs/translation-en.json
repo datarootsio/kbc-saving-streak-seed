@@ -532,6 +532,7 @@
     "core-views/search-for": "Search for",
     "core-views/match-cell": "Match this cell",
     "core-views/match-identical": "Match all identical cells",
+    "core-investigation/health-title": "Column health: $1 numeric, $2 blank, $3 wrong type, $4 error",
     "core-views/recon-stats": "$1% matched, $2% new, $3% to be reconciled",
     "core-views/facet": "Facet",
     "core-views/edit-cells": "Edit cells",

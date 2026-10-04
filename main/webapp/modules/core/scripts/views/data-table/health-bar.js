@@ -33,3 +33,49 @@ HealthBar.computeSegments = function(counts, total) {
     };
   });
 };
+
+// ---- rendering ----
+
+HealthBar.SLOT_ATTR = 'data-health-column';
+
+// Mounts a bar slot for a column into a header element and paints it from cached state.
+HealthBar.mount = function(slot, columnName) {
+  $(slot).attr(HealthBar.SLOT_ATTR, columnName);
+  InvestigationStore.ensureHealth(columnName);
+  HealthBar._paint($(slot), columnName);
+};
+
+HealthBar._paint = function(slot, columnName) {
+  slot.empty();
+  var health = InvestigationStore.getState().health[columnName];
+  var segments = health && HealthBar.computeSegments(health.counts, health.total);
+  if (!segments) {
+    return;
+  }
+  var c = health.counts;
+  var label = $.i18n('core-investigation/health-title', c.numeric, c.blank, c.wrongType, c.error);
+  var bar = $('<div>')
+    .addClass('health-bar')
+    .attr({ 'data-column': columnName, 'data-total': health.total, role: 'img', 'aria-label': label, title: label })
+    .appendTo(slot);
+  segments.forEach(function(s) {
+    $('<span>')
+      .addClass('health-bar-segment health-bar-' + s.cls)
+      .attr({ 'data-class': s.cls, 'data-count': s.count, 'data-width-pct': s.widthPct.toFixed(2) })
+      .css('width', s.widthPct + '%')
+      .appendTo(bar);
+  });
+};
+
+HealthBar.onHealthUpdated = function(event) {
+  $('[' + HealthBar.SLOT_ATTR + ']').each(function() {
+    var slot = $(this);
+    if (slot.attr(HealthBar.SLOT_ATTR) === event.columnName) {
+      HealthBar._paint(slot, event.columnName);
+    }
+  });
+};
+
+if (typeof InvestigationStore !== 'undefined') {
+  InvestigationStore.on('health-updated', HealthBar.onHealthUpdated);
+}
