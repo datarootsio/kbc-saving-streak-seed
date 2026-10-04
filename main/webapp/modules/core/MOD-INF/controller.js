@@ -517,6 +517,8 @@ function init() {
       "scripts/project/scripting.js",
       "scripts/project/operation-icons.js",
       "scripts/project/facet-icons.js",
+      "scripts/project/investigation-store.js",
+      "scripts/project/investigation-card.js",
 
       "scripts/facets/facet.js",
       "scripts/facets/list-facet.js",
@@ -587,6 +589,7 @@ function init() {
       "styles/project/sidebar.css",
       "styles/project/facets.css",
       "styles/project/process.css",
+      "styles/project/investigation.css",
 
       "styles/widgets/histogram-widget.css",
       "styles/widgets/slider-widget.css",

@@ -134,6 +134,13 @@ DataTableColumnHeaderUI.extendMenu(function(column, columnHeaderUI, menu) {
 
       }
     },
+    {
+      id: "core/investigate-numbers",
+      label: $.i18n('core-investigation/menu-item'),
+      click: function() {
+        InvestigationStore.openCard(column.name);
+      }
+    },
     {},
     {
       id: "core/custom-text-facet",

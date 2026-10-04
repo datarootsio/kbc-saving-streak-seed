@@ -1,0 +1,69 @@
+/* ---- investigation cards ---- */
+#investigation-card-strip {
+  display: flex;
+  gap: var(--padding-normal);
+  overflow-x: auto;
+  padding: 0 0 var(--padding-tight) 0;
+}
+
+#investigation-card-strip:empty {
+  display: none;
+}
+
+.investigation-card {
+  flex: 0 0 auto;
+  min-width: 220px;
+  background: var(--background-primary);
+  border: 1px solid var(--faint-grey);
+  border-radius: var(--rounded-corners-radius);
+  padding: var(--padding-tight) var(--padding-normal);
+}
+
+.investigation-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--padding-normal);
+}
+
+.investigation-card-title {
+  font-weight: bold;
+}
+
+.investigation-card-range {
+  color: var(--text-tertiary);
+  flex: 1;
+}
+
+.investigation-card-close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1.2em;
+  line-height: 1;
+}
+
+.investigation-card-stats {
+  display: flex;
+  gap: var(--padding-loose);
+  margin: var(--padding-tight) 0 0 0;
+}
+
+.investigation-card-stats dt {
+  color: var(--text-tertiary);
+  font-size: 0.85em;
+}
+
+.investigation-card-stats dd {
+  margin: 0;
+}
+
+.investigation-card-empty,
+.investigation-card-status {
+  color: var(--text-tertiary);
+  margin-top: var(--padding-tight);
+}
+
+.investigation-card-error {
+  color: var(--error-red);
+}
+/* ---- end investigation cards ---- */
