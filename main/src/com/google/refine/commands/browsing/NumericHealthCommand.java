@@ -17,6 +17,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import com.google.refine.browsing.Engine;
 import com.google.refine.browsing.RowVisitor;
+import com.google.refine.browsing.facets.Facet;
+import com.google.refine.browsing.facets.RangeFacet;
 import com.google.refine.browsing.util.CellClass;
 import com.google.refine.browsing.util.NumericHealth;
 import com.google.refine.browsing.util.NumericHealthCalculator;
@@ -47,7 +49,10 @@ public class NumericHealthCommand extends Command {
             int cellIndex = column.getCellIndex();
 
             List<Cell> cells = new ArrayList<>();
-            engine.getAllFilteredRows().accept(project, new RowVisitor() {
+            // AD4: the card's own range facet is the selection being inspected, so it must not shrink
+            // the counts/histogram it is drawn over. Every other facet applies.
+            Facet own = ownRangeFacet(engine, columnName);
+            engine.getFilteredRows(own).accept(project, new RowVisitor() {
 
                 @Override
                 public void start(Project project) {
@@ -94,16 +99,42 @@ public class NumericHealthCommand extends Command {
                 histogram.put("bins", health.histogramBins());
                 result.put("histogram", histogram);
             }
-            // Reflects every facet in the engine config, including this column's own range facet.
-            // (Excluding the own facet from counts/histogram is ticket 08.)
+            // The selection, unlike the counts above, reflects every facet including the own range facet.
+            int[] kept = { 0 };
+            engine.getAllFilteredRows().accept(project, new RowVisitor() {
+
+                @Override
+                public void start(Project project) {
+                }
+
+                @Override
+                public boolean visit(Project project, int rowIndex, Row row) {
+                    kept[0]++;
+                    return false;
+                }
+
+                @Override
+                public void end(Project project) {
+                }
+            });
             Map<String, Object> selection = new LinkedHashMap<>();
-            selection.put("keptRows", cells.size());
+            selection.put("keptRows", kept[0]);
             selection.put("totalRows", project.rows.size());
             result.put("selection", selection);
             respondJSON(response, result);
         } catch (Exception e) {
             respondException(response, e);
         }
+    }
+
+    /** The range facet on exactly this column (the card's own facet), or null. */
+    private static Facet ownRangeFacet(Engine engine, String columnName) {
+        for (Facet facet : engine.getFacets()) {
+            if (facet instanceof RangeFacet && columnName.equals(((RangeFacet) facet).getColumnName())) {
+                return facet;
+            }
+        }
+        return null;
     }
 
     private static final int DEFAULT_BINS = 20;

@@ -154,21 +154,82 @@ test('resetRange asks the engine to clear the column range', () => {
   assert.deepStrictEqual({...writes[0]}, {columnName: 'amount', config: null});
 });
 
-test('an engine change refreshes selection and range but keeps the histogram', () => {
+test('an engine change refreshes counts, stats, histogram, selection and range of the card', () => {
   const {store, cardCalls, state} = makeCardStore();
   store.openCard('amount');
   cardCalls[0].onDone(cardPayload(6));
   state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
   store.onProjectUpdate({engineChanged: true});
-  const refresh = cardCalls[cardCalls.length - 1];
   assert.strictEqual(cardCalls.length, 2);
-  const shrunk = cardPayload(3);
+  const shrunk = cardPayload(3, 6);
+  shrunk.total = 2;
+  shrunk.counts = {numeric: 2, blank: 0, wrongType: 0, error: 0};
+  shrunk.stats = {min: 0, max: 1, mean: 0.5, median: 0.5};
   shrunk.histogram = {binWidth: 1, min: 0, bins: [2]};
-  refresh.onDone(shrunk);
+  cardCalls[1].onDone(shrunk);
   const card = store.getState().cards[0];
   assert.strictEqual(card.selection.keptRows, 3);
   assert.strictEqual(card.range.to, 1);
-  assert.deepStrictEqual([...card.histogram.bins], [1, 4]);
+  assert.strictEqual(card.total, 2);
+  assert.strictEqual(card.counts.numeric, 2);
+  assert.strictEqual(card.stats.max, 1);
+  assert.deepStrictEqual([...card.histogram.bins], [2]);
+});
+
+test('every data or engine change flag refreshes the open card', () => {
+  for (const flag of ['everythingChanged', 'modelsChanged', 'rowsChanged', 'rowMetadataChanged', 'cellsChanged', 'engineChanged', 'columnStatsChanged']) {
+    const {store, cardCalls} = makeCardStore();
+    store.openCard('amount');
+    cardCalls[0].onDone(cardPayload(6));
+    store.onProjectUpdate({[flag]: true});
+    assert.strictEqual(cardCalls.length, 2, flag);
+  }
+});
+
+test('an update that changes nothing relevant does not refresh the card', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({});
+  assert.strictEqual(cardCalls.length, 1);
+});
+
+test('a refresh keeps the card ready (no loading flash) and a failed refresh keeps the last data', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({cellsChanged: true});
+  assert.strictEqual(store.getState().cards[0].status, 'ready');
+  cardCalls[1].onDone({code: 'error', message: 'boom'});
+  assert.strictEqual(store.getState().cards[0].status, 'ready');
+  assert.strictEqual(store.getState().cards[0].total, 6);
+});
+
+test('a response for a card closed meanwhile is ignored', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({cellsChanged: true});
+  store.closeCard('amount');
+  cardCalls[1].onDone(cardPayload(3));
+  assert.strictEqual(store.getState().cards.length, 0);
+});
+
+test('closing a card with a range removes that range facet', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(3));
+  store.closeCard('amount');
+  assert.deepStrictEqual({...writes[0]}, {columnName: 'amount', config: null});
+  assert.strictEqual(store.getState().cards.length, 0);
+});
+
+test('closing a card without a range touches no facet', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.closeCard('amount');
+  assert.strictEqual(writes.length, 0);
 });
 
 test('a stale selection response never overwrites a newer one', () => {
@@ -196,7 +257,7 @@ test('setProblemRows on a card with a range rewrites the facet with the same bou
   cardCalls[0].onDone(cardPayload(6));
   state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
   store.setRange('amount', {from: 0, to: 1});
-  store.refreshCardSelections();
+  store.refreshCards();
   cardCalls[1].onDone(cardPayload(3));
   writes.length = 0;
   store.setProblemRows('amount', {blank: true});

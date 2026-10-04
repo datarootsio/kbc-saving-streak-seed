@@ -104,9 +104,7 @@ var InvestigationStore = (function() {
   store.onProjectUpdate = function(options) {
     if (REFETCH_FLAGS.some(function(f) { return options && options[f]; })) {
       store.refreshAll();
-    }
-    if (options && options.engineChanged) {
-      store.refreshCardSelections();
+      store.refreshCards();
     }
   };
 
@@ -136,11 +134,13 @@ var InvestigationStore = (function() {
   // exclusive but the card's is inclusive, so the facet's "to" is nudged up by this much.
   var RANGE_UPPER_EPSILON = 1e-7;
 
-  // full: apply stats/counts/histogram/total too; otherwise only selection and range
-  // (until ticket 08 the response counts include the card's own range facet).
-  var fetchCard = function(card, full) {
+  // The server drops the card's own range facet (core/range on this column) from counts, stats and
+  // histogram and applies every other facet, so the engine is posted as-is. `selection` includes
+  // the own facet. initial: show "loading" until the first response; refreshes keep the last data
+  // on screen, and a failed refresh keeps it. Sequence numbers drop superseded responses.
+  var fetchCard = function(card, initial) {
     var mine = card.seq = (card.seq || 0) + 1;
-    if (full) {
+    if (initial) {
       card.status = "loading";
     }
     deps.cardPost(card.columnName, deps.engineJSON(true), function(data) {
@@ -148,31 +148,29 @@ var InvestigationStore = (function() {
         return; // closed while loading, or superseded
       }
       if (data.code === "ok") {
-        if (full) {
-          card.status = "ready";
-          card.stats = data.stats;
-          card.counts = data.counts;
-          card.histogram = data.histogram;
-          card.total = data.total;
-        }
+        card.status = "ready";
+        card.stats = data.stats;
+        card.counts = data.counts;
+        card.histogram = data.histogram;
+        card.total = data.total;
         card.selection = data.selection;
         card.range = deps.readRange(card.columnName);
         if (card.range) {
           card.problemRows = { blank: !!card.range.includeBlank, wrongType: !!card.range.includeWrongType, error: !!card.range.includeError };
         }
-      } else if (full) {
+      } else if (initial) {
         card.status = "error";
       }
       emit("cards-changed", store.getState());
     }, function() {
-      if (cards.indexOf(card) >= 0 && card.seq === mine && full) {
+      if (cards.indexOf(card) >= 0 && card.seq === mine && initial) {
         card.status = "error";
         emit("cards-changed", store.getState());
       }
     });
   };
 
-  store.refreshCardSelections = function() {
+  store.refreshCards = function() {
     cards.forEach(function(card) {
       if (card.status === "ready") {
         fetchCard(card, false);
@@ -250,6 +248,9 @@ var InvestigationStore = (function() {
     }
     cards.splice(cards.indexOf(card), 1);
     emit("cards-changed", store.getState());
+    if (card.range) {
+      deps.writeRange(columnName, null); // the grid returns; a facet the user made in the left panel is only reset
+    }
   };
 
   // ---- end cards ----

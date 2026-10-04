@@ -277,4 +277,53 @@ public class NumericHealthCommandTests extends CommandTestBase {
                 + listFacetOn("name", "{\"v\":\"Alpha\",\"l\":\"Alpha\"}") + "]}";
         assertSelection(post(amountProject(), "amount", engine), 1, 6);
     }
+
+    @Test
+    public void testOwnRangeFacetIsIgnoredByCountsAndHistogram() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, false) + "]}";
+        JsonNode json = post(amountProject(), "amount", engine);
+        assertCounts(json, 6, 5, 1, 0, 0);
+        assertEquals(json.get("stats").get("min").asDouble(), -1.0);
+        assertEquals(json.get("stats").get("max").asDouble(), 2.5);
+        int sum = 0;
+        for (JsonNode bin : json.get("histogram").get("bins")) {
+            sum += bin.asInt();
+        }
+        assertEquals(sum, 5);
+        assertSelection(json, 3, 6);
+    }
+
+    @Test
+    public void testOtherFacetsApplyWhileOwnRangeIsIgnored() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, false) + ","
+                + listFacetOn("name", "{\"v\":\"ALPHA\",\"l\":\"ALPHA\"}") + "]}";
+        JsonNode json = post(amountProject(), "amount", engine);
+        assertCounts(json, 1, 1, 0, 0, 0);
+        assertEquals(json.get("stats").get("min").asDouble(), -1.0);
+        assertSelection(json, 0, 6);
+    }
+
+    @Test
+    public void testRangeFacetOnAnotherColumnStillApplies() throws Exception {
+        String engine = "{\"mode\":\"row-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.0000001, false) + "]}";
+        JsonNode json = post(amountProject(), "name", engine);
+        assertEquals(json.get("total").asInt(), 3);
+    }
+
+    @Test
+    public void testRecordModeIgnoresOwnRangeButKeepsRecordConsistency() throws Exception {
+        String engine = "{\"mode\":\"record-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.5, false) + "]}";
+        JsonNode json = post(recordProject(), "amount", engine);
+        assertCounts(json, 3, 2, 0, 1, 0);
+        assertSelection(json, 2, 3);
+    }
+
+    @Test
+    public void testRecordModeOtherFacetAppliesAndOwnRangeIgnored() throws Exception {
+        String engine = "{\"mode\":\"record-based\",\"facets\":[" + rangeFacetOn("amount", 0, 1.5, false) + ","
+                + listFacetOn("key", "{\"v\":\"B\",\"l\":\"B\"}") + "]}";
+        JsonNode json = post(recordProject(), "amount", engine);
+        assertCounts(json, 1, 1, 0, 0, 0);
+        assertSelection(json, 0, 3);
+    }
 }
