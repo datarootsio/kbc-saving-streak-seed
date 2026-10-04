@@ -277,4 +277,30 @@ describe(__filename, function () {
       cy.get('.investigation-notice').should('not.exist');
     });
   });
+
+  describe('card polish', function () {
+    it('the slider end labels keep the domain while the readout follows the selection', function () {
+      load();
+      openCard();
+      setRange('amount', -1, 1);
+      card().find('.investigation-range-min-label').should('have.text', '-1');
+      card().find('.investigation-range-max-label').should('have.text', '2.5');
+      card().find('.investigation-range-current').should('contain.text', '-1').and('contain.text', '1');
+    });
+
+    it('a single-valued column has a narrow bar and no sliders', function () {
+      load([['name', 'v'], ['a', '5'], ['b', '5']], ['v']);
+      cy.columnActionClick('v', ['Facet', 'Investigate numbers']);
+      card('v').find('.investigation-histogram-bar').should('have.length', 1).invoke('outerWidth').should('be.lt', 60);
+      card('v').find('input[type="range"]').should('not.exist');
+      card('v').find('.investigation-range-single').should('contain.text', '5');
+    });
+
+    it('card text is at least 11px', function () {
+      load();
+      openCard();
+      card().find('.investigation-card-stats dt').first().invoke('css', 'font-size').then((v) => expect(parseFloat(v)).to.be.gte(11));
+      card().find('.investigation-toggle').first().invoke('css', 'font-size').then((v) => expect(parseFloat(v)).to.be.gte(12));
+    });
+  });
 });

@@ -109,13 +109,24 @@ InvestigationCardStrip.prototype._renderRange = function(card, parent) {
   var from = card.range ? Math.max(card.range.from, min) : min;
   var to = card.range ? Math.min(card.range.to, max) : max;
   var wrap = $('<div>').addClass("investigation-range").appendTo(parent);
+  if (min === max) {
+    // One distinct value: a range over it means nothing and the sliders would sit at one end.
+    $('<div>').addClass("investigation-range-single").text($.i18n("core-investigation/single-value-is", fmt(min))).appendTo(wrap);
+    return;
+  }
   var fromInput = $('<input type="range" step="any">').addClass("investigation-range-from")
     .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-from") }).val(from).appendTo(wrap);
   var toInput = $('<input type="range" step="any">').addClass("investigation-range-to")
     .attr({ min: min, max: max, "aria-label": $.i18n("core-investigation/range-to") }).val(to).appendTo(wrap);
   var labels = $('<div>').addClass("investigation-range-labels").appendTo(wrap);
-  var fromLabel = $('<span>').addClass("investigation-range-from-label").text(fmt(from)).appendTo(labels);
-  var toLabel = $('<span>').addClass("investigation-range-to-label").text(fmt(to)).appendTo(labels);
+  // The end labels always name the column's full domain; the current selection is read out below.
+  $('<span>').addClass("investigation-range-min-label").text(fmt(min)).appendTo(labels);
+  $('<span>').addClass("investigation-range-max-label").text(fmt(max)).appendTo(labels);
+  var current_ = $('<div>').addClass("investigation-range-current").appendTo(wrap);
+  var showCurrent = function(a, b) {
+    current_.text($.i18n("core-investigation/selected", fmt(a), fmt(b)));
+  };
+  showCurrent(from, to);
 
   var current = function() {
     var a = Number(fromInput.val());
@@ -124,8 +135,7 @@ InvestigationCardStrip.prototype._renderRange = function(card, parent) {
   };
   wrap.find("input").on("input", function() {
     var r = current();
-    fromLabel.text(fmt(r.from));
-    toLabel.text(fmt(r.to));
+    showCurrent(r.from, r.to);
   });
   wrap.find("input").on("change", function() {
     var r = current();
@@ -170,7 +180,7 @@ InvestigationCardStrip.prototype._renderHistogram = function(histogram, parent, 
   var fmt = InvestigationCardStrip._formatNumber;
   var peak = Math.max.apply(null, histogram.bins);
   var wrap = $('<div>').addClass("investigation-histogram").appendTo(parent);
-  var bars = $('<div>').addClass("investigation-histogram-bars").appendTo(wrap);
+  var bars = $('<div>').addClass("investigation-histogram-bars").toggleClass("is-single", histogram.bins.length === 1).appendTo(wrap);
   histogram.bins.forEach(function(count, i) {
     var from = histogram.min + i * histogram.binWidth;
     var bar = $('<div>').addClass("investigation-histogram-bar").attr("data-count", count)

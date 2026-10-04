@@ -656,6 +656,8 @@
     "core-investigation/close": "Close",
     "core-investigation/empty-project": "Nothing to investigate: the project has no rows",
     "core-investigation/single-value": "All numeric values are the same",
+    "core-investigation/single-value-is": "Every numeric value is $1",
+    "core-investigation/selected": "Selected: $1 to $2",
     "core-investigation/bin-title": "$1 to $2: $3",
     "core-investigation/range-from": "Range start",
     "core-investigation/range-to": "Range end",
