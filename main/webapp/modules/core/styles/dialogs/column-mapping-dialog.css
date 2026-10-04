@@ -1,0 +1,35 @@
+.column-mapping-panel-container {
+    display: flex;
+    max-height: 600px;
+}
+
+.column-mapping-panel {
+    flex: 1;
+}
+
+.column-mapping-panel {
+    padding: 10px;
+    margin: 10px;
+
+    p {
+        font-weight: bold;
+    }
+}
+
+.column-mapping-form {
+    max-height: 80vh;
+    overflow: auto;
+
+    div.grid-layout.layout-normal {
+        margin: 0;
+    }
+    div.grid-layout.layout-normal>table {
+        width: 100%;
+    }
+    div.grid-layout.layout-normal>table>thead>tr>th, div.grid-layout.layout-normal>table>tbody>tr>td:first-child  {
+        width: 65%;
+        white-space: normal !important;
+        word-break: break-word;
+    }
+}
+
