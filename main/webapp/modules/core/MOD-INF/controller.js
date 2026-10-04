@@ -519,6 +519,7 @@ function init() {
       "scripts/project/facet-icons.js",
       "scripts/project/investigation-store.js",
       "scripts/project/investigation-card.js",
+      "scripts/project/investigation-breadcrumb.js",
 
       "scripts/facets/facet.js",
       "scripts/facets/list-facet.js",
