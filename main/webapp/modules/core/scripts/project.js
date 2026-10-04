@@ -94,7 +94,7 @@ function resize() {
   .css("height", (height - rightPanelVPaddings) + "px")
   .css("width", (width - leftPanelWidth - rightPanelHPaddings) + "px");
 
-  ui.viewPanelDiv.height((height - ui.toolPanelDiv.outerHeight() - rightPanelVPaddings) + "px");
+  ui.viewPanelDiv.height((height - ui.toolPanelDiv.outerHeight() - ui.cardStripDiv.outerHeight(true) - rightPanelVPaddings) + "px");
 
   var processPanelWidth = 400;
   ui.processPanelDiv
@@ -173,6 +173,7 @@ function initializeUI(uiState) {
   ui.processPanel = new ProcessPanel(ui.processPanelDiv);
   ui.historyPanel = new HistoryPanel(ui.historyPanelDiv, ui.historyTabHeader);
   ui.dataTableView = new DataTableView(ui.viewPanelDiv);
+  ui.investigationCards = new InvestigationCardStrip(ui.cardStripDiv);
 
   ui.leftPanelTabs.on('tabsactivate', function(event, tabs) {
     tabs.newPanel.trigger('resize');
