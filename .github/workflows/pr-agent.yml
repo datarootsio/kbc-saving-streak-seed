@@ -34,11 +34,13 @@ jobs:
         id: preflight
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
           import json
           import os
           import sys
+          import urllib.request
 
           with open(os.environ["GITHUB_EVENT_PATH"]) as event_file:
               event = json.load(event_file)
@@ -50,8 +52,21 @@ jobs:
           if not os.environ.get("OPENROUTER_API_KEY"):
               print("::error::Add OPENROUTER_API_KEY under Settings > Secrets and variables > Actions.")
               sys.exit(1)
+          pr = event.get("pull_request")
+          if pr is None and os.environ["GITHUB_EVENT_NAME"] == "issue_comment":
+              number = int(event["issue"]["number"])
+              url = f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/pulls/{number}"
+              request = urllib.request.Request(url, headers={
+                  "Authorization": "Bearer " + os.environ["GITHUB_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+              })
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  pr = json.load(response)
+          base_branch = (pr or {}).get("base", {}).get("ref", "")
+          config_branch = base_branch if base_branch == "exercise/numeric-investigation" else ""
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("run_review=true\n")
+              output.write(f"config_branch={config_branch}\n")
           PY
 
       - name: Summarize and review the pull request
@@ -64,6 +79,7 @@ jobs:
           CONFIG__MODEL: ${{ vars.PR_AGENT_MODEL || 'openrouter/deepseek/deepseek-v4.1-flash' }}
           CONFIG__FALLBACK_MODELS: '[]'
           CONFIG__RESTRICTED_MODE: 'true'
+          CONFIG__CONFIG_BRANCH: ${{ steps.preflight.outputs.config_branch }}
           GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: 'true'
           GITHUB_ACTION_CONFIG__AUTO_REVIEW: 'true'
           GITHUB_ACTION_CONFIG__AUTO_IMPROVE: 'false'
