@@ -7,6 +7,7 @@ package com.google.refine.browsing.util;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -211,5 +212,67 @@ public class NumericHealthCalculatorTests {
     @Test(expectedExceptions = IllegalArgumentException.class)
     public void zeroBinsRejected() {
         computeWithBins(0, 1L);
+    }
+
+    // ---- ticket 11: odd values (stories 50, 51) ----
+
+    @Test
+    public void allBlankColumnHasNoStatsAndNoHistogram() {
+        NumericHealth h = computeOf(null, "", "  ", null);
+        assertCounts(h, 0, 4, 0, 0);
+        assertNull(h.min());
+        assertNull(h.median());
+        assertNull(h.histogramBins());
+    }
+
+    @Test
+    public void scientificNotationStringsAreWrongTypeButNumbersAreNumeric() {
+        assertEquals(NumericHealthCalculator.classify(cell("1e5")), CellClass.WRONG_TYPE);
+        assertEquals(NumericHealthCalculator.classify(cell("1.5E+300")), CellClass.WRONG_TYPE);
+        assertEquals(NumericHealthCalculator.classify(cell(1.5e300)), CellClass.NUMERIC);
+        assertEquals(NumericHealthCalculator.classify(cell(Double.MAX_VALUE)), CellClass.NUMERIC);
+        assertEquals(NumericHealthCalculator.classify(cell(Double.MIN_VALUE)), CellClass.NUMERIC);
+        assertEquals(NumericHealthCalculator.classify(cell(Double.POSITIVE_INFINITY)), CellClass.WRONG_TYPE);
+        assertEquals(NumericHealthCalculator.classify(cell(Double.NEGATIVE_INFINITY)), CellClass.WRONG_TYPE);
+    }
+
+    private static void assertAllFinite(NumericHealth h) {
+        for (Double d : new Double[] { h.min(), h.max(), h.mean(), h.median(), h.histogramMin(), h.histogramBinWidth() }) {
+            assertTrue(d != null && Double.isFinite(d), "not finite: " + d);
+        }
+    }
+
+    @Test
+    public void hugeValuesGiveFiniteMeanMedianAndWidth() {
+        NumericHealth h = computeOf(Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, Double.MAX_VALUE);
+        assertAllFinite(h);
+        assertEquals(h.max(), Double.valueOf(Double.MAX_VALUE));
+        int sum = 0;
+        for (int b : h.histogramBins()) {
+            sum += b;
+        }
+        assertEquals(sum, 4);
+    }
+
+    @Test
+    public void hugeRangeBinsEveryValueExactlyOnce() {
+        NumericHealth h = computeOf(-Double.MAX_VALUE, 0.0, Double.MAX_VALUE);
+        assertEquals(h.histogramBins()[0], 1);
+        assertEquals(h.histogramBins()[h.histogramBins().length - 1], 1);
+        int sum = 0;
+        for (int b : h.histogramBins()) {
+            sum += b;
+        }
+        assertEquals(sum, 3);
+    }
+
+    @Test
+    public void denormalRangeStillBinsEveryValue() {
+        NumericHealth h = computeOf(0.0, Double.MIN_VALUE);
+        int sum = 0;
+        for (int b : h.histogramBins()) {
+            sum += b;
+        }
+        assertEquals(sum, 2);
     }
 }

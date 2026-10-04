@@ -8,11 +8,12 @@ var RangeFilterBridge = (function() {
   var owned = {}; // columnName -> true when the card created the facet
 
   var find = function(columnName) {
-    var key = JSON.stringify(['range', 'value', columnName]);
+    // A facet rebuilt from the server (e.g. after a rename) carries the expression as "grel:value".
+    var keys = ['value', 'grel:value'].map(function(e) { return JSON.stringify(['range', e, columnName]); });
     var facets = ui.browsingEngine._facets;
     for (var i = 0; i < facets.length; i++) {
       var f = facets[i].facet;
-      if (f instanceof RangeFacet && f.uniquenessCriterion() === key) {
+      if (f instanceof RangeFacet && keys.indexOf(f.uniquenessCriterion()) >= 0) {
         return f;
       }
     }
@@ -27,6 +28,14 @@ var RangeFilterBridge = (function() {
       }
       var j = f.getJSON();
       return { from: j.from, to: j.to, includeBlank: j.selectBlank, includeWrongType: j.selectNonNumeric, includeError: j.selectError };
+    },
+    // Hard removal, whoever created the facet: its column is gone.
+    remove: function(columnName) {
+      var f = find(columnName);
+      delete owned[columnName];
+      if (f) {
+        ui.browsingEngine.removeFacet(f);
+      }
     },
     write: function(columnName, config) {
       var f = find(columnName);
@@ -49,7 +58,7 @@ var RangeFilterBridge = (function() {
 })();
 
 var InvestigationStore = (function() {
-  var state = { health: {} };
+  var state = { health: {}, healthStatus: {} };
   var handlers = {};
   var deps = null;
 
@@ -75,25 +84,41 @@ var InvestigationStore = (function() {
   store.fetchHealth = function(columnName) {
     var mine = seq[columnName] = (seq[columnName] || 0) + 1;
     inFlight[columnName] = true;
+    if (!state.health[columnName]) {
+      state.healthStatus[columnName] = 'loading'; // a refetch with data on screen is not "loading"
+    }
     var isLatest = function() { return seq[columnName] === mine; };
+    var failed = function() {
+      inFlight[columnName] = false;
+      delete state.health[columnName];
+      state.healthStatus[columnName] = 'error';
+      emit('health-updated', { columnName: columnName });
+    };
     deps.post(columnName, deps.engineJSON(), function(data) {
       if (!isLatest()) { return; }
-      inFlight[columnName] = false;
       if (data.code !== 'ok') {
-        delete state.health[columnName];
-      } else {
-        state.health[columnName] = { total: data.total, counts: data.counts };
+        failed();
+        return;
       }
+      inFlight[columnName] = false;
+      delete state.healthStatus[columnName];
+      state.health[columnName] = { total: data.total, counts: data.counts };
       emit('health-updated', { columnName: columnName });
     }, function() {
-      if (isLatest()) { inFlight[columnName] = false; }
+      if (isLatest()) { failed(); }
     });
   };
 
+  // A column in error is not refetched by ensureHealth (that would loop); the user retries.
   store.ensureHealth = function(columnName) {
-    if (!state.health[columnName] && !inFlight[columnName]) {
+    if (!state.health[columnName] && !inFlight[columnName] && state.healthStatus[columnName] !== 'error') {
       store.fetchHealth(columnName);
     }
+  };
+
+  store.retryHealth = function(columnName) {
+    store.fetchHealth(columnName);
+    emit('health-updated', { columnName: columnName });
   };
 
   store.refreshAll = function() {
@@ -103,6 +128,7 @@ var InvestigationStore = (function() {
   // Called after every Refine.update (edit, undo/redo, facet change).
   store.onProjectUpdate = function(options) {
     if (REFETCH_FLAGS.some(function(f) { return options && options[f]; })) {
+      pruneMissingColumns();
       store.refreshAll();
       store.refreshCards();
       store.refreshBreadcrumb();
@@ -112,9 +138,11 @@ var InvestigationStore = (function() {
   store.getState = function() {
     var snapshot = JSON.parse(JSON.stringify(state));
     snapshot.cards = cards.map(function(c) {
-      return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total,
+      return { columnName: c.columnName, status: c.status, refreshError: !!c.refreshError, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total,
         selection: c.selection, range: c.range, problemRows: { blank: c.problemRows.blank, wrongType: c.problemRows.wrongType, error: c.problemRows.error } };
     });
+    snapshot.notices = JSON.parse(JSON.stringify(notices));
+    snapshot.breadcrumbError = breadcrumbError;
     snapshot.breadcrumb = breadcrumb ? JSON.parse(JSON.stringify(breadcrumb)) : null;
     snapshot.highlight = JSON.parse(JSON.stringify(highlight));
     return snapshot;
@@ -122,6 +150,47 @@ var InvestigationStore = (function() {
 
   // ---- cards ----
   var cards = []; // [{columnName, status: "loading"|"ready"|"error", stats, counts, histogram, total}]
+  var notices = []; // [{columnName}]: cards closed because their column was renamed or removed
+
+  // Story 52: a card, highlight or range facet keyed to a column that is no longer in the project
+  // (removed, or renamed: the old name is gone) is closed/cleared; the card leaves a notice.
+  var pruneMissingColumns = function() {
+    var existing = deps.columns();
+    var changed = false;
+    cards.slice().forEach(function(card) {
+      if (existing.indexOf(card.columnName) < 0) {
+        cards.splice(cards.indexOf(card), 1);
+        // A rename keeps the cell index, and the engine has already moved the facet to the new name.
+        var renamedTo = deps.nameOfCellIndex(card.cellIndex);
+        notices = notices.filter(function(n) { return n.columnName !== card.columnName; });
+        notices.push({ columnName: card.columnName, renamedTo: renamedTo });
+        deps.removeRange(card.columnName);
+        if (renamedTo) {
+          deps.removeRange(renamedTo);
+        }
+        changed = true;
+      }
+    });
+    Object.keys(highlight).forEach(function(c) {
+      if (existing.indexOf(c) < 0) {
+        store.setHighlight(c, null);
+      }
+    });
+    Object.keys(state.health).concat(Object.keys(state.healthStatus)).forEach(function(c) {
+      if (existing.indexOf(c) < 0) {
+        delete state.health[c];
+        delete state.healthStatus[c];
+      }
+    });
+    if (changed) {
+      emit("cards-changed", store.getState());
+    }
+  };
+
+  store.dismissNotice = function(columnName) {
+    notices = notices.filter(function(n) { return n.columnName !== columnName; });
+    emit("cards-changed", store.getState());
+  };
 
   var findCard = function(columnName) {
     for (var i = 0; i < cards.length; i++) {
@@ -151,6 +220,7 @@ var InvestigationStore = (function() {
       }
       if (data.code === "ok") {
         card.status = "ready";
+        card.refreshError = false;
         card.stats = data.stats;
         card.counts = data.counts;
         card.histogram = data.histogram;
@@ -165,14 +235,30 @@ var InvestigationStore = (function() {
         }
       } else if (initial) {
         card.status = "error";
+      } else {
+        card.refreshError = true;
       }
       emit("cards-changed", store.getState());
     }, function() {
-      if (cards.indexOf(card) >= 0 && card.seq === mine && initial) {
-        card.status = "error";
+      if (cards.indexOf(card) >= 0 && card.seq === mine) {
+        if (initial) {
+          card.status = "error";
+        } else {
+          card.refreshError = true; // the last data stays on screen
+        }
         emit("cards-changed", store.getState());
       }
     });
+  };
+
+  // Retry after a failed first load (error state) or a failed refresh (data kept, refreshError).
+  store.retryCard = function(columnName) {
+    var card = findCard(columnName);
+    if (!card) {
+      return;
+    }
+    fetchCard(card, card.status === "error");
+    emit("cards-changed", store.getState());
   };
 
   store.refreshCards = function() {
@@ -238,10 +324,11 @@ var InvestigationStore = (function() {
     if (findCard(columnName)) {
       return;
     }
-    var card = { columnName: columnName, status: "loading", stats: null, counts: null, histogram: null, total: null,
+    var card = { columnName: columnName, cellIndex: deps.cellIndexOf(columnName), status: "loading", stats: null, counts: null, histogram: null, total: null,
                  selection: null, range: null,
                  problemRows: { blank: false, wrongType: false, error: false } };
     cards.push(card);
+    notices = notices.filter(function(n) { return n.columnName !== columnName; });
     emit("cards-changed", store.getState());
     fetchCard(card, true);
   };
@@ -267,6 +354,7 @@ var InvestigationStore = (function() {
   // text facet changes only this last number. `total` = all rows in the project.
   var breadcrumb = null;
   var bcSeq = 0;
+  var breadcrumbError = false;
   var filterOrder = {};  // columnName -> creation rank, kept while the filter is active
   var nextRank = 0;
 
@@ -282,8 +370,15 @@ var InvestigationStore = (function() {
     deps.writeRange(columnName, null); // same path as Reset and close: a user-made facet is only reset
   };
 
+  store.retryBreadcrumb = function() {
+    store.refreshBreadcrumb();
+    emit("cards-changed", store.getState());
+  };
+
   store.refreshBreadcrumb = function() {
     var mine = ++bcSeq;
+    var hadError = breadcrumbError;
+    breadcrumbError = false;
     var filters = [];
     cards.forEach(function(card) {
       var r = deps.readRange(card.columnName);
@@ -300,7 +395,7 @@ var InvestigationStore = (function() {
       }
     });
     if (filters.length === 0) {
-      if (breadcrumb !== null) {
+      if (breadcrumb !== null || hadError) {
         breadcrumb = null;
         emit("cards-changed", store.getState());
       }
@@ -316,7 +411,11 @@ var InvestigationStore = (function() {
     var pending = requests.length;
     requests.forEach(function(req, i) {
       deps.stepPost(req.column, req.engine, function(data) {
-        if (mine !== bcSeq || data.code !== "ok") {
+        if (mine !== bcSeq) {
+          return;
+        }
+        if (data.code !== "ok") {
+          failBreadcrumb();
           return;
         }
         results[i] = data.selection;
@@ -330,8 +429,18 @@ var InvestigationStore = (function() {
           };
           emit("cards-changed", store.getState());
         }
-      }, function() {});
+      }, function() {
+        if (mine === bcSeq) {
+          failBreadcrumb();
+        }
+      });
     });
+    function failBreadcrumb() {
+      if (!breadcrumbError) {
+        breadcrumbError = true;
+        emit("cards-changed", store.getState());
+      }
+    }
   };
 
   // ---- end cards ----
@@ -389,6 +498,15 @@ var InvestigationStore = (function() {
     },
     readRange: function(columnName) { return RangeFilterBridge.read(columnName); },
     writeRange: function(columnName, config) { RangeFilterBridge.write(columnName, config); },
+    cellIndexOf: function(columnName) {
+      var c = theProject.columnModel.columns.find(function(col) { return col.name === columnName; });
+      return c ? c.cellIndex : -1;
+    },
+    nameOfCellIndex: function(cellIndex) {
+      var c = theProject.columnModel.columns.find(function(col) { return col.cellIndex === cellIndex; });
+      return c ? c.name : null;
+    },
+    removeRange: function(columnName) { RangeFilterBridge.remove(columnName); },
     post: function(columnName, engineJson, onDone, onError) {
       Refine.postCSRF(
         "command/core/get-numeric-health?" + $.param({ project: theProject.id }),

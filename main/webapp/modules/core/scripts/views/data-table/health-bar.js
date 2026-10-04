@@ -47,7 +47,20 @@ HealthBar.mount = function(slot, columnName) {
 
 HealthBar._paint = function(slot, columnName) {
   slot.empty();
-  var health = InvestigationStore.getState().health[columnName];
+  var snapshot = InvestigationStore.getState();
+  var status = snapshot.healthStatus[columnName];
+  if (status === 'loading') {
+    $('<div>').addClass('health-bar-loading').attr({ 'data-column': columnName, title: $.i18n('core-investigation/health-loading') }).appendTo(slot);
+    return;
+  }
+  if (status === 'error') {
+    var retryLabel = $.i18n('core-investigation/health-error');
+    $('<button type="button">').addClass('health-bar-retry').attr({ 'data-column': columnName, title: retryLabel, 'aria-label': retryLabel })
+      .text($.i18n('core-investigation/retry'))
+      .on('click', function(e) { e.stopPropagation(); InvestigationStore.retryHealth(columnName); }).appendTo(slot);
+    return;
+  }
+  var health = snapshot.health[columnName];
   var segments = health && HealthBar.computeSegments(health.counts, health.total);
   if (!segments) {
     return;
