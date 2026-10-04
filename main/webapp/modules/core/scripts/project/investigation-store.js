@@ -66,6 +66,7 @@ var InvestigationStore = (function() {
     snapshot.cards = cards.map(function(c) {
       return { columnName: c.columnName, status: c.status, stats: c.stats, counts: c.counts, histogram: c.histogram, total: c.total };
     });
+    snapshot.highlight = JSON.parse(JSON.stringify(highlight));
     return snapshot;
   };
 
@@ -136,6 +137,28 @@ var InvestigationStore = (function() {
   };
 
   // ---- end cards ----
+
+  // ---- highlight ----
+  // One active cell class per column; in memory only, so a reload clears it.
+  var highlight = {}; // columnName -> 'numeric' | 'blank' | 'wrongType' | 'error'
+  var HIGHLIGHT_CLASSES = ['numeric', 'blank', 'wrongType', 'error'];
+
+  store.setHighlight = function(columnName, cellClass) {
+    if (cellClass !== null && HIGHLIGHT_CLASSES.indexOf(cellClass) < 0) {
+      return;
+    }
+    if ((highlight[columnName] || null) === cellClass) {
+      return;
+    }
+    if (cellClass === null) {
+      delete highlight[columnName];
+    } else {
+      highlight[columnName] = cellClass;
+    }
+    emit('highlight-changed', { columnName: columnName, cellClass: cellClass });
+  };
+
+  // ---- end highlight ----
 
   // ---- browser wiring (not exercised by the node unit tests) ----
 
