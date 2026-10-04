@@ -217,9 +217,10 @@ var InvestigationStore = (function() {
         p[k] = !!flags[k];
       }
     });
-    if (card.range) {
-      // card.range.to is the facet's own (already exclusive) bound, so it is passed unchanged
-      deps.writeRange(columnName, rangeConfig(columnName, card.range.from, card.range.to, p));
+    var live = deps.readRange(columnName); // the facet, not card.range, which lags behind a fetch
+    if (live) {
+      // the facet's own bound is already exclusive, so it is passed unchanged
+      deps.writeRange(columnName, rangeConfig(columnName, live.from, live.to, p));
     } else {
       emit("cards-changed", store.getState());
     }

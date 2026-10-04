@@ -235,3 +235,12 @@ test('problem-row defaults are all off, and follow the facet once there is a ran
   cardCalls[0].onDone(cardPayload(4));
   assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: false, wrongType: true, error: false});
 });
+
+test('setProblemRows uses the live facet bounds, not a card range that lags behind', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 2.5, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(5));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}; // slider moved, fetch pending
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes[0].config.to, 1);
+});
