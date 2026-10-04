@@ -60,9 +60,22 @@ public final class NumericHealthCalculator {
             sum += n;
         }
         int size = numbers.size();
-        double median = size % 2 == 1
-                ? numbers.get(size / 2)
-                : (numbers.get(size / 2 - 1) + numbers.get(size / 2)) / 2;
+        double median;
+        if (size % 2 == 1) {
+            median = numbers.get(size / 2);
+        } else {
+            double lo = numbers.get(size / 2 - 1);
+            double hi = numbers.get(size / 2);
+            median = Double.isFinite(lo + hi) ? (lo + hi) / 2 : lo / 2 + hi / 2;
+        }
+        double mean = sum / size;
+        if (!Double.isFinite(mean)) {
+            // The sum overflowed (values near Double.MAX_VALUE): divide before adding.
+            mean = 0;
+            for (double n : numbers) {
+                mean += n / size;
+            }
+        }
         double min = numbers.get(0);
         double max = numbers.get(size - 1);
         int[] bins;
@@ -72,11 +85,20 @@ public final class NumericHealthCalculator {
             binWidth = 0;
         } else {
             bins = new int[binCount];
-            binWidth = (max - min) / binCount;
-            for (double n : numbers) {
-                bins[Math.min(binCount - 1, (int) ((n - min) / binWidth))]++;
+            if (Double.isFinite(max - min)) {
+                binWidth = (max - min) / binCount;
+                for (double n : numbers) {
+                    bins[Math.min(binCount - 1, (int) ((n - min) / binWidth))]++;
+                }
+            } else {
+                // max - min overflows: work on halves of every quantity.
+                binWidth = max / binCount - min / binCount;
+                double halfSpan = max / 2 - min / 2;
+                for (double n : numbers) {
+                    bins[Math.min(binCount - 1, (int) ((n / 2 - min / 2) / halfSpan * binCount))]++;
+                }
             }
         }
-        return new NumericHealth(total, counts, min, max, sum / size, median, min, binWidth, bins);
+        return new NumericHealth(total, counts, min, max, mean, median, min, binWidth, bins);
     }
 }

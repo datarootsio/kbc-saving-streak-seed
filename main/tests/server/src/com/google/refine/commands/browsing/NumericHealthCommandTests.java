@@ -161,8 +161,6 @@ public class NumericHealthCommandTests extends CommandTestBase {
         assertTrue(json.get("stats").isNull(), json.toString());
     }
 
-    private static final String NO_FACETS = "{\"mode\":\"row-based\",\"facets\":[]}";
-
     private JsonNode postWithBins(Project project, String bins) throws Exception {
         when(request.getParameter("bins")).thenReturn(bins);
         return post(project, "amount", NO_FACETS);
@@ -325,5 +323,38 @@ public class NumericHealthCommandTests extends CommandTestBase {
         JsonNode json = post(recordProject(), "amount", engine);
         assertCounts(json, 1, 1, 0, 0, 0);
         assertSelection(json, 0, 3);
+    }
+
+    // ---- ticket 11: odd values ----
+
+    private static final String NO_FACETS = "{\"mode\":\"row-based\",\"facets\":[]}";
+
+    @Test
+    public void testAllBlankColumn() throws Exception {
+        Project project = createProject(new String[] { "x" },
+                new Serializable[][] { { null }, { "" }, { "  " } });
+        JsonNode json = post(project, "x", NO_FACETS);
+        assertCounts(json, 3, 0, 3, 0, 0);
+        assertTrue(json.get("stats").isNull());
+        assertTrue(json.get("histogram").isNull());
+    }
+
+    @Test
+    public void testHugeAndNonFiniteValuesGiveValidJson() throws Exception {
+        Project project = createProject(new String[] { "x" },
+                new Serializable[][] { { Double.MAX_VALUE }, { Double.MAX_VALUE }, { Double.MAX_VALUE }, { -Double.MAX_VALUE },
+                        { Double.NaN }, { Double.POSITIVE_INFINITY }, { "NaN" }, { "1e5" }, { 1e-320 } });
+        JsonNode json = post(project, "x", NO_FACETS);
+        assertCounts(json, 9, 5, 0, 4, 0);
+        JsonNode stats = json.get("stats");
+        for (String k : new String[] { "min", "max", "mean", "median" }) {
+            assertTrue(Double.isFinite(stats.get(k).asDouble()), k);
+        }
+        int sum = 0;
+        for (JsonNode b : json.get("histogram").get("bins")) {
+            sum += b.asInt();
+        }
+        assertEquals(sum, 5);
+        assertTrue(Double.isFinite(json.get("histogram").get("binWidth").asDouble()));
     }
 }
