@@ -90,6 +90,7 @@ function registerCommands() {
   RS.registerCommand(module, "cancel-processes", new Packages.com.google.refine.commands.history.CancelProcessesCommand());
 
   RS.registerCommand(module, "compute-facets", new Packages.com.google.refine.commands.browsing.ComputeFacetsCommand());
+  RS.registerCommand(module, "get-numeric-health", new Packages.com.google.refine.commands.browsing.NumericHealthCommand());
   RS.registerCommand(module, "compute-clusters", new Packages.com.google.refine.commands.browsing.ComputeClustersCommand());
   RS.registerCommand(module, "get-clustering-functions-and-distances", new Packages.com.google.refine.commands.browsing.GetClusteringFunctionsAndDistancesCommand());
 
@@ -516,6 +517,9 @@ function init() {
       "scripts/project/scripting.js",
       "scripts/project/operation-icons.js",
       "scripts/project/facet-icons.js",
+      "scripts/project/investigation-store.js",
+      "scripts/project/investigation-card.js",
+      "scripts/project/investigation-breadcrumb.js",
 
       "scripts/facets/facet.js",
       "scripts/facets/list-facet.js",
@@ -532,7 +536,10 @@ function init() {
       "scripts/views/data-table/cell-renderers/registry.js",
 
       "scripts/views/data-table/data-table-view.js",
+      "scripts/views/data-table/cell-highlighter.js",
       "scripts/views/data-table/cell-ui.js",
+      "scripts/views/data-table/health-bar.js",
+      "scripts/views/data-table/health-popover.js",
       "scripts/views/data-table/column-header-ui.js",
       "scripts/views/data-table/menu-facets.js",
       "scripts/views/data-table/menu-edit-cells.js",
@@ -586,6 +593,7 @@ function init() {
       "styles/project/sidebar.css",
       "styles/project/facets.css",
       "styles/project/process.css",
+      "styles/project/investigation.css",
 
       "styles/widgets/histogram-widget.css",
       "styles/widgets/slider-widget.css",

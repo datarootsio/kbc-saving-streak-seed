@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 function DataTableView(div) {
+  var self = this;
   this._div = div;
 
   this._gridPagesSizes = JSON.parse(Refine.getPreference("ui.browsing.pageSize", null));
@@ -43,6 +44,10 @@ function DataTableView(div) {
   this._sorting = { criteria: [] };
   this._columnHeaderUIs = [];
   this._shownulls = false;
+
+  if (typeof InvestigationStore !== 'undefined') {
+    InvestigationStore.on('highlight-changed', function() { self.refreshHighlight(); });
+  }
 
   this._showRows({start: 0});
 }
@@ -158,6 +163,16 @@ DataTableView.prototype.update = function(onDone, preservePage) {
     paginationOptions.start = 0;
   }
   this._showRows(paginationOptions, onDone);
+};
+
+// Re-apply the investigation highlight to the rendered cells without re-rendering the grid.
+DataTableView.prototype.refreshHighlight = function() {
+  this._div.find('td').each(function() {
+    var cellUI = $(this).data('cellUI');
+    if (cellUI) {
+      cellUI.applyHighlight();
+    }
+  });
 };
 
 DataTableView.prototype.render = function() {

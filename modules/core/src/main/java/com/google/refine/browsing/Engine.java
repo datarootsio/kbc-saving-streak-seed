@@ -94,6 +94,12 @@ public class Engine {
         _config = new EngineConfig(_config.getFacetConfigs(), mode);
     }
 
+    /** The facets built from the current config, in config order. */
+    @JsonIgnore
+    public List<Facet> getFacets() {
+        return Collections.unmodifiableList(_facets);
+    }
+
     @JsonIgnore
     public FilteredRows getAllRows() {
         return new FilteredRows() {

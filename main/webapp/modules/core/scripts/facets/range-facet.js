@@ -79,6 +79,17 @@ class RangeFacet extends Facet {
     this._setRangeIndicators();
   };
 
+  // Used by the investigation card: set the selection from outside and refresh the grid.
+  setSelection(c) {
+    this._from = c.from;
+    this._to = c.to;
+    this._selectNumeric = c.selectNumeric;
+    this._selectNonNumeric = c.selectNonNumeric;
+    this._selectBlank = c.selectBlank;
+    this._selectError = c.selectError;
+    Refine.update({ engineChanged: true });
+  };
+
   getUIState() {
     var json = {
         c: this.getJSON(),

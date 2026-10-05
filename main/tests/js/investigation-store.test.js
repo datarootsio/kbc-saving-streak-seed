@@ -1,0 +1,449 @@
+// Tests for the health section of InvestigationStore (M3), with a stubbed transport.
+const test = require('node:test');
+const assert = require('node:assert');
+const vm = require('node:vm');
+
+function makeStore({columns = ['name', 'amount'], engine = {facets: [], mode: 'row-based'}} = {}) {
+  const sandbox = require('./load')('project/investigation-store.js');
+  const store = vm.runInContext('InvestigationStore', sandbox);
+  const calls = [];
+  store._setDeps({
+    columns: () => columns.slice(),
+    engineJSON: () => engine,
+    post: (columnName, engineJson, onDone, onError) => calls.push({columnName, engineJson, onDone, onError}),
+  });
+  return {store, calls};
+}
+const payload = (columnName, numeric, blank = 0) => ({
+  code: 'ok', columnName, total: numeric + blank, counts: {numeric, blank, wrongType: 0, error: 0},
+});
+
+test('fetchHealth sends column and engine, stores the result and emits health-updated', () => {
+  const {store, calls} = makeStore();
+  const events = [];
+  store.on('health-updated', (e) => events.push(e.columnName));
+  store.fetchHealth('amount');
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].columnName, 'amount');
+  assert.strictEqual(calls[0].engineJson.mode, 'row-based');
+  calls[0].onDone(payload('amount', 5, 1));
+  assert.strictEqual(store.getState().health.amount.total, 6);
+  assert.strictEqual(store.getState().health.amount.counts.numeric, 5);
+  assert.deepStrictEqual([...events], ['amount']);
+});
+
+test('story 7/8: an update that changes the engine or data refetches every column', () => {
+  const {store, calls} = makeStore();
+  store.onProjectUpdate({engineChanged: true});
+  assert.deepStrictEqual(calls.map((c) => c.columnName), ['name', 'amount']);
+});
+
+test('an update that cannot change counts (e.g. only history) does not refetch', () => {
+  const {store, calls} = makeStore();
+  store.onProjectUpdate({});
+  assert.strictEqual(calls.length, 0);
+});
+
+test('story 54: a stale response never overwrites a newer one', () => {
+  const {store, calls} = makeStore();
+  store.fetchHealth('amount');
+  store.fetchHealth('amount');
+  calls[1].onDone(payload('amount', 5, 1));
+  calls[0].onDone(payload('amount', 1, 0));
+  assert.strictEqual(store.getState().health.amount.total, 6);
+});
+
+test('ensureHealth fetches once when there is no data and nothing in flight', () => {
+  const {store, calls} = makeStore();
+  store.ensureHealth('amount');
+  store.ensureHealth('amount');
+  assert.strictEqual(calls.length, 1);
+  calls[0].onDone(payload('amount', 5, 1));
+  store.ensureHealth('amount');
+  assert.strictEqual(calls.length, 1);
+});
+
+test('a failed request leaves no data and does not throw', () => {
+  const {store, calls} = makeStore();
+  store.fetchHealth('amount');
+  calls[0].onDone({code: 'error', message: 'boom'});
+  assert.strictEqual(store.getState().health.amount, undefined);
+});
+
+test('getState returns a snapshot that cannot mutate the store', () => {
+  const {store, calls} = makeStore();
+  store.fetchHealth('amount');
+  calls[0].onDone(payload('amount', 5, 1));
+  store.getState().health.amount.counts.numeric = 99;
+  assert.strictEqual(store.getState().health.amount.counts.numeric, 5);
+});
+
+// ---- cards: range selection (ticket 07) ----
+
+function makeCardStore({range = null} = {}) {
+  const sandbox = require('./load')('project/investigation-store.js');
+  const store = vm.runInContext('InvestigationStore', sandbox);
+  const cardCalls = [];
+  const writes = [];
+  const state = {range};
+  store._setDeps({
+    columns: () => ['name', 'amount'],
+    cellIndexOf: () => 0,
+    nameOfCellIndex: () => null,
+    engineJSON: () => ({facets: [], mode: 'row-based'}),
+    post: () => {},
+    cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
+    stepPost: () => {},
+    readRange: () => state.range,
+    writeRange: (columnName, config) => writes.push({columnName, config}),
+  });
+  return {store, cardCalls, writes, state};
+}
+const cardPayload = (kept, total = 6) => ({
+  code: 'ok', columnName: 'amount', total, counts: {numeric: 5, blank: 1, wrongType: 0, error: 0},
+  stats: {min: -1, max: 2.5, mean: 0.5, median: 0},
+  histogram: {binWidth: 0.175, min: -1, bins: [1, 4]},
+  selection: {keptRows: kept, totalRows: total},
+});
+
+test('openCard stores selection and no range when the column has no range facet', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  const card = store.getState().cards[0];
+  assert.deepStrictEqual({...card.selection}, {keptRows: 6, totalRows: 6});
+  assert.strictEqual(card.range, null);
+});
+
+test('openCard adopts an existing range facet on the column instead of creating one (no duplicate)', () => {
+  const {store, cardCalls, writes} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(3));
+  assert.strictEqual(store.getState().cards[0].range.from, 0);
+  assert.strictEqual(store.getState().cards[0].range.to, 1);
+  assert.strictEqual(writes.length, 0);
+});
+
+test('setRange writes a core range facet config on the column that excludes problem rows by default', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.setRange('amount', {from: 0, to: 1});
+  assert.strictEqual(writes.length, 1);
+  const c = writes[0].config;
+  assert.strictEqual(writes[0].columnName, 'amount');
+  assert.strictEqual(c.columnName, 'amount');
+  assert.strictEqual(c.name, 'amount');
+  assert.strictEqual(c.expression, 'value');
+  assert.strictEqual(c.from, 0);
+  // the facet's upper bound is exclusive, the card's is inclusive
+  assert.ok(c.to > 1 && c.to < 1.001, 'to=' + c.to);
+  assert.strictEqual(c.selectNumeric, true);
+  assert.strictEqual(c.selectNonNumeric, false);
+  assert.strictEqual(c.selectBlank, false);
+  assert.strictEqual(c.selectError, false);
+});
+
+test('setRange honours the include flags', () => {
+  const {store, writes} = makeCardStore();
+  store.setRange('amount', {from: 0, to: 1, includeBlank: true, includeWrongType: true, includeError: true});
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, true, true]);
+});
+
+test('resetRange asks the engine to clear the column range', () => {
+  const {store, writes} = makeCardStore();
+  store.resetRange('amount');
+  assert.deepStrictEqual({...writes[0]}, {columnName: 'amount', config: null});
+});
+
+test('an engine change refreshes counts, stats, histogram, selection and range of the card', () => {
+  const {store, cardCalls, state} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(cardCalls.length, 2);
+  const shrunk = cardPayload(3, 6);
+  shrunk.total = 2;
+  shrunk.counts = {numeric: 2, blank: 0, wrongType: 0, error: 0};
+  shrunk.stats = {min: 0, max: 1, mean: 0.5, median: 0.5};
+  shrunk.histogram = {binWidth: 1, min: 0, bins: [2]};
+  cardCalls[1].onDone(shrunk);
+  const card = store.getState().cards[0];
+  assert.strictEqual(card.selection.keptRows, 3);
+  assert.strictEqual(card.range.to, 1);
+  assert.strictEqual(card.total, 2);
+  assert.strictEqual(card.counts.numeric, 2);
+  assert.strictEqual(card.stats.max, 1);
+  assert.deepStrictEqual([...card.histogram.bins], [2]);
+});
+
+test('every data or engine change flag refreshes the open card', () => {
+  for (const flag of ['everythingChanged', 'modelsChanged', 'rowsChanged', 'rowMetadataChanged', 'cellsChanged', 'engineChanged', 'columnStatsChanged']) {
+    const {store, cardCalls} = makeCardStore();
+    store.openCard('amount');
+    cardCalls[0].onDone(cardPayload(6));
+    store.onProjectUpdate({[flag]: true});
+    assert.strictEqual(cardCalls.length, 2, flag);
+  }
+});
+
+test('an update that changes nothing relevant does not refresh the card', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({});
+  assert.strictEqual(cardCalls.length, 1);
+});
+
+test('a refresh keeps the card ready (no loading flash) and a failed refresh keeps the last data', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({cellsChanged: true});
+  assert.strictEqual(store.getState().cards[0].status, 'ready');
+  cardCalls[1].onDone({code: 'error', message: 'boom'});
+  assert.strictEqual(store.getState().cards[0].status, 'ready');
+  assert.strictEqual(store.getState().cards[0].total, 6);
+});
+
+test('a response for a card closed meanwhile is ignored', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({cellsChanged: true});
+  store.closeCard('amount');
+  cardCalls[1].onDone(cardPayload(3));
+  assert.strictEqual(store.getState().cards.length, 0);
+});
+
+test('closing a card with a range removes that range facet', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(3));
+  store.closeCard('amount');
+  assert.deepStrictEqual({...writes[0]}, {columnName: 'amount', config: null});
+  assert.strictEqual(store.getState().cards.length, 0);
+});
+
+test('closing a card without a range touches no facet', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.closeCard('amount');
+  assert.strictEqual(writes.length, 0);
+});
+
+test('a stale selection response never overwrites a newer one', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.onProjectUpdate({engineChanged: true});
+  store.onProjectUpdate({engineChanged: true});
+  cardCalls[2].onDone(cardPayload(3));
+  cardCalls[1].onDone(cardPayload(5));
+  assert.strictEqual(store.getState().cards[0].selection.keptRows, 3);
+});
+
+test('a data-only update with no open card does not call the card endpoint', () => {
+  const {store, cardCalls} = makeCardStore();
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(cardCalls.length, 0);
+});
+
+// ---- cards: problem-row toggles (ticket 09) ----
+
+test('setProblemRows on a card with a range rewrites the facet with the same bounds and the new flags', () => {
+  const {store, cardCalls, writes, state} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false};
+  store.setRange('amount', {from: 0, to: 1});
+  store.refreshCards();
+  cardCalls[1].onDone(cardPayload(3));
+  writes.length = 0;
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes.length, 1);
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, false, false]);
+  assert.strictEqual(c.from, 0);
+  assert.ok(Math.abs(c.to - 1) < 1e-6, 'upper bound is not nudged up a second time');
+  assert.strictEqual(c.selectNumeric, true);
+});
+
+test('setProblemRows keeps the other flags', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 1, includeBlank: true, includeWrongType: false, includeError: true}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(4));
+  store.setProblemRows('amount', {wrongType: true});
+  const c = writes[0].config;
+  assert.deepStrictEqual([c.selectBlank, c.selectNonNumeric, c.selectError], [true, true, true]);
+});
+
+test('setProblemRows without a range writes nothing and the next setRange uses the choice', () => {
+  const {store, cardCalls, writes} = makeCardStore();
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(6));
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes.length, 0);
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: true, wrongType: false, error: false});
+  store.setRange('amount', {from: 0, to: 1});
+  assert.strictEqual(writes[0].config.selectBlank, true);
+});
+
+test('problem-row defaults are all off, and follow the facet once there is a range', () => {
+  const {store, cardCalls} = makeCardStore({range: {from: 0, to: 1, includeBlank: false, includeWrongType: true, includeError: false}});
+  store.openCard('amount');
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: false, wrongType: false, error: false});
+  cardCalls[0].onDone(cardPayload(4));
+  assert.deepStrictEqual({...store.getState().cards[0].problemRows}, {blank: false, wrongType: true, error: false});
+});
+
+test('setProblemRows uses the live facet bounds, not a card range that lags behind', () => {
+  const {store, cardCalls, writes, state} = makeCardStore({range: {from: 0, to: 2.5, includeBlank: false, includeWrongType: false, includeError: false}});
+  store.openCard('amount');
+  cardCalls[0].onDone(cardPayload(5));
+  state.range = {from: 0, to: 1, includeBlank: false, includeWrongType: false, includeError: false}; // slider moved, fetch pending
+  store.setProblemRows('amount', {blank: true});
+  assert.strictEqual(writes[0].config.to, 1);
+});
+
+// ---- breadcrumb (ticket 10) ---- (facet JSON types are the client's: 'range', 'list')
+// Per-step counts come from repeated `selection` calls: step k posts the engine holding only the
+// first k numeric filters; the final "shown" posts the full engine (all facets).
+
+function makeBreadcrumbStore() {
+  const sandbox = require('./load')('project/investigation-store.js');
+  const store = vm.runInContext('InvestigationStore', sandbox);
+  const calls = [];      // breadcrumb step requests
+  const cardCalls = [];  // card requests
+  const ranges = {};
+  const writes = [];
+  const text = {type: 'list', columnName: 'name', selection: [{v: {v: 'Alpha'}}]};
+  const rangeFacet = (c) => ({type: 'range', columnName: c, from: ranges[c].from, to: ranges[c].to});
+  const state = {withText: false};
+  store._setDeps({
+    columns: () => ['name', 'amount', 'qty'],
+    cellIndexOf: () => 0,
+    nameOfCellIndex: () => null,
+    engineJSON: () => ({
+      mode: 'row-based',
+      facets: Object.keys(ranges).map(rangeFacet).concat(state.withText ? [text] : []),
+    }),
+    post: () => {},
+    cardPost: (columnName, engineJson, onDone, onError) => cardCalls.push({columnName, engineJson, onDone, onError}),
+    stepPost: (columnName, engineJson, onDone, onError) => calls.push({columnName, engineJson, onDone, onError}),
+    readRange: (c) => ranges[c] || null,
+    writeRange: (c, config) => { writes.push({c, config}); if (config === null) { delete ranges[c]; } },
+  });
+  const answer = (call, kept, total = 10) => call.onDone({
+    code: 'ok', total, counts: {numeric: 1, blank: 0, wrongType: 0, error: 0},
+    stats: {min: 0, max: 1, mean: 0, median: 0}, histogram: {binWidth: 1, min: 0, bins: [1]},
+    selection: {keptRows: kept, totalRows: total},
+  });
+  const openBoth = () => {
+    store.openCard('amount'); store.openCard('qty');
+    cardCalls.splice(0).forEach((c) => answer(c, 10));
+  };
+  return {store, calls, cardCalls, ranges, writes, state, answer, openBoth};
+}
+const facetCols = (call) => call.engineJson.facets.map((f) => f.columnName).join(',');
+
+test('breadcrumb is null with no numeric filters and makes no step calls', () => {
+  const {store, calls, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(store.getState().breadcrumb, null);
+  assert.strictEqual(calls.length, 0);
+});
+
+test('story 44/45: two filters give two steps ordered by creation, each count from its prefix, then shown', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  // qty filtered first, amount second: creation order, not card order
+  ranges.qty = {from: 0, to: 5};
+  store.onProjectUpdate({engineChanged: true});
+  ranges.amount = {from: 0, to: 1};
+  store.onProjectUpdate({engineChanged: true});
+  calls.splice(0); // discard calls from the first update (stale after the second)
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(calls.length, 3, 'one call per step plus the final');
+  assert.strictEqual(facetCols(calls[0]), 'qty', 'step 1 posts only the first-created filter');
+  assert.deepStrictEqual([...calls[1].engineJson.facets.map((f) => f.columnName)].sort(), ['amount', 'qty']);
+  answer(calls[0], 7);
+  answer(calls[1], 3);
+  answer(calls[2], 3);
+  const bc = store.getState().breadcrumb;
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(bc.steps.map((s) => [s.columnName, s.kept]))), [['qty', 7], ['amount', 3]]);
+  assert.strictEqual(bc.total, 10);
+  assert.strictEqual(bc.shown, 3);
+  assert.deepStrictEqual({from: bc.steps[0].from, to: bc.steps[0].to}, {from: 0, to: 5});
+});
+
+test('story 48/49: step requests carry only numeric filters; the final request also carries other facets', () => {
+  const {store, calls, ranges, state, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  state.withText = true;
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const step = calls.find((c) => c.engineJson.facets.length === 1 && c.engineJson.facets[0].type === 'range');
+  const fin = calls.find((c) => c.engineJson.facets.some((f) => f.type === 'list'));
+  assert.ok(step, 'step 1 has only the range');
+  assert.ok(fin, 'final has the text facet');
+  answer(step, 6);
+  answer(fin, 2);
+  const bc = store.getState().breadcrumb;
+  assert.strictEqual(bc.steps[0].kept, 6);
+  assert.strictEqual(bc.shown, 2);
+});
+
+test('a stale breadcrumb response is ignored', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const first = calls.slice();
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  const second = calls.slice();
+  second.forEach((c) => answer(c, 4));
+  first.forEach((c) => answer(c, 9));
+  assert.strictEqual(store.getState().breadcrumb.shown, 4);
+});
+
+test('story 46: removeFilter clears only that column range; others stay', () => {
+  const {store, writes, ranges, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.qty = {from: 0, to: 5};
+  ranges.amount = {from: 0, to: 1};
+  store.removeFilter('qty');
+  assert.deepStrictEqual(writes.map((w) => [w.c, w.config]), [['qty', null]]);
+  assert.ok(ranges.amount);
+});
+
+test('story 47: breadcrumb disappears when the last filter goes (e.g. removed in the left panel)', () => {
+  const {store, calls, ranges, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  calls.forEach((c) => answer(c, 3));
+  assert.ok(store.getState().breadcrumb);
+  delete ranges.amount;
+  store.onProjectUpdate({engineChanged: true});
+  assert.strictEqual(store.getState().breadcrumb, null);
+});
+
+test('closing a card with a filter drops its chip', () => {
+  const {store, ranges, calls, answer, openBoth} = makeBreadcrumbStore();
+  openBoth();
+  ranges.amount = {from: 0, to: 1};
+  calls.splice(0);
+  store.onProjectUpdate({engineChanged: true});
+  calls.forEach((c) => answer(c, 3));
+  store.closeCard('amount');
+  assert.strictEqual(store.getState().breadcrumb, null);
+});
