@@ -173,6 +173,17 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
         return seeded.pointsExpiringNextOnOf(customerName);
     }
 
+    /**
+     * What is in the customer's current account, for a test that has to say no euros moved.
+     *
+     * <p>The other end of every movement this application makes, and the figure that would give a
+     * bonus away if paying one ever touched money: a savings balance that had not changed while the
+     * current account had would be euros moving in a direction nobody asked for.
+     */
+    public BigDecimal currentAccountBalanceOf(String customerName) {
+        return seeded.currentAccountBalanceOf(customerName);
+    }
+
     /** Every movement of money in or out of the customer's savings, newest first. */
     public MoneyMovementView[] moneyMovementsOf(String customerName) {
         return http.getForObject("/api/customers/{id}/money-movements", MoneyMovementView[].class,
@@ -185,6 +196,18 @@ public final class AnApplicationWithAClockToMove implements AutoCloseable {
      */
     public BalancesView balancesOf(long savingsAccountId) {
         return http.getForObject("/api/savings-accounts/{id}", BalancesView.class, savingsAccountId);
+    }
+
+    /**
+     * The account overview exactly as the API sends it, for a test that has to say a figure is
+     * <em>not</em> in it.
+     *
+     * <p>The body rather than {@link BalancesView}, because a view binds the fields it knows about
+     * and says nothing about the ones it does not: a test asserting that nothing was added to the
+     * overview cannot ask a record that would have to be changed first in order to notice.
+     */
+    public String theAccountOverviewAsItIsSent(long savingsAccountId) {
+        return http.getForObject("/api/savings-accounts/{id}", String.class, savingsAccountId);
     }
 
     /**

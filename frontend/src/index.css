@@ -967,6 +967,17 @@ button::after {
   color: var(--brand-deep);
 }
 
+/* The one rule the deposit list needs stated before it can be read: it explains the third part of
+   every breakdown and, more importantly, why a small deposit's anniversary is worth nothing. Said
+   once over the list rather than on each row — a history that argued its own case on every line
+   would be an advertisement — and tighter than a panel's explanation, because it is inside a
+   block that is already a section of one. */
+.explanation.rule {
+  margin: -0.25rem 0 0.85rem;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
 .deposits {
   width: 100%;
   border-collapse: collapse;
@@ -1048,6 +1059,115 @@ button::after {
 /* The rate travels with its multiplication sign, the way the rate beside the week does. */
 .breakdown-rate {
   white-space: nowrap;
+}
+
+/* The third part of the sum, and the only one that arrived after the money did. Kept whole for the
+   same reason the rate is: "+ 30" at the end of one line and "loyalty" at the start of the next
+   reads as two figures, and a breakdown whose job is to be checkable cannot afford that. Its own
+   class rather than nothing, so the plus sign travels with it. */
+.breakdown-loyalty {
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- when a deposit next pays */
+
+/* The promise, under the record of what the deposit has already earned. Warm, because it is about
+   points and nothing else is allowed that colour — and the same weight and size as the expiry
+   deadline on the overview, because it is the same kind of sentence about the same kind of thing: a
+   figure and the day it lands on. The two are read the same way, so they are dressed the same way.
+
+   Louder than .breakdown above it and quieter than the badge above that. The order down the cell is
+   the answer, then the working, then what is coming — which is the order somebody reads it in. */
+.anniversary {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--points);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+/* The figure is the part somebody is deciding against, so it carries the weight of the two halves,
+   exactly as the expiry count does. */
+.anniversary-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The date travels with the words in front of it: a date alone at the start of a wrapped line reads
+   as a heading rather than as the end of this sentence. */
+.anniversary-when {
+  white-space: nowrap;
+}
+
+/* A deposit holding under ten euros earns nothing on its anniversary, and that is a rule rather than
+   a fault — the rule is written over the list. Dressed as the page's other absences are, in the grey
+   that .earnings.none and .nothing use: the warm colour is for points a customer is getting, and
+   there are none here. Not hidden, because the date is real and a hidden line would be
+   indistinguishable from the emptied deposit that has no anniversary at all. */
+.anniversary.none {
+  color: var(--ink-faint);
+}
+
+/* An account's two histories fold into blocks at a phone's width, the way the money history's rows
+   already do — same reason, and deliberately the same 36rem, so that a page whose two kinds of
+   history are read one after the other never has one of them folded and the other in columns.
+
+   The deposits list is what forces it. Its third cell now holds three things — the total, the
+   arithmetic behind it, and the day the deposit next pays — and a third of a phone's width is not
+   enough for any of them: a date kept whole on purpose ("due on 18 oktober 2029" must not break in
+   half) is wider than the column it was in, so the table pushed its own figures off the screen.
+   Given the whole width under the date and the amount, all three read as the sentences they are.
+
+   The withdrawals list is folded with it rather than left behind. Its destination cell is an IBAN,
+   which is one unbreakable sixteen-character word and overflowed the frame at this width before
+   this rule existed; leaving one of two side-by-side lists folded and the other spilling would
+   read as a fault in the one that folded. */
+@media (max-width: 36rem) {
+  /* The headings named columns that no longer exist. Every cell says what it is by how it is
+     dressed — a date, an amount, a badge, an IBAN — which is what lets the columns go. */
+  .ledger .deposits thead {
+    display: none;
+  }
+
+  .ledger .deposits tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'when amount'
+      'detail detail';
+    align-items: start;
+    gap: 0.3rem 0.75rem;
+    padding: 0.7rem 0;
+    /* The cells' own borders go with the columns, so the row carries the line that separated them.
+       Without it a list of blocks is one block. */
+    border-bottom: 1px solid rgb(var(--line) / 0.09);
+  }
+
+  .ledger .deposits tbody td {
+    display: block;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .ledger .deposits .when {
+    grid-area: when;
+  }
+
+  .ledger .deposits .amount {
+    grid-area: amount;
+    text-align: right;
+  }
+
+  /* Left, under the date it belongs to, exactly as the money history's words are: the table's
+     columns are right-aligned, which is right for a figure in a column and wrong for a stack of
+     sentences under a left-aligned date. */
+  .ledger .deposits .gained,
+  .ledger .deposits .returned {
+    grid-area: detail;
+    text-align: left;
+  }
 }
 
 /* The deposit just made is marked for a moment, so it can be found in a long list. */
@@ -1251,10 +1371,27 @@ button::after {
 /* ---------------------------------------------------------------- vouchers */
 
 /* The two lists that account for the points balance, side by side where there is room: what came in,
-   and what went out. */
+   and what went out.
+
+   "Where there is room" has to mean the room a list actually needs, and 20rem was not it. A column
+   of 20rem hands a list 17rem of content once .history's padding is taken out, and neither list has
+   ever fitted that: the widest deposit row needs 340px and a withdrawal's destination is an IBAN,
+   one unbreakable sixteen-character word, at 322px. So the two lists went side by side from about
+   700px of window, each in a column narrower than its own contents, and ran over the rule between
+   them — the deposits list since this branch gave it a third line, the withdrawals list since it
+   was written. Raising the minimum to the width a list needs is the whole fix: 28rem is 448px, or
+   400px of content, which clears the widest row with room to spare and is still under half of the
+   958px this panel comes to at its widest, so the two columns still appear on a desktop exactly as
+   they did. Between the two the lists stack, which is the layout they already had at every width
+   below 700px.
+
+   min(28rem, 100%) rather than 28rem, because a hard minimum wider than the panel is a column that
+   cannot fit its own frame: at 320px of window the 20rem one drew a 320px column inside a 286px
+   panel and .account's overflow: hidden cut the ends off the rows. Below 28rem the column is simply
+   as wide as there is, and the 36rem fold in the deposits section takes it from there. */
 .ledger {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
 }
 
 .ledger .history + .history {
