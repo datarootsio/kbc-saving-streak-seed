@@ -1,20 +1,24 @@
-# Build output
-backend/target/
-frontend/node_modules/
-frontend/dist/
+# Compiled binaries and object artifacts
+bin/
+build/
+*.o
+*.so
+*.dylib
+*.dll
+*.i
 
-# Python bytecode
-__pycache__/
-*.pyc
+# Runtime working data (recreated from data/seed/ via make reset-data)
+data/work/
 
-# The SQLite database is local state, recreated on first start
-data/*.db
-data/*.db-journal
-data/*.db-wal
-data/*.db-shm
+# Local workshop snapshots (managed by make checkpoint / make diff / make restore)
+.baseline/
+.checkpoint/
 
-# Maven output from the repository root
-/target/
+# Claude Code user-local overrides (CLAUDE.md and .claude/skills/ remain tracked)
+CLAUDE.local.md
+.claude/settings*.json
 
-# macOS metadata
+# OS & editor metadata
 .DS_Store
+*~
+*.swp
