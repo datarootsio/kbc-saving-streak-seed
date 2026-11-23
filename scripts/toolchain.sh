@@ -12,9 +12,16 @@ echo "cobc not found on PATH. Installing GnuCOBOL..."
 
 if command -v apt-get >/dev/null 2>&1; then
     SUDO=""
-    [ "$(id -u)" -ne 0 ] && SUDO="sudo"
-    $SUDO apt-get update
-    $SUDO apt-get install -y gnucobol
+    if [ "$(id -u)" -ne 0 ]; then
+        SUDO="sudo"
+        if ! sudo -n true 2>/dev/null && [ ! -t 0 ]; then
+            echo "Error: GnuCOBOL (cobc) is not installed yet and sudo requires your VM password." >&2
+            echo "Run 'make tools' (or 'sudo apt-get update && sudo apt-get install -y gnucobol') once in a terminal tab, then retry." >&2
+            exit 1
+        fi
+    fi
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y gnucobol
 elif command -v brew >/dev/null 2>&1; then
     yes | env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_ASK=0 brew install gnucobol
 else

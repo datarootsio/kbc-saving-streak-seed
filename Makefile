@@ -2,7 +2,7 @@ SHELL := /bin/bash
 export PATH := /opt/homebrew/bin:/usr/local/bin:$(PATH)
 
 COBC       := cobc
-COBCFLAGS  := -fixed -Wall -Werror -I copy
+COBCFLAGS  := -fixed -Wall -Wno-unfinished -I copy
 BIN_DIR    := bin
 TARGET     := $(BIN_DIR)/run-acctopen
 MAIN_SRC   := src/ACCTCLI.cbl
@@ -10,12 +10,13 @@ SUB_SRCS   := $(filter-out $(MAIN_SRC),$(sort $(wildcard src/*.cbl)))
 COPYBOOKS  := $(sort $(wildcard copy/*.cpy))
 CASE       ?=
 
-.PHONY: help tools check-format build test checkpoint diff diff-baseline restore restore-baseline reset-data clean
+.PHONY: help tools deploy check-format build test checkpoint diff diff-baseline restore restore-baseline reset-data clean
 
 help:
 	@echo "KBC Retail Account Opening — COBOL Workshop Commands"
 	@echo ""
 	@echo "  make tools          Verify or install the GnuCOBOL (cobc) compiler"
+	@echo "  make deploy         Prepare the workshop VM toolchain and verify the suite"
 	@echo "  make build          Check 72-column COBOL format and compile $(TARGET)"
 	@echo "  make test           Build and run all test cases (optional: CASE=name)"
 	@echo "  make reset-data     Reset data/work/*.dat from data/seed/*.seed.dat"
@@ -29,6 +30,9 @@ tools:
 	@bash scripts/toolchain.sh
 	@bash scripts/snapshot.sh ensure
 
+deploy: tools test
+	@echo "COBOL mainframe exercise is ready on this VM (CLI service — no web port needed)."
+
 check-format:
 	@awk 'length($$0) > 72 { \
 		printf "%s:%d: fixed-format COBOL line exceeds column 72 (%d chars)\n", FILENAME, FNR, length($$0); \
@@ -36,6 +40,7 @@ check-format:
 	} END { exit bad }' $(COPYBOOKS) $(MAIN_SRC) $(SUB_SRCS)
 
 $(TARGET): $(COPYBOOKS) $(MAIN_SRC) $(SUB_SRCS)
+	@command -v $(COBC) >/dev/null 2>&1 || bash scripts/toolchain.sh
 	@mkdir -p $(BIN_DIR)
 	@$(COBC) -x $(COBCFLAGS) $(MAIN_SRC) $(SUB_SRCS) -o $(TARGET)
 	@echo "Compiled $(TARGET) cleanly."

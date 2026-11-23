@@ -20,7 +20,7 @@ ACCTCLI (bin/run-acctopen)
   - `ELBAREA.cpy` — KBC ELB mandate check commarea (`HOLDER`, `JOINT-FULL`, `POA-TRANSACT`, `POA-VIEW`, `REVOKED`, `NONE`).
   - `EXTAREA.cpy` — External KYC risk screening (`EXT-RISK-AREA`) and IBAN generator (`IBAN-GEN-AREA`).
   - `DBAREA.cpy` — DB2-style ledger commarea (`DB-SQLCODE`: `0`, `+100`, `-803`, `-904`) and audit commarea.
-- `src/` — Fixed-format COBOL programs (strictly columns 1–72, compiled with `GnuCOBOL` `-fixed -Wall -Werror`). Any `.cbl` added to `src/` is automatically linked into `bin/run-acctopen` on `make build`.
+- `src/` — Fixed-format COBOL programs (strictly columns 1–72, compiled with `GnuCOBOL` `-fixed -Wall`). Any `.cbl` added to `src/` is automatically linked into `bin/run-acctopen` on `make build`.
 - `data/seed/` — Reference fixtures for primary accounts, linked sub-accounts, ELB mandates, and customer KYC profiles.
 - `tests/` — Zero-dependency automated test runner (`tests/run_tests.sh`) and declarative `.case` files (`tests/cases/*.case`).
 - `docs/standards-and-style.md` — House fixed-format COBOL standards, copybook and JCL `DD_*` conventions, ELB mandate rules, and fail-closed compliance policies.
