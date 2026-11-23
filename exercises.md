@@ -5,7 +5,15 @@ The KBC Retail Account Opening COBOL service passes its existing tests, yet nigh
 - Read-only consultation proxies (`POA-VIEW`) are refused on mobile, yet were able to open active accounts at branch counters.
 - When KYC risk screening times out (`SVC-UNAVAIL`), the service returns a warning instead of failing closed, allocates an IBAN, and records an active account without completed screening.
 
-**Goal:** practise evidence-based debugging, requirement alignment, test-driven changes, and fresh-context review using Claude Code.
+**Goal:** practise setting up shared context, evidence-based debugging, requirement alignment, test-driven changes, and fresh-context review using Claude Code.
+
+## Step 0 — Shared context
+
+How would you let every new coding session know how this COBOL service is built and verified, and what house standards and compliance rules apply?
+
+1. Inspect [README.md](README.md) and [docs/standards-and-style.md](docs/standards-and-style.md), and decide what belongs in `CLAUDE.md` (or how `CLAUDE.md` should reference them).
+2. Create `CLAUDE.md` so fresh sessions pick up that context automatically.
+3. Start a fresh session and ask it to explain how tests are run and what COBOL formatting and compliance rules apply, without repeating them in your prompt.
 
 ## Part 1 — Investigate and repair compliance defects
 
@@ -29,4 +37,4 @@ Extend the service so retail customers can open a **linked savings sub-account**
 
 ## Be ready to show
 
-The reproductions and cause of both compliance defects, the ambiguities you resolved and your saved specification, your working sub-account feature and verification evidence, and what your fresh-context reviews caught.
+Your `CLAUDE.md`, the reproductions and cause of both compliance defects, the ambiguities you resolved and your saved specification, your working sub-account feature and verification evidence, and what your fresh-context reviews caught.

@@ -2,7 +2,7 @@
 
 Standalone fixed-format COBOL service simulating KBC Retail Account Opening (`ACCTOPEN`), backed by KBC ELB mandate verification, external KYC/AML/sanctions screening, Belgian IBAN allocation, DB2-style ledger access, and regulatory audit logging.
 
-Start with [exercises.md](exercises.md) for the two-part **Claude Code** (`claude`) workshop instructions.
+Start with [exercises.md](exercises.md) for the **Claude Code** (`claude`) workshop instructions.
 
 ## Architecture & Directory Map
 
@@ -23,7 +23,7 @@ ACCTCLI (bin/run-acctopen)
 - `src/` — Fixed-format COBOL programs (strictly columns 1–72, compiled with `GnuCOBOL` `-fixed -Wall -Werror`). Any `.cbl` added to `src/` is automatically linked into `bin/run-acctopen` on `make build`.
 - `data/seed/` — Reference fixtures for primary accounts, linked sub-accounts, ELB mandates, and customer KYC profiles.
 - `tests/` — Zero-dependency automated test runner (`tests/run_tests.sh`) and declarative `.case` files (`tests/cases/*.case`).
-- `CLAUDE.md` — Project memory with house COBOL, copybook, return-code, and regulatory compliance rules loaded automatically by Claude Code (`claude`).
+- `docs/standards-and-style.md` — House fixed-format COBOL standards, copybook and JCL `DD_*` conventions, ELB mandate rules, and fail-closed compliance policies.
 
 ## Commands
 
